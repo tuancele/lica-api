@@ -1,0 +1,231 @@
+<?php
+
+namespace App\Modules\Brand\Controllers;
+
+use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
+use App\Modules\Brand\Models\Brand;
+use Validator;
+use Illuminate\Support\Facades\Auth;
+use Session;
+class BrandController extends Controller
+{
+    private $model;
+    private $controller = 'brand';
+    private $view = 'Brand';
+    public function __construct(Brand $model){
+        $this->model = $model;
+    }
+    public function index(Request $request)
+    {
+        active('product','brand');
+        $data['list'] = $this->model::where(function ($query) use ($request) {
+            if($request->get('status') != "") {
+	            $query->where('status', $request->get('status'));
+            }
+            if($request->get('keyword') != "") {
+	            $query->where('name','like','%'.$request->get('keyword').'%');
+	        }
+        })->orderBy('name','asc')->paginate(10)->appends(['keyword' => $request->get('keyword'),'status' => $request->get('status')]);
+        return view($this->view.'::index',$data);
+    }
+    public function create(){
+        active('product','brand');
+        return view($this->view.'::create');
+    }
+    public function edit($id){
+        active('product','brand');
+        $detail = $this->model::find($id);
+        $data['detail'] = $detail;
+        $data['gallerys'] = json_decode($detail->gallery);
+        return view($this->view.'::edit',$data);
+    }
+    public function update(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|min:1|max:250',
+        ],[
+            'name.required' => 'Tiêu đề không được bỏ trống.',
+            'name.min' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
+            'name.max' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
+        ]);
+        if($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'errors' => $validator->errors()
+            ]);
+        }
+        $up = $this->model::where('id',$request->id)->update(array(
+            'name' => $request->name,
+			'slug' => $request->slug,
+            'content' => $request->content,
+            'image' => $request->image,
+            'banner' => $request->banner,
+            'gallery' => json_encode($request->imageOther),
+            'logo' => $request->logo,
+			'seo_title' => $request->seo_title,
+			'seo_description' => $request->seo_description,
+			'status' => $request->status,
+            'user_id'=> Auth::id()
+        ));
+        if($up > 0){
+            return response()->json([
+                'status' => 'success',
+                'alert' => 'Sửa thành công!',
+                'url' => route('brand')
+            ]);
+        }else{
+            return response()->json([
+                'status' => 'error',
+                'errors' => array('alert' => array('0' => 'Sửa không thành công!'))
+            ]);
+        }
+    }
+
+    public function store(Request $request)
+    {   
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|min:1|max:250',
+        ],[
+            'name.required' => 'Tiêu đề không được bỏ trống.',
+            'name.min' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
+            'name.max' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
+        ]);
+        if($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'errors' => $validator->errors()
+            ]);
+        }
+        $id = $this->model::insertGetId(
+            [
+                'name' => $request->name,
+                'slug' => $request->slug,
+                'content' => $request->content,
+                'image' => $request->image,
+                'banner' => $request->banner,
+                'gallery' => json_encode($request->imageOther),
+                'logo' => $request->logo,
+                'seo_title' => $request->seo_title,
+                'seo_description' => $request->seo_description,
+                'status' => $request->status,
+                'user_id'=> Auth::id(),
+                'created_at' => date('Y-m-d H:i:s')
+            ]
+        );
+        if($id > 0){
+            return response()->json([
+                'status' => 'success',
+                'alert' => 'Thêm thành công!',
+                'url' => route('brand')
+            ]);
+        }else{
+            return response()->json([
+                'status' => 'error',
+                'errors' => array('alert' => array('0' => 'Thêm không thành công!'))
+            ]);
+        }
+    }
+    public function delete(Request $request)
+    {
+        $data = $this->model::findOrFail($request->id)->delete();
+        if($request->page !=""){
+            $url = route('brand').'?page='.$request->page;
+        }else{
+            $url = route('brand');
+        }
+        return response()->json([
+            'status' => 'success',
+            'alert' => 'Xóa thành công!',
+            'url' => $url
+        ]);
+    }
+    public function status(Request $request){
+        $this->model::where('id',$request->id)->update(array(
+            'status' => $request->status
+        ));
+        return response()->json([
+            'status' => 'success',
+            'alert' => 'Đổi trạng thái thành công!',
+            'url' => route('brand')
+        ]);
+    }
+    public function sort(Request $req){
+        $sort = $req->sort;
+        if(isset($sort) && !empty($sort)){
+            foreach ($sort as $key => $value) {
+                $this->model::where('id',$key)->update(array(
+                    'sort' => $value
+                ));
+            }
+        }
+    }
+    public function action(Request $request){
+        $check = $request->checklist;
+        if(!isset($check) && empty($check)){
+            return response()->json([
+                'status' => 'error',
+                'errors' => array('alert' => array('0' => 'Chưa chọn dữ liệu cần thao tác!'))
+            ]);
+        }
+        $action = $request->action;
+        if($action == 0){
+            foreach($check as $key => $value){
+                $this->model::where('id',$value)->update(array(
+                    'status' => '0'
+                ));
+            }
+            return response()->json([
+                'status' => 'success',
+                'alert' => 'Ẩn thành công!',
+                'url' => route('brand')
+            ]);
+        }elseif($action == 1){
+            foreach($check as $key => $value){
+                $this->model::where('id',$value)->update(array(
+                    'status' => '1'
+                ));
+            }
+            return response()->json([
+                'status' => 'success',
+                'alert' => 'Hiển thị thành công!',
+                'url' => route('brand')
+            ]);
+        }else{
+            foreach($check as $key => $value){
+                $this->model::where('id',$value)->delete();
+            }
+            return response()->json([
+                'status' => 'success',
+                'alert' => 'Xóa thành công!',
+                'url' => route('brand')
+            ]);
+        }
+    }
+
+    public function upload(Request $request){
+        $validatedData = $request->validate([
+            'files' => 'required',
+            'files.*' => 'mimes:jpeg,png,jpg,gif,webp'
+        ]);
+        if($request->TotalFiles > 0)
+        {
+           for ($x = 0; $x < $request->TotalFiles; $x++)
+           {
+               if ($request->hasFile('files'.$x))
+                {
+                    $file      = $request->file('files'.$x);
+                    $name = $file->getClientOriginalName();
+                    $path = '/uploads/images/image/';
+                    $file->move('uploads/images/image', $name);
+                    $insert[$x] = $path.$name;
+                }
+           }
+            return response()->json($insert);
+        }
+        else
+        {
+           return response()->json(["message" => "Xin vui lòng thử lại."]);
+        }
+    }
+}

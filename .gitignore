@@ -1,0 +1,25 @@
+/node_modules
+/public/hot
+/public/storage
+/storage/*.key
+/vendor
+.env
+.env.backup
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+npm-debug.log
+yarn-error.log
+
+# Exclusions added by Cline
+/uploads
+/error_log
+/composer.phar
+/composer.json.bak
+/update*.txt
+/test.php
+/test_debug.php
+/check_db.php
+/list_r2.php
+/why_not.txt
+/getPdo()

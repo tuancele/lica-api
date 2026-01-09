@@ -1,0 +1,10 @@
+<?php
+
+namespace App\Modules\Location\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class District extends Model
+{
+    protected $table = "district";
+}
