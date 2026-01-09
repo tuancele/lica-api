@@ -67,9 +67,10 @@
                     <div class="align-center space-between mb-2 mt-3">
                         <span class="fs-18 fw-bold">Thông tin nhận hàng</span>
                     </div>
-                    <div class="mb-2">
+                    <div class="mb-2 position-relative">
                         <label>Địa chỉ (Tỉnh/Thành, Quận/Huyện, Phường/Xã) <span>*</span></label>
-                        <select class="form-control" id="search_location" name="search_location" style="width: 100%"></select>
+                        <input type="text" class="form-control" id="search_location_input" autocomplete="off" placeholder="Nhập Xã, Huyện, Tỉnh...">
+                        <div id="search_location_results" class="autocomplete-results"></div>
                         <input type="hidden" name="province" id="province_id">
                         <input type="hidden" name="district" id="district_id">
                         <input type="hidden" name="ward" id="ward_id">
@@ -100,9 +101,10 @@
                 <div class="align-center space-between mb-2 mt-3">
                     <span class="fs-18 fw-bold">Thông tin nhận hàng</span>
                 </div>
-                    <div class="mb-2">
+                    <div class="mb-2 position-relative">
                         <label>Địa chỉ (Tỉnh/Thành, Quận/Huyện, Phường/Xã) <span>*</span></label>
-                        <select class="form-control" id="search_location" name="search_location" style="width: 100%"></select>
+                        <input type="text" class="form-control" id="search_location_input" autocomplete="off" placeholder="Nhập Xã, Huyện, Tỉnh...">
+                        <div id="search_location_results" class="autocomplete-results"></div>
                         <input type="hidden" name="province" id="province_id">
                         <input type="hidden" name="district" id="district_id">
                         <input type="hidden" name="ward" id="ward_id">
@@ -340,43 +342,100 @@
             }
         })
     });
-    $('#search_location').select2({
-        ajax: {
-            url: '{{route("cart.searchLocation")}}',
-            dataType: 'json',
-            delay: 250,
-            data: function (params) {
-                return {
-                    q: params.term,
-                };
-            },
-            processResults: function (data) {
-                return {
-                    results: data.results
-                };
-            },
-            cache: true
-        },
-        placeholder: 'Nhập Xã, Huyện, Tỉnh...',
-        minimumInputLength: 2,
+    let searchTimeout;
+    $('#search_location_input').on('input', function() {
+        let query = $(this).val();
+        clearTimeout(searchTimeout);
+        if (query.length < 2) {
+            $('#search_location_results').hide();
+            return;
+        }
+
+        searchTimeout = setTimeout(function() {
+            $.ajax({
+                url: '{{route("cart.searchLocation")}}',
+                data: { q: query },
+                success: function(data) {
+                    let html = '';
+                    if (data.results && data.results.length > 0) {
+                        data.results.forEach(function(item) {
+                            html += `<div class="autocomplete-item" 
+                                        data-province-id="${item.province_id}" 
+                                        data-district-id="${item.district_id}" 
+                                        data-ward-id="${item.ward_id}"
+                                        data-province-name="${item.province_name}"
+                                        data-district-name="${item.district_name}"
+                                        data-ward-name="${item.ward_name}">
+                                        ${item.text}
+                                    </div>`;
+                        });
+                        $('#search_location_results').html(html).show();
+                    } else {
+                        $('#search_location_results').hide();
+                    }
+                }
+            });
+        }, 300);
     });
 
-    $('#search_location').on('select2:select', function (e) {
-        var data = e.params.data;
-        console.log("Select2 Data:", data);
-        $('#province_id').val(data.province_id);
-        $('#district_id').val(data.district_id);
-        $('#ward_id').val(data.ward_id);
-        $('#province_name').val(data.province_name);
-        $('#district_name').val(data.district_name);
-        $('#ward_name').val(data.ward_name);
+    $(document).on('click', '.autocomplete-item', function() {
+        let item = $(this);
+        let text = item.text().trim();
+        $('#search_location_input').val(text);
+        $('#province_id').val(item.data('province-id'));
+        $('#district_id').val(item.data('district-id'));
+        $('#ward_id').val(item.data('ward-id'));
+        $('#province_name').val(item.data('province-name'));
+        $('#district_name').val(item.data('district-name'));
+        $('#ward_name').val(item.data('ward-name'));
+        
+        $('#search_location_results').hide();
+        
         if($('#checkoutForm').data('validator')) {
              $('#province_id').valid();
              $('#district_id').valid();
              $('#ward_id').valid();
         }
+        
+        // Trigger fee ship calculation
         getFeeShip();
     });
+
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('.position-relative').length) {
+            $('#search_location_results').hide();
+        }
+    });
+
+    $('input[name="address"]').on('change', function() {
+        getFeeShip();
+    });
+
+    function getFeeShip() {
+        var ward = $('#ward_name').val(),
+            province = $('#province_name').val(), 
+            district = $('#district_name').val();
+        var address = $('input[name="address"]').val();
+        
+        if(!province || !district || !ward) return;
+
+        $.ajax({
+            type: 'post',
+            url: '{{route("cart.feeship")}}',
+            data: {province:province,district:district,ward:ward,address:address},
+            headers:
+            {
+                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+            },
+            success: function (res) {
+                let fee = res.feeship;
+                $('.item-ship').html(res.feeship+'đ');
+                $('.total-order').html(res.amount+'đ');
+                let feeStr = (fee !== null && fee !== undefined) ? String(fee) : '0';
+                $('input[name="feeShip"]').val(feeStr.replace(/,/g,""));
+            }
+        });
+    }
 </script>
 @if(getConfig('ghtk_status'))
 <script>
@@ -595,6 +654,37 @@ $('body').on('click','.btn_cancel_promotion',function(){
     }
     .select2-container--default .select2-selection--single .select2-selection__arrow{
         height: 40px;
+    }
+    .autocomplete-results {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        background: #fff;
+        border: 1px solid #ced4da;
+        border-top: none;
+        max-height: 250px;
+        overflow-y: auto;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        display: none;
+        border-bottom-left-radius: 4px;
+        border-bottom-right-radius: 4px;
+    }
+    .autocomplete-item {
+        padding: 10px 15px;
+        cursor: pointer;
+        border-bottom: 1px solid #f8f9fa;
+        font-size: 14px;
+    }
+    .autocomplete-item:last-child {
+        border-bottom: none;
+    }
+    .autocomplete-item:hover {
+        background-color: #f1f1f1;
+    }
+    #search_location_input {
+        height: 45px;
     }
 </style>
 @endsection

@@ -8,6 +8,8 @@ use App\Modules\Banner\Models\Banner;
 use Validator;
 use Illuminate\Support\Facades\Auth;
 use Session;
+use Illuminate\Support\Facades\Cache;
+
 class BannerController extends Controller
 {
     private $model;
@@ -66,6 +68,7 @@ class BannerController extends Controller
             'user_id'=> Auth::id()
         ));
         if($up > 0){
+            Cache::forget('home_banners_v1');
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Sửa thành công!',
@@ -107,6 +110,7 @@ class BannerController extends Controller
             ]
         );
         if($id > 0){
+            Cache::forget('home_banners_v1');
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Thêm thành công!',
@@ -122,6 +126,7 @@ class BannerController extends Controller
     public function delete(Request $request)
     {
         $data = $this->model::findOrFail($request->id)->delete();
+        Cache::forget('home_banners_v1');
         if($request->page !=""){
             $url = '/admin/'.$this->controller.'?page='.$request->page;
         }else{
@@ -137,6 +142,7 @@ class BannerController extends Controller
         $this->model::where('id',$request->id)->update(array(
             'status' => $request->status
         ));
+        Cache::forget('home_banners_v1');
         return response()->json([
             'status' => 'success',
             'alert' => 'Đổi trạng thái thành công!',
@@ -151,6 +157,7 @@ class BannerController extends Controller
                     'sort' => $value
                 ));
             }
+            Cache::forget('home_banners_v1');
         }
     }
     public function action(Request $request){
@@ -168,6 +175,7 @@ class BannerController extends Controller
                     'status' => '0'
                 ));
             }
+            Cache::forget('home_banners_v1');
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Ẩn thành công!',
@@ -179,6 +187,7 @@ class BannerController extends Controller
                     'status' => '1'
                 ));
             }
+            Cache::forget('home_banners_v1');
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Hiển thị thành công!',
@@ -188,6 +197,7 @@ class BannerController extends Controller
             foreach($check as $key => $value){
                 $this->model::where('id',$value)->delete();
             }
+            Cache::forget('home_banners_v1');
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Xóa thành công!',

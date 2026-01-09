@@ -5,13 +5,39 @@
 /vendor
 .env
 .env.backup
+.env.production
 .phpunit.result.cache
 Homestead.json
 Homestead.yaml
 npm-debug.log
 yarn-error.log
+.htaccess
 
-# Exclusions added by Cline
+# --- QUAN TRỌNG: Không cache cấu hình cứng ---
+/bootstrap/cache/*.php
+/bootstrap/cache/*.json
+
+# --- QUAN TRỌNG: Không upload file tạm/log ---
+/storage/framework/cache/data/*
+/storage/framework/sessions/*
+/storage/framework/testing/*
+/storage/framework/views/*
+/storage/logs/*
+
+# Giữ lại file giữ chỗ (.gitignore) để đảm bảo thư mục tồn tại
+!/storage/framework/cache/data/.gitignore
+!/storage/framework/sessions/.gitignore
+!/storage/framework/testing/.gitignore
+!/storage/framework/views/.gitignore
+!/storage/logs/.gitignore
+
+# --- Rác hệ thống/IDE ---
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+
+# --- Exclusions added by Cline ---
 /uploads
 /error_log
 /composer.phar

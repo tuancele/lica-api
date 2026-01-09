@@ -8,6 +8,8 @@ use App\Modules\Slider\Models\Slider;
 use Validator;
 use Illuminate\Support\Facades\Auth;
 use Session;
+use Illuminate\Support\Facades\Cache;
+
 class SliderController extends Controller
 {
     private $model;
@@ -63,6 +65,8 @@ class SliderController extends Controller
             'user_id'=> Auth::id()
         ));
         if($up > 0){
+            Cache::forget('home_sliders_v1');
+            Cache::forget('home_sliderms_v1');
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Sửa thành công!',
@@ -104,6 +108,8 @@ class SliderController extends Controller
             ]
         );
         if($id > 0){
+            Cache::forget('home_sliders_v1');
+            Cache::forget('home_sliderms_v1');
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Thêm thành công!',
@@ -119,6 +125,8 @@ class SliderController extends Controller
     public function delete(Request $request)
     {
         $data = $this->model::findOrFail($request->id)->delete();
+        Cache::forget('home_sliders_v1');
+        Cache::forget('home_sliderms_v1');
         if($request->page !=""){
             $url = '/admin/'.$this->controller.'?page='.$request->page;
         }else{
@@ -134,6 +142,8 @@ class SliderController extends Controller
         $this->model::where('id',$request->id)->update(array(
             'status' => $request->status
         ));
+        Cache::forget('home_sliders_v1');
+        Cache::forget('home_sliderms_v1');
         return response()->json([
             'status' => 'success',
             'alert' => 'Đổi trạng thái thành công!',
@@ -148,6 +158,8 @@ class SliderController extends Controller
                     'sort' => $value
                 ));
             }
+            Cache::forget('home_sliders_v1');
+            Cache::forget('home_sliderms_v1');
         }
     }
     public function action(Request $request){
@@ -165,6 +177,8 @@ class SliderController extends Controller
                     'status' => '0'
                 ));
             }
+            Cache::forget('home_sliders_v1');
+            Cache::forget('home_sliderms_v1');
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Ẩn thành công!',
@@ -176,6 +190,8 @@ class SliderController extends Controller
                     'status' => '1'
                 ));
             }
+            Cache::forget('home_sliders_v1');
+            Cache::forget('home_sliderms_v1');
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Hiển thị thành công!',
@@ -185,6 +201,8 @@ class SliderController extends Controller
             foreach($check as $key => $value){
                 $this->model::where('id',$value)->delete();
             }
+            Cache::forget('home_sliders_v1');
+            Cache::forget('home_sliderms_v1');
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Xóa thành công!',

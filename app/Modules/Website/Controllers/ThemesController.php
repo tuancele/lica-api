@@ -11,6 +11,8 @@ use Validator;
 use Illuminate\Support\Facades\Auth;
 use Session;
 use App\Traits\Admin;
+use Illuminate\Support\Facades\Cache;
+
 class ThemesController extends Controller
 {
     use Admin;
@@ -31,6 +33,7 @@ class ThemesController extends Controller
             'block_0' =>  json_encode($block_0),
             'user_id'=> Auth::id(),
         ));
+        Cache::forget('home_page_detail_v1');
         return response()->json([
             'status' => 'success',
             'alert' => 'Cập nhật thành công!',
@@ -61,6 +64,7 @@ class ThemesController extends Controller
             'block_4' =>  $block_4,
             'user_id'=> Auth::id(),
         ));
+        Cache::forget('home_page_detail_v1');
         return response()->json([
             'status' => 'success',
             'alert' => 'Cập nhật thành công!',
@@ -73,6 +77,16 @@ class ThemesController extends Controller
         return view('Website::home',$data);
     }
     public function postHome(Request $request){
+        Cache::forget('home_page_detail_v1');
+        Cache::forget('home_sliders_v1');
+        Cache::forget('home_sliderms_v1');
+        Cache::forget('home_categories_v1');
+        Cache::forget('home_blog_categories_v1');
+        Cache::forget('home_brands_v1');
+        Cache::forget('home_banners_v1');
+        Cache::forget('home_taxonomies_with_tabs_v1');
+        Cache::forget('home_top_deals_v1');
+
         $block_0 = array(
             'image' => $request->image_0,
             'video' => $request->video_0,
