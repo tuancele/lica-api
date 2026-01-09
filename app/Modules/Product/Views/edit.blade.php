@@ -242,6 +242,50 @@
                 <textarea name="content" class="shopee-textarea description" rows="15">{{$detail->content}}</textarea>
             </div>
 
+            <div class="shopee-card">
+                <div class="section-title">Thông tin khác</div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-item">
+                            <label class="form-label">Trạng thái</label>
+                            <select class="shopee-input" name="status">
+                                <option value="1" @if($detail->status == '1') selected @endif>Hiển thị</option>
+                                <option value="0" @if($detail->status == '0') selected @endif>Ẩn</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-item">
+                            <label class="form-label">Tình trạng kho</label>
+                            <select class="shopee-input" name="stock">
+                                <option value="1" @if($detail->stock == '1') selected @endif>Còn hàng</option>
+                                <option value="0" @if($detail->stock == '0') selected @endif>Hết hàng</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-item">
+                            <label class="form-label">Nổi bật</label>
+                            <select class="shopee-input" name="feature">
+                                <option value="0" @if($detail->feature == '0') selected @endif>Không</option>
+                                <option value="1" @if($detail->feature == '1') selected @endif>Có</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-item">
+                            <label class="form-label">Bán chạy</label>
+                            <select class="shopee-input" name="best">
+                                <option value="0" @if($detail->best == '0') selected @endif>Không</option>
+                                <option value="1" @if($detail->best == '1') selected @endif>Có</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="shopee-footer">
                 <a href="{{route('product')}}" class="btn-shopee btn-shopee-outline">Quay lại</a>
                 <button type="submit" class="btn-shopee btn-shopee-primary">Cập nhật sản phẩm</button>
