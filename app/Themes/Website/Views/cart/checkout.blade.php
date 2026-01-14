@@ -344,16 +344,17 @@
             }
         })
     });
-    let searchTimeout;
+    // Use different variable name to avoid conflict with layout.blade.php
+    var checkoutSearchTimeout;
     $('#search_location_input').on('input', function() {
         let query = $(this).val();
-        clearTimeout(searchTimeout);
+        clearTimeout(checkoutSearchTimeout);
         if (query.length < 2) {
             $('#search_location_results').hide();
             return;
         }
 
-        searchTimeout = setTimeout(function() {
+        checkoutSearchTimeout = setTimeout(function() {
             $.ajax({
                 url: '{{route("cart.searchLocation")}}',
                 data: { q: query },

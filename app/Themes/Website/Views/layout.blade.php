@@ -2062,56 +2062,187 @@ document.addEventListener('DOMContentLoaded', function() {
     })();
 
     // ========== Skeleton image loading cho toàn site ==========
-    // CHỈ hiển thị skeleton khi ảnh load LỖI, không hiển thị khi đang load hoặc load thành công
+    // Hàm tự động nhận diện thiết bị di động và kích thước màn hình
+    function detectMobileDevice() {
+        var isMobile = false;
+        var screenWidth = window.innerWidth || document.documentElement.clientWidth || screen.width;
+        var screenHeight = window.innerHeight || document.documentElement.clientHeight || screen.height;
+        
+        // Phương pháp 1: Kiểm tra kích thước màn hình
+        // Mobile thường có chiều rộng <= 768px hoặc chiều cao > chiều rộng (portrait mode)
+        if (screenWidth <= 768 || (screenHeight > screenWidth && screenWidth <= 1024)) {
+            isMobile = true;
+        }
+        
+        // Phương pháp 2: Kiểm tra User-Agent
+        var userAgent = navigator.userAgent || navigator.vendor || window.opera;
+        var mobileRegex = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i;
+        if (mobileRegex.test(userAgent)) {
+            isMobile = true;
+        }
+        
+        // Phương pháp 3: Kiểm tra touch events (thiết bị cảm ứng)
+        if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+            isMobile = true;
+        }
+        
+        // Phương pháp 4: Kiểm tra CSS media query
+        if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+            isMobile = true;
+        }
+        
+        return {
+            isMobile: isMobile,
+            screenWidth: screenWidth,
+            screenHeight: screenHeight,
+            isPortrait: screenHeight > screenWidth,
+            isLandscape: screenWidth > screenHeight,
+            deviceType: screenWidth <= 480 ? 'phone' : (screenWidth <= 768 ? 'tablet' : 'desktop')
+        };
+    }
+    
+    // ========== Skeleton Image System: Tự động phát hiện kích thước màn hình và điều chỉnh ==========
+    
+    // Hàm tự động điều chỉnh kích thước skeleton container dựa trên thiết bị và class
+    function applySkeletonSize($wrap, deviceInfo) {
+        if (!$wrap.length) return;
+        
+        var sizeConfig = {
+            'skeleton--img-sm': {
+                mobile: { width: '60px', height: '60px', minWidth: '40px', maxWidth: '15vw' },
+                tablet: { width: '60px', height: '60px', minWidth: '40px', maxWidth: '100%' },
+                desktop: { width: '60px', height: '60px', maxWidth: '100%' }
+            },
+            'skeleton--img-md': {
+                mobile: { width: '100%', height: 'auto', aspectRatio: '1/1', maxWidth: '100%' },
+                tablet: { width: '100%', height: 'auto', aspectRatio: '1/1', maxWidth: '100%' },
+                desktop: { width: '212px', height: '212px', maxWidth: '100%' }
+            },
+            'skeleton--img-lg': {
+                mobile: { width: '100%', height: 'auto', minHeight: '200px', maxWidth: '100%' },
+                tablet: { width: '100%', height: 'auto', minHeight: '200px', maxWidth: '100%' },
+                desktop: { width: '100%', height: 'auto', minHeight: '200px', maxWidth: '100%' }
+            },
+            'skeleton--img-banner': {
+                mobile: { width: '100%', height: 'auto', aspectRatio: '4.4/1', maxWidth: '100%' },
+                tablet: { width: '100%', height: 'auto', aspectRatio: '4.4/1', maxWidth: '100%' },
+                desktop: { width: '100%', height: '265px', maxWidth: '100%' }
+            },
+            'skeleton--img-logo': {
+                mobile: { width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '80px' },
+                tablet: { width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: '80px' },
+                desktop: { width: 'auto', height: 'auto', maxWidth: '100%' }
+            },
+            'skeleton--img-square': {
+                mobile: { width: '100%', height: 'auto', aspectRatio: '1/1', maxWidth: '100%' },
+                tablet: { width: '100%', height: 'auto', aspectRatio: '1/1', maxWidth: '100%' },
+                desktop: { width: '100%', height: 'auto', aspectRatio: '1/1', maxWidth: '100%' }
+            }
+        };
+        
+        // Xác định class size
+        var sizeClass = null;
+        for (var key in sizeConfig) {
+            if ($wrap.hasClass(key)) {
+                sizeClass = key;
+                break;
+            }
+        }
+        
+        // Xác định device type
+        var deviceType = deviceInfo.deviceType === 'phone' ? 'mobile' : 
+                        (deviceInfo.deviceType === 'tablet' ? 'tablet' : 'desktop');
+        
+        // Áp dụng kích thước
+        var baseStyles = {
+            'max-width': '100%',
+            'overflow': 'hidden',
+            'box-sizing': 'border-box'
+        };
+        
+        if (sizeClass && sizeConfig[sizeClass] && sizeConfig[sizeClass][deviceType]) {
+            var config = sizeConfig[sizeClass][deviceType];
+            Object.assign(baseStyles, config);
+        } else if (!sizeClass) {
+            // Không có class size, dùng mặc định
+            if (deviceInfo.isMobile) {
+                baseStyles.width = '100%';
+                baseStyles.height = 'auto';
+                baseStyles.aspectRatio = '1/1';
+            } else {
+                baseStyles.width = '212px';
+                baseStyles.height = '212px';
+            }
+        }
+        
+        $wrap.css(baseStyles);
+    }
+    
+    // Hàm chính: Khởi tạo skeleton images với tự động phát hiện kích thước
     function initSkeletonImages() {
         if (typeof $ === 'undefined') return;
+        
+        // Phát hiện thiết bị một lần
+        var deviceInfo = detectMobileDevice();
+        
         $('.js-skeleton-img').each(function () {
             var img = this;
             var $img = $(img);
             var $wrap = $img.closest('.js-skeleton');
-
+            
             if (!$wrap.length) return;
-
-            // BƯỚC 1: Xóa skeleton class ban đầu (nếu có), ẩn skeleton effect
-            $wrap.removeClass('skeleton');
-            // Đảm bảo ảnh hiển thị bình thường
+            
+            // Áp dụng kích thước phù hợp với thiết bị
+            applySkeletonSize($wrap, deviceInfo);
+            
+            // Đảm bảo ảnh responsive
             $img.css({
-                'opacity': 1,
-                'visibility': 'visible'
+                'max-width': '100%',
+                'height': 'auto',
+                'display': 'block'
             });
-
+            
             function hideSkeleton() {
-                // Ảnh load thành công: XÓA skeleton class hoàn toàn, hiển thị ảnh
-                $wrap.removeClass('skeleton');
+                $wrap.removeClass('skeleton skeleton-error');
                 $img.css({
                     'opacity': 1,
                     'visibility': 'visible'
                 });
             }
-
+            
             function showSkeletonOnError() {
-                // CHỈ khi load LỖI mới thêm skeleton class và hiển thị skeleton
-                $wrap.addClass('skeleton');
+                if (!$wrap.hasClass('skeleton')) {
+                    $wrap.addClass('skeleton skeleton-error');
+                }
                 $img.css({
                     'opacity': 0,
                     'visibility': 'hidden'
-                }).attr('alt', 'Hình ảnh đang cập nhật');
+                }).attr('alt', 'Hình ảnh không tải được');
+                
+                // Đảm bảo kích thước phù hợp khi lỗi
+                applySkeletonSize($wrap, deviceInfo);
             }
-
-            // Kiểm tra ảnh đã load chưa
-            if (img.complete) {
-                // Ảnh đã complete (có thể thành công hoặc lỗi)
-                if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                    // Ảnh đã load thành công
-                    hideSkeleton();
-                } else {
-                    // Ảnh load lỗi (naturalWidth = 0 hoặc naturalHeight = 0)
-                    showSkeletonOnError();
-                }
+            
+            // Kiểm tra trạng thái ảnh
+            if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+                hideSkeleton();
             } else {
-                // Ảnh chưa load xong, đợi event
+                // Ảnh chưa load hoặc lỗi: hiển thị skeleton
+                if (!$wrap.hasClass('skeleton')) {
+                    $wrap.addClass('skeleton');
+                }
+                $img.css({
+                    'opacity': 0,
+                    'visibility': 'hidden'
+                });
+                
+                // Đợi event load/error
                 var loadHandler = function() {
-                    hideSkeleton();
+                    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                        hideSkeleton();
+                    } else {
+                        showSkeletonOnError();
+                    }
                     $img.off('load error', loadHandler);
                     $img.off('load error', errorHandler);
                 };
@@ -2120,9 +2251,46 @@ document.addEventListener('DOMContentLoaded', function() {
                     $img.off('load error', loadHandler);
                     $img.off('load error', errorHandler);
                 };
-                $img.on('load', loadHandler).on('error', errorHandler);
+                
+                if (!img.complete) {
+                    $img.on('load', loadHandler).on('error', errorHandler);
+                } else {
+                    showSkeletonOnError();
+                }
             }
         });
+        
+        // Thêm resize handler để tự động điều chỉnh khi thay đổi kích thước màn hình
+        if (!window.skeletonResizeHandler) {
+            var resizeTimeout;
+            var lastDeviceInfo = deviceInfo;
+            
+            window.skeletonResizeHandler = function() {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(function() {
+                    var currentDeviceInfo = detectMobileDevice();
+                    var deviceChanged = !lastDeviceInfo || 
+                                       lastDeviceInfo.isMobile !== currentDeviceInfo.isMobile ||
+                                       lastDeviceInfo.deviceType !== currentDeviceInfo.deviceType;
+                    
+                    if (deviceChanged) {
+                        lastDeviceInfo = currentDeviceInfo;
+                        // Điều chỉnh lại tất cả skeleton khi thiết bị thay đổi
+                        $('.js-skeleton-img').each(function() {
+                            var $wrap = $(this).closest('.js-skeleton');
+                            if ($wrap.length) {
+                                applySkeletonSize($wrap, currentDeviceInfo);
+                            }
+                        });
+                    }
+                }, 250);
+            };
+            
+            $(window).on('resize orientationchange', window.skeletonResizeHandler);
+            if (window.screen && window.screen.orientation) {
+                window.screen.orientation.addEventListener('change', window.skeletonResizeHandler);
+            }
+        }
     }
 
     if (typeof $ !== 'undefined') {
@@ -2686,23 +2854,30 @@ document.addEventListener('DOMContentLoaded', function() {
     filter: grayscale(0%);
 }
 
-/* ========== Skeleton loading cho ảnh / block ========== */
-/* CHỈ hiển thị skeleton effect khi có class .skeleton */
+/* ========== Skeleton Loading System: Tự động phát hiện kích thước màn hình ========== */
+
+/* Base skeleton styles */
 .js-skeleton {
     position: relative;
+    max-width: 100%;
+    box-sizing: border-box;
+    contain: layout style paint;
 }
-/* Khi KHÔNG có class .skeleton: không hiển thị skeleton effect */
+
+/* Khi KHÔNG có class .skeleton: không hiển thị effect */
 .js-skeleton:not(.skeleton) {
     background-color: transparent;
 }
 .js-skeleton:not(.skeleton)::after {
     display: none !important;
 }
+
 /* Khi CÓ class .skeleton: hiển thị skeleton effect */
 .js-skeleton.skeleton {
     overflow: hidden;
     background-color: #f2f2f2;
     border-radius: 4px;
+    display: block;
 }
 .js-skeleton.skeleton::after {
     content: "";
@@ -2717,20 +2892,41 @@ document.addEventListener('DOMContentLoaded', function() {
     transform: translateX(-100%);
     animation: skeleton-shimmer 1.4s ease-in-out infinite;
     z-index: 1;
-    display: block;
+    pointer-events: none;
 }
+
+/* Skeleton thay thế cho ảnh lỗi */
+.js-skeleton.skeleton.skeleton-error {
+    background-color: #e8e8e8;
+    border: 1px dashed #ccc;
+}
+.js-skeleton.skeleton.skeleton-error::before {
+    content: "📷";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 24px;
+    opacity: 0.3;
+    z-index: 0;
+    pointer-events: none;
+}
+
 @keyframes skeleton-shimmer {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
 }
-.skeleton--img-md {
-    width: 212px;
-    height: 212px;
-    display: inline-block;
-}
+
+/* Size classes - Desktop default */
 .skeleton--img-sm {
     width: 60px;
     height: 60px;
+    display: inline-block;
+    flex-shrink: 0;
+}
+.skeleton--img-md {
+    width: 212px;
+    height: 212px;
     display: inline-block;
 }
 .skeleton--img-lg {
@@ -2757,6 +2953,7 @@ document.addEventListener('DOMContentLoaded', function() {
     padding-bottom: 100%;
     display: block;
     position: relative;
+    aspect-ratio: 1 / 1;
 }
 .skeleton--img-square img {
     position: absolute;
@@ -2766,6 +2963,16 @@ document.addEventListener('DOMContentLoaded', function() {
     height: 100%;
     object-fit: cover;
 }
+
+/* Image styles */
+.js-skeleton img.js-skeleton-img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    object-fit: cover;
+}
+
+/* Card cover specific */
 .card-cover {
     position: relative;
     text-align: center;
@@ -2774,7 +2981,59 @@ document.addEventListener('DOMContentLoaded', function() {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    display: block;
+}
+
+/* Responsive: Mobile & Tablet - Tự động điều chỉnh */
+@media (max-width: 768px) {
+    .js-skeleton {
+        max-width: 100% !important;
+        overflow: hidden !important;
+    }
+    
+    .skeleton--img-sm {
+        width: 60px !important;
+        height: 60px !important;
+        min-width: 40px !important;
+        min-height: 40px !important;
+        max-width: 15vw !important;
+    }
+    
+    .skeleton--img-md {
+        width: 100% !important;
+        height: auto !important;
+        aspect-ratio: 1 / 1;
+    }
+    
+    .skeleton--img-lg {
+        width: 100% !important;
+        height: auto !important;
+        min-height: 200px;
+    }
+    
+    .skeleton--img-banner {
+        width: 100% !important;
+        height: auto !important;
+        aspect-ratio: 4.4 / 1;
+    }
+    
+    .skeleton--img-logo {
+        max-width: 100% !important;
+        max-height: 80px !important;
+    }
+    
+    .skeleton--img-square {
+        width: 100% !important;
+        aspect-ratio: 1 / 1;
+    }
+}
+
+/* Responsive: Small phones */
+@media (max-width: 480px) {
+    .skeleton--img-sm {
+        width: 50px !important;
+        height: 50px !important;
+        max-width: 12vw !important;
+    }
 }
 
 /* ========== 移动端样式 ========== */

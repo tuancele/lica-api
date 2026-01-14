@@ -146,7 +146,14 @@ class CartController extends Controller
                 if ($address) {
                     $weight = 0;
                     foreach ($cart->items as $variant) {
-                        $weight += ($variant['item']['weight'] * $variant['qty']);
+                        $item = $variant['item'];
+                        $itemWeight = 0;
+                        if (is_object($item)) {
+                            $itemWeight = $item->weight ?? 0;
+                        } elseif (is_array($item)) {
+                            $itemWeight = $item['weight'] ?? 0;
+                        }
+                        $weight += ($itemWeight * ($variant['qty'] ?? 1));
                     }
 
                     $info = [
@@ -304,7 +311,14 @@ class CartController extends Controller
                     
                     $weight = 0;
                     foreach ($cart->items as $variant) {
-                        $weight += ($variant['item']['weight'] * $variant['qty']);
+                        $item = $variant['item'];
+                        $itemWeight = 0;
+                        if (is_object($item)) {
+                            $itemWeight = $item->weight ?? 0;
+                        } elseif (is_array($item)) {
+                            $itemWeight = $item['weight'] ?? 0;
+                        }
+                        $weight += ($itemWeight * ($variant['qty'] ?? 1));
                     }
 
                     $info = [
@@ -376,50 +390,147 @@ class CartController extends Controller
             }
 
                     if ($order_id > 0) {
+                        $validItemsCount = 0;
+                        $processedItems = [];
+                        
                         foreach ($cart->items as $variant) {
-                            $product = Product::find($variant['item']['product_id']);
-                            $product_name = $product->name;
+                            try {
+                                // Handle variant item - could be object or array after session serialization
+                                $item = $variant['item'];
+                                $product_id = null;
+                                
+                                // Extract product_id safely
+                                if (is_object($item)) {
+                                    $product_id = $item->product_id ?? null;
+                                } elseif (is_array($item)) {
+                                    $product_id = $item['product_id'] ?? null;
+                                } else {
+                                    Log::error("Invalid item format in cart: " . gettype($item));
+                                    continue;
+                                }
+                                
+                                if (!$product_id) {
+                                    Log::error("Product ID not found in cart item");
+                                    continue;
+                                }
+                                
+                                $product = Product::find($product_id);
+                                
+                                // Validate product exists
+                                if (!$product) {
+                                    Log::error("Product not found: " . $product_id);
+                                    continue;
+                                }
+                                
+                                // Store valid item for processing
+                                $processedItems[] = [
+                                    'variant' => $variant,
+                                    'item' => $item,
+                                    'product' => $product,
+                                    'product_id' => $product_id
+                                ];
+                                $validItemsCount++;
+                            } catch (\Exception $itemException) {
+                                Log::error("Error processing cart item: " . $itemException->getMessage());
+                                Log::error("Item data: " . json_encode($variant));
+                                // Continue with next item instead of failing entire order
+                                continue;
+                            }
+                        }
+                        
+                        // Check if we have at least one valid item
+                        if ($validItemsCount == 0) {
+                            // Delete the order if no valid items
+                            Order::where('id', $order_id)->delete();
+                            return response()->json([
+                                'status' => 'error',
+                                'message' => 'Không thể tạo đơn hàng. Một hoặc nhiều sản phẩm trong giỏ hàng không còn khả dụng. Vui lòng kiểm tra lại giỏ hàng.'
+                            ]);
+                        }
+                        
+                        // Process all valid items
+                        foreach ($processedItems as $processed) {
+                            $variant = $processed['variant'];
+                            $item = $processed['item'];
+                            $product = $processed['product'];
+                            $product_id = $processed['product_id'];
+                            
+                            $product_name = $product->name ?? 'Sản phẩm không xác định';
                             if (isset($variant['is_deal']) && $variant['is_deal'] == 1) {
                                 $product_name = '[DEAL SỐC] ' . $product_name;
                             }
+                            
+                            // Extract variant data safely
+                            $variant_id = null;
+                            $color_id = null;
+                            $size_id = null;
+                            $weight = 0;
+                            
+                            if (is_object($item)) {
+                                $variant_id = $item->id ?? null;
+                                $color_id = $item->color_id ?? null;
+                                $size_id = $item->size_id ?? null;
+                                $weight = $item->weight ?? 0;
+                            } elseif (is_array($item)) {
+                                $variant_id = $item['id'] ?? null;
+                                $color_id = $item['color_id'] ?? null;
+                                $size_id = $item['size_id'] ?? null;
+                                $weight = $item['weight'] ?? 0;
+                            }
+                            
                             OrderDetail::insert([
                                 'order_id' => $order_id,
-                                'product_id' => $variant['item']['product_id'],
-                                'variant_id' => $variant['item']['id'],
+                                'product_id' => $product_id,
+                                'variant_id' => $variant_id,
                                 'name' => $product_name,
-                                'color_id' => $variant['item']->color_id,
-                                'size_id' => $variant['item']->size_id,
-                                'price' => $variant['price'],
-                                'qty' => $variant['qty'],
-                                'image' => $product->image,
-                                'weight' => $variant['item']->weight * $variant['qty'],
-                                'subtotal' => $variant['price'] * $variant['qty'],
+                                'color_id' => $color_id,
+                                'size_id' => $size_id,
+                                'price' => $variant['price'] ?? 0,
+                                'qty' => $variant['qty'] ?? 1,
+                                'image' => $product->image ?? '',
+                                'weight' => $weight * ($variant['qty'] ?? 1),
+                                'subtotal' => ($variant['price'] ?? 0) * ($variant['qty'] ?? 1),
                                 'created_at' => date('Y-m-d H:i:s')
                             ]);
 
-                    // Update FlashSale Stock
-                    $date = strtotime(date('Y-m-d H:i:s'));
-                    $flash = FlashSale::where([['status', '1'], ['start', '<=', $date], ['end', '>=', $date]])->first();
-                    if ($flash) {
-                        $pro = ProductSale::where([['flashsale_id', $flash->id], ['product_id', $variant['item']['product_id']]])->first();
-                        if ($pro) {
-                            $pro->increment('buy', $variant['qty']);
+                            // Update FlashSale Stock
+                            $date = strtotime(date('Y-m-d H:i:s'));
+                            $flash = FlashSale::where([['status', '1'], ['start', '<=', $date], ['end', '>=', $date]])->first();
+                            if ($flash) {
+                                $pro = ProductSale::where([['flashsale_id', $flash->id], ['product_id', $product_id]])->first();
+                                if ($pro) {
+                                    $pro->increment('buy', $variant['qty'] ?? 1);
+                                }
+                            }
+
+                            // Facebook Tracking
+                            if ($product && isset($product->slug)) {
+                                $dataf = [
+                                    'email' => $req->email,
+                                    'phone' => $req->phone,
+                                    'product_id' => $product_id,
+                                    'price' => $variant['price'] ?? 0,
+                                    'url' => getSlug($product->slug),
+                                    'event' => 'Purchase',
+                                ];
+                                Facebook::track($dataf);
+                            }
                         }
+
+                // Send email notification (non-blocking - don't fail order if email fails)
+                try {
+                    $replyEmail = getConfig('reply_email');
+                    if ($replyEmail) {
+                        $this->send('Website::email.order', 'Đơn đặt hàng Walcos', $replyEmail, $code);
                     }
-
-                    // Facebook Tracking
-                    $dataf = [
-                        'email' => $req->email,
-                        'phone' => $req->phone,
-                        'product_id' => $variant['item']['product_id'],
-                        'price' => $variant['price'],
-                        'url' => getSlug($product->slug),
-                        'event' => 'Purchase',
-                    ];
-                    Facebook::track($dataf);
+                } catch (\Exception $emailException) {
+                    // Log email error but don't fail the order
+                    Log::error('Order email sending failed: ' . $emailException->getMessage());
+                    Log::error('Order code: ' . $code);
+                    Log::error('Email error trace: ' . $emailException->getTraceAsString());
+                    // Continue with order success even if email fails
                 }
-
-                $this->send('Website::email.order', 'Đơn đặt hàng Walcos', getConfig('reply_email'), $code);
+                
                 Session::forget('cart');
                 Session::forget('ss_counpon');
                 
@@ -432,8 +543,17 @@ class CartController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Lỗi tạo đơn hàng.']);
 
         } catch (\Exception $e) {
-            Log::error($e->getMessage());
-            return response()->json(['status' => 'error', 'message' => 'Có lỗi xảy ra: ' . $e->getMessage()]);
+            Log::error('Checkout Error: ' . $e->getMessage());
+            Log::error('Stack Trace: ' . $e->getTraceAsString());
+            Log::error('Request Data: ' . json_encode($req->all()));
+            if (isset($cart)) {
+                Log::error('Cart Items: ' . json_encode($cart->items));
+            }
+            return response()->json([
+                'status' => 'error', 
+                'message' => 'Có lỗi xảy ra khi xử lý đơn hàng. Vui lòng thử lại sau.',
+                'debug' => config('app.debug') ? $e->getMessage() : null
+            ]);
         }
     }
 
@@ -750,7 +870,14 @@ class CartController extends Controller
             if ($pick) {
                 $weight = 0;
                 foreach ($cart->items as $variant) {
-                    $weight += ($variant['item']['weight'] * $variant['qty']);
+                    $item = $variant['item'];
+                    $itemWeight = 0;
+                    if (is_object($item)) {
+                        $itemWeight = $item->weight ?? 0;
+                    } elseif (is_array($item)) {
+                        $itemWeight = $item['weight'] ?? 0;
+                    }
+                    $weight += ($itemWeight * ($variant['qty'] ?? 1));
                 }
 
                 $info = [
@@ -805,7 +932,14 @@ class CartController extends Controller
             if ($pick) {
                 $weight = 0;
                 foreach ($cart->items as $variant) {
-                    $weight += ($variant['item']['weight'] * $variant['qty']);
+                    $item = $variant['item'];
+                    $itemWeight = 0;
+                    if (is_object($item)) {
+                        $itemWeight = $item->weight ?? 0;
+                    } elseif (is_array($item)) {
+                        $itemWeight = $item['weight'] ?? 0;
+                    }
+                    $weight += ($itemWeight * ($variant['qty'] ?? 1));
                 }
 
                 $info = [
