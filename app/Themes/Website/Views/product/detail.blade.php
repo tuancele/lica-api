@@ -825,10 +825,13 @@
                 <div class="detail-content ingredient">
                     @php 
                         $str = $detail->ingredient;
-                        $list =  App\Modules\Ingredient\Models\Ingredient::where('status','1')->get();
-                        if(isset($list) && !empty($list)){
-                            foreach($list as $value){
-                                $str = str_replace($value->name,'<a href="javascript:;" class="item_ingredient" data-id="'.$value->slug.'">'.$value->name.'</a>',$str);
+                        // Only apply dynamic linking if links are not already present (Legacy support)
+                        if (strpos($str, 'item_ingredient') === false) {
+                            $list =  App\Modules\Ingredient\Models\Ingredient::where('status','1')->get();
+                            if(isset($list) && !empty($list)){
+                                foreach($list as $value){
+                                    $str = str_replace($value->name,'<a href="javascript:;" class="item_ingredient" data-id="'.$value->slug.'">'.$value->name.'</a>',$str);
+                                }
                             }
                         }
                     @endphp

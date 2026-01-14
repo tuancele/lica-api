@@ -240,6 +240,11 @@
                 <textarea name="description" class="hidden-data"></textarea>
             </div>
 
+            <div class="shopee-card">
+                <div class="section-title">Thành phần sản phẩm</div>
+                <textarea name="ingredient" id="ingredient" class="shopee-textarea" rows="10"></textarea>
+            </div>
+
             <div class="shopee-footer">
                 <a href="{{route('product')}}" class="btn-shopee btn-shopee-outline">Hủy</a>
                 <button type="submit" class="btn-shopee btn-shopee-primary">Lưu & Hiển thị</button>
@@ -276,54 +281,52 @@
 
 <script type="text/javascript" src="/public/js/jquery.number.js"></script>
 <script type="text/javascript" src="/public/admin/slugify.js"></script>
+<script type="text/javascript" src="/public/js/r2-upload-preview.js"></script>
 <script type="text/javascript">
 $(document).ready(function() {
     $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') } });
     $('.price').number(true, 0);
 
-    // 1-Click Upload Logic
-    $('#trigger-upload').click(function() {
-        $('#hidden-file-input').click();
-    });
-
-    $('#hidden-file-input').change(function() {
-        let files = this.files;
-        if(files.length === 0) return;
-
-        let formData = new FormData();
-        // Laravel Validation expects files[] array
-        for (let i = 0; i < files.length; i++) {
-            formData.append('files[]', files[i]);
-            formData.append('files' + i, files[i]); // Keep files0, files1 for current controller loop
-        }
-        formData.append('TotalFiles', files.length);
-
-        $.ajax({
-            type: 'POST',
-            url: "{{ route('product.upload') }}",
-            data: formData,
-            contentType: false,
-            processData: false,
-            beforeSend: function() {
-                $('#trigger-upload').html('<i class="fa fa-spinner fa-spin fa-2x"></i><span style="margin-top:4px;">Đang tải...</span>');
-            },
-            success: function(data) {
-                for(let i = 0; i < data.length; i++) {
-                    let html = `<div class="image-upload-box has-img">
-                                    <img src="${data[i]}">
-                                    <input type="hidden" name="imageOther[]" value="${data[i]}">
-                                    <a href="javascript:void(0)" class="remove-btn"><i class="fa fa-times"></i></a>
-                                </div>`;
-                    $('#trigger-upload').before(html);
-                }
-                resetUploadBtn();
+    // Initialize R2 Upload Preview Component
+    initR2UploadPreview({
+        fileInputSelector: '#hidden-file-input',
+        triggerSelector: '#trigger-upload',
+        previewContainerSelector: '.list_image',
+        previewItemClass: 'image-upload-box',
+        hiddenInputName: 'imageOther[]',
+        uploadRoute: "{{ route('r2.upload') }}",
+        folder: 'image',
+        maxFiles: 9,
+        convertWebP: true,
+        quality: 85,
+        onUploadStart: function(totalFiles) {
+            const btn = $('#tblForm').find('button[type="submit"]');
+            btn.html('<i class="fa fa-spinner fa-spin"></i> Đang upload ' + totalFiles + ' ảnh...').prop('disabled', true);
+        },
+        onUploadComplete: function(urls) {
+            const btn = $('#tblForm').find('button[type="submit"]');
+            btn.html('Lưu & Hiển thị').prop('disabled', false);
+            
+            // Force refresh preview after a short delay to ensure images are loaded
+            setTimeout(function() {
                 refreshImgStatus();
-            },
-            error: function() {
-                alert('Lỗi upload ảnh (Có thể do kích thước hoặc định dạng không hỗ trợ)');
-                resetUploadBtn();
-            }
-        });
+                // Also trigger preview update callback if exists
+                if (typeof window.updateProductPreview === 'function') {
+                    window.updateProductPreview();
+                }
+            }, 100);
+        },
+        onUploadError: function(errorMsg) {
+            const btn = $('#tblForm').find('button[type="submit"]');
+            btn.html('Lưu & Hiển thị').prop('disabled', false);
+            alert('Lỗi upload ảnh: ' + errorMsg);
+        },
+        onPreviewAdd: function(file, previewUrl, index) {
+            refreshImgStatus();
+        },
+        onPreviewRemove: function(index) {
+            refreshImgStatus();
+        }
     });
 
     function resetUploadBtn() {
@@ -344,12 +347,6 @@ $(document).ready(function() {
             $('#tip-img').removeClass('done');
         }
     }
-
-    $('.list_image').on('click', '.remove-btn', function() {
-        $(this).closest('.image-upload-box').remove();
-        resetUploadBtn();
-        refreshImgStatus();
-    });
 
     // Auto Slug & SEO
     $('#product-name-input').on('input', function() {

@@ -2,6 +2,17 @@ $.validate({
     form: '#tblForm',
     modules: 'security',
     onSuccess: function ($form) {
+        // Check if there are pending R2 uploads before submitting
+        if (typeof window.R2UploadPendingCheck === 'function') {
+            const hasPending = window.R2UploadPendingCheck();
+            if (hasPending) {
+                console.log('R2 Upload: Pending files detected, waiting for upload...');
+                // Return false to prevent form submission
+                // The R2 upload handler will submit the form after upload completes
+                return false;
+            }
+        }
+        
         if (typeof CKEDITOR !== 'undefined') {
             for (instance in CKEDITOR.instances) {
                CKEDITOR.instances[instance].updateElement();

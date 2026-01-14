@@ -141,7 +141,7 @@
             const formData = new FormData();
             formData.append('_token', '{{ csrf_token() }}');
 
-            fetch('/admin/config/stop-sync-background', {
+            fetch('/admin/r2/stop-sync-background', {
                 method: 'POST',
                 body: formData
             })
@@ -166,7 +166,7 @@
             formData.append('batch', batch);
             formData.append('skip', skip);
 
-            fetch('/admin/config/start-sync-background', {
+            fetch('/admin/r2/start-sync-background', {
                 method: 'POST',
                 body: formData
             })
@@ -187,7 +187,7 @@
         }
 
         function checkStatus() {
-            fetch('/admin/config/get-sync-status', {
+            fetch('/admin/r2/get-sync-status', {
                 method: 'GET',
                 headers: {
                     'Cache-Control': 'no-cache'

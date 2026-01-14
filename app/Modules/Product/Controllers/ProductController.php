@@ -10,6 +10,7 @@ use App\Modules\Brand\Models\Brand;
 use App\Modules\Color\Models\Color;
 use App\Modules\Size\Models\Size;
 use App\Modules\Origin\Models\Origin;
+use App\Modules\Ingredient\Models\Ingredient;
 use Validator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -60,22 +61,46 @@ class ProductController extends Controller
         $data['categories'] = $this->model::where([['type', 'taxonomy'], ['status', '1'], ['cat_id', '0']])->orderBy('sort', 'asc')->get();
         $data['brands'] = Brand::where('status', '1')->orderBy('name', 'asc')->get();
         $data['origins'] = Origin::where('status', '1')->orderBy('sort', 'asc')->get();
+        $data['ingredients'] = Ingredient::where('status', '1')->orderBy('name', 'asc')->get();
         return view($this->module . '::create', $data);
     }
 
     public function edit($id)
     {
         active('product', 'list');
-        $detail = $this->model::find($id);
+        
+        // CRITICAL: Use fresh query to bypass any model cache and get latest data from DB
+        // Clear any query cache first
+        \Illuminate\Support\Facades\Cache::forget('product_' . $id);
+        
+        // Use fresh query to ensure we get latest data from DB
+        $detail = $this->model::where('id', $id)->first();
         if (!$detail) {
             return redirect()->route('product');
         }
+        
         $data['categories'] = $this->model::where([['type', 'taxonomy'], ['status', '1'], ['cat_id', '0']])->orderBy('sort', 'asc')->get();
         $data['detail'] = $detail;
         $data['brands'] = Brand::where('status', '1')->orderBy('name', 'asc')->get();
         $data['origins'] = Origin::where('status', '1')->orderBy('sort', 'asc')->get();
-        $data['gallerys'] = json_decode($detail->gallery);
-        $data['dcat'] = json_decode($detail->cat_id);
+        $data['ingredients'] = Ingredient::where('status', '1')->orderBy('name', 'asc')->get();
+        
+        // Safely decode gallery JSON - get fresh from DB
+        $galleryJson = $detail->gallery ?? '[]';
+        $decodedGallery = json_decode($galleryJson, true);
+        $data['gallerys'] = is_array($decodedGallery) ? $decodedGallery : [];
+        
+        \Illuminate\Support\Facades\Log::info("Product Edit: Gallery loaded from DB", [
+            'product_id' => $id,
+            'gallery_json' => $galleryJson,
+            'gallery_count' => count($data['gallerys']),
+            'gallery_urls' => $data['gallerys']
+        ]);
+        
+        // Safely decode cat_id JSON
+        $catIdJson = $detail->cat_id ?? '[]';
+        $decodedCatId = json_decode($catIdJson, true);
+        $data['dcat'] = is_array($decodedCatId) ? $decodedCatId : [];
         return view($this->module . '::edit', $data);
     }
 
@@ -102,14 +127,160 @@ class ProductController extends Controller
         }
 
         // Logic: First image in gallery is the main image (Avatar)
-        $gallery = $request->imageOther ?? [];
+        // Get URLs from request (existing images from form)
+        $imageOther = $request->imageOther ?? [];
+        
+        // Filter out empty, blob, and invalid URLs from form data immediately
+        $imageOther = array_filter($imageOther, function($url) {
+            return !empty($url) && 
+                   strpos($url, 'blob:') === false &&
+                   strpos($url, 'no-image.png') === false;
+        });
+        $imageOther = array_values($imageOther); // Re-index
+        
+        \Illuminate\Support\Facades\Log::info("Product Update: imageOther from form", [
+            'raw_imageOther' => $request->imageOther ?? [],
+            'filtered_imageOther' => $imageOther,
+            'count' => count($imageOther),
+            'values' => $imageOther
+        ]);
+        
+        // Also check session for R2 uploaded URLs (new uploads)
+        // Support multiple session keys (comma-separated) from multiple uploads
+        $sessionKeyInput = $request->input('r2_session_key');
+        $sessionUrls = [];
+        $sessionKeysProcessed = [];
+        $urlsPerSessionKey = [];
+        
+        if ($sessionKeyInput) {
+            // Split by comma to handle multiple session keys
+            $sessionKeys = is_array($sessionKeyInput) ? $sessionKeyInput : explode(',', $sessionKeyInput);
+            $sessionKeys = array_filter(array_map('trim', $sessionKeys)); // Remove empty values
+            
+            foreach ($sessionKeys as $sessionKey) {
+                $urlsFromKey = \Illuminate\Support\Facades\Session::get($sessionKey, []);
+                $sessionKeysProcessed[] = $sessionKey;
+                
+                if (!empty($urlsFromKey)) {
+                    if (is_array($urlsFromKey)) {
+                        $urlsPerSessionKey[$sessionKey] = count($urlsFromKey);
+                        $sessionUrls = array_merge($sessionUrls, $urlsFromKey);
+                    } else {
+                        $urlsPerSessionKey[$sessionKey] = 1;
+                        $sessionUrls[] = $urlsFromKey;
+                    }
+                } else {
+                    $urlsPerSessionKey[$sessionKey] = 0;
+                }
+            }
+            
+            \Illuminate\Support\Facades\Log::info("Product Update: R2 Session URLs retrieval", [
+                'session_keys' => $sessionKeysProcessed,
+                'session_keys_count' => count($sessionKeysProcessed),
+                'urls_per_session_key' => $urlsPerSessionKey,
+                'total_session_urls_count' => count($sessionUrls),
+                'session_urls' => $sessionUrls
+            ]);
+        }
+        
+        // Also check user's general session
+        $userSessionKey = 'r2_uploaded_urls_user_' . auth()->id();
+        $userSessionUrls = \Illuminate\Support\Facades\Session::get($userSessionKey, []);
+        if (!empty($userSessionUrls)) {
+            \Illuminate\Support\Facades\Log::info("Product Update: Found R2 URLs in user session", [
+                'user_session_urls_count' => count($userSessionUrls),
+                'user_session_urls' => $userSessionUrls
+            ]);
+        }
+        
+        // Merge: Form URLs (existing images) FIRST, then session URLs (new uploads)
+        // This ensures existing images are preserved and new uploads are added
+        // Filter session URLs to ensure they are valid
+        $sessionUrls = array_filter($sessionUrls, function($url) {
+            return !empty($url) && 
+                   strpos($url, 'blob:') === false &&
+                   strpos($url, 'no-image.png') === false;
+        });
+        $userSessionUrls = array_filter($userSessionUrls, function($url) {
+            return !empty($url) && 
+                   strpos($url, 'blob:') === false &&
+                   strpos($url, 'no-image.png') === false;
+        });
+        
+        $allUrls = array_merge($imageOther, $sessionUrls, $userSessionUrls);
+        
+        \Illuminate\Support\Facades\Log::info("Product Update: URLs merged - VERIFICATION", [
+            'from_form_count' => count($imageOther),
+            'from_form_urls' => $imageOther,
+            'from_session_count' => count($sessionUrls),
+            'from_session_urls' => $sessionUrls,
+            'from_user_session_count' => count($userSessionUrls),
+            'from_user_session_urls' => $userSessionUrls,
+            'total_after_merge' => count($allUrls),
+            'all_urls' => $allUrls,
+            'session_keys_processed' => $sessionKeysProcessed ?? [],
+            'urls_per_session_key' => $urlsPerSessionKey ?? []
+        ]);
+        
+        // Remove duplicates while preserving order
+        $gallery = [];
+        $seen = [];
+        foreach ($allUrls as $url) {
+            if (!in_array($url, $seen)) {
+                $gallery[] = $url;
+                $seen[] = $url;
+            }
+        }
+        
+        // Final filter to ensure all URLs are valid
+        $gallery = array_filter($gallery, function($url) {
+            $isValid = !empty($url) && 
+                   $url !== asset("public/admin/no-image.png") && 
+                   $url !== url("public/admin/no-image.png") &&
+                   strpos($url, 'no-image.png') === false &&
+                   strpos($url, 'blob:') === false;
+            if (!$isValid) {
+                \Illuminate\Support\Facades\Log::warning("Product Update: Filtered out invalid image URL", ['url' => $url]);
+            }
+            return $isValid;
+        });
+        $gallery = array_values($gallery); // Re-index array
+        
+        \Illuminate\Support\Facades\Log::info("Product Update: Gallery after filtering - FINAL RESULT", [
+            'gallery' => $gallery,
+            'count' => count($gallery),
+            'gallery_json' => json_encode($gallery),
+            'verification' => [
+                'form_urls_count' => count($imageOther),
+                'session_urls_count' => count($sessionUrls),
+                'user_session_urls_count' => count($userSessionUrls),
+                'total_merged' => count($allUrls),
+                'final_gallery_count' => count($gallery),
+                'match' => (count($gallery) >= count($imageOther) + count($sessionUrls)) ? 'OK' : 'MISMATCH'
+            ]
+        ]);
+        
         $image = (count($gallery) > 0) ? $gallery[0] : null;
 
         // Get old product to check slug change
         $oldProduct = $this->model::find($request->id);
         $oldSlug = $oldProduct->slug;
 
-        $this->model::where('id', $request->id)->update([
+        \Illuminate\Support\Facades\Log::info("Product Update: Updating product", [
+            'product_id' => $request->id,
+            'image' => $image,
+            'gallery_json' => json_encode($gallery),
+            'gallery_count' => count($gallery)
+        ]);
+        
+        \Illuminate\Support\Facades\Log::info("Product Update: Updating product", [
+            'product_id' => $request->id,
+            'image' => $image,
+            'gallery_json' => json_encode($gallery),
+            'gallery_count' => count($gallery)
+        ]);
+        
+        $updateResult = $this->model::where('id', $request->id)->update([
             'name' => $request->name,
             'slug' => $request->slug,
             'image' => $image,
@@ -126,10 +297,31 @@ class ProductController extends Controller
             'feature' => $request->feature ?? $oldProduct->feature,
             'stock' => $request->stock ?? $oldProduct->stock,
             'best' => $request->best ?? $oldProduct->best,
-            'ingredient' => $request->ingredient ?? $oldProduct->ingredient,
+            'ingredient' => $this->processIngredients($request->ingredient ?? $oldProduct->ingredient),
             'verified' => $request->verified ?? $oldProduct->verified,
             'gallery' => json_encode($gallery),
             'user_id' => Auth::id(),
+        ]);
+        
+        // Verify gallery was saved correctly - use fresh query to bypass cache
+        $savedProduct = $this->model::where('id', $request->id)->first();
+        if ($savedProduct) {
+            // Force refresh from DB by re-querying
+            $savedProduct = $this->model::where('id', $request->id)->first();
+        }
+        
+        $savedGalleryJson = $savedProduct->gallery ?? '[]';
+        $savedGallery = json_decode($savedGalleryJson, true);
+        $savedGallery = is_array($savedGallery) ? $savedGallery : [];
+        
+        \Illuminate\Support\Facades\Log::info("Product Update: Product updated successfully - VERIFICATION", [
+            'product_id' => $request->id,
+            'update_result' => $updateResult,
+            'gallery_saved_count' => count($savedGallery),
+            'gallery_expected_count' => count($gallery),
+            'gallery_match' => (count($savedGallery) === count($gallery)) ? 'OK' : 'MISMATCH',
+            'gallery_saved' => $savedGallery,
+            'gallery_expected' => $gallery
         ]);
 
         // Handle Redirection if slug changed
@@ -154,13 +346,28 @@ class ProductController extends Controller
             }
         }
 
-        // Clear Cache
+        // Clear Cache BEFORE returning response
         Cache::flush();
+        
+        // Clear session URLs after successful save
+        // Support multiple session keys (comma-separated)
+        $sessionKeyInput = $request->input('r2_session_key');
+        if ($sessionKeyInput) {
+            $sessionKeys = is_array($sessionKeyInput) ? $sessionKeyInput : explode(',', $sessionKeyInput);
+            $sessionKeys = array_filter(array_map('trim', $sessionKeys)); // Remove empty values
+            foreach ($sessionKeys as $sessionKey) {
+                \Illuminate\Support\Facades\Session::forget($sessionKey);
+            }
+        }
+        $userSessionKey = 'r2_uploaded_urls_user_' . auth()->id();
+        \Illuminate\Support\Facades\Session::forget($userSessionKey);
 
+        // Return response with cache busting parameter to ensure fresh page load
         return response()->json([
             'status' => 'success',
             'alert' => 'Sửa thành công!',
-            'url' => '/admin/product/edit/' . $request->id
+            'url' => '/admin/product/edit/' . $request->id . '?t=' . time(),
+            'gallery_count' => count($savedGallery) // Include gallery count for verification
         ]);
     }
 
@@ -197,7 +404,141 @@ class ProductController extends Controller
         }
 
         // Logic: First image in gallery is the main image (Avatar)
-        $gallery = $request->imageOther ?? [];
+        // Get URLs from request (existing images from form)
+        $imageOther = $request->imageOther ?? [];
+        
+        // Filter out empty, blob, and invalid URLs from form data immediately
+        $imageOther = array_filter($imageOther, function($url) {
+            return !empty($url) && 
+                   strpos($url, 'blob:') === false &&
+                   strpos($url, 'no-image.png') === false;
+        });
+        $imageOther = array_values($imageOther); // Re-index
+        
+        // Note: For store (new product), we don't need to load from DB since it's a new product
+        
+        \Illuminate\Support\Facades\Log::info("Product Store: imageOther from form", [
+            'raw_imageOther' => $request->imageOther ?? [],
+            'filtered_imageOther' => $imageOther,
+            'count' => count($imageOther),
+            'values' => $imageOther
+        ]);
+        
+        // Also check session for R2 uploaded URLs (new uploads)
+        // Support multiple session keys (comma-separated) from multiple uploads
+        $sessionKeyInput = $request->input('r2_session_key');
+        $sessionUrls = [];
+        $sessionKeysProcessed = [];
+        $urlsPerSessionKey = [];
+        
+        if ($sessionKeyInput) {
+            // Split by comma to handle multiple session keys
+            $sessionKeys = is_array($sessionKeyInput) ? $sessionKeyInput : explode(',', $sessionKeyInput);
+            $sessionKeys = array_filter(array_map('trim', $sessionKeys)); // Remove empty values
+            
+            foreach ($sessionKeys as $sessionKey) {
+                $urlsFromKey = \Illuminate\Support\Facades\Session::get($sessionKey, []);
+                $sessionKeysProcessed[] = $sessionKey;
+                
+                if (!empty($urlsFromKey)) {
+                    if (is_array($urlsFromKey)) {
+                        $urlsPerSessionKey[$sessionKey] = count($urlsFromKey);
+                        $sessionUrls = array_merge($sessionUrls, $urlsFromKey);
+                    } else {
+                        $urlsPerSessionKey[$sessionKey] = 1;
+                        $sessionUrls[] = $urlsFromKey;
+                    }
+                } else {
+                    $urlsPerSessionKey[$sessionKey] = 0;
+                }
+            }
+            
+            \Illuminate\Support\Facades\Log::info("Product Store: R2 Session URLs retrieval", [
+                'session_keys' => $sessionKeysProcessed,
+                'session_keys_count' => count($sessionKeysProcessed),
+                'urls_per_session_key' => $urlsPerSessionKey,
+                'total_session_urls_count' => count($sessionUrls),
+                'session_urls' => $sessionUrls
+            ]);
+        }
+        
+        // Also check user's general session
+        $userSessionKey = 'r2_uploaded_urls_user_' . auth()->id();
+        $userSessionUrls = \Illuminate\Support\Facades\Session::get($userSessionKey, []);
+        if (!empty($userSessionUrls)) {
+            \Illuminate\Support\Facades\Log::info("Product Store: Found R2 URLs in user session", [
+                'user_session_urls_count' => count($userSessionUrls),
+                'user_session_urls' => $userSessionUrls
+            ]);
+        }
+        
+        // Merge: Form URLs (existing images) FIRST, then session URLs (new uploads)
+        // This ensures existing images are preserved and new uploads are added
+        // Filter session URLs to ensure they are valid
+        $sessionUrls = array_filter($sessionUrls, function($url) {
+            return !empty($url) && 
+                   strpos($url, 'blob:') === false &&
+                   strpos($url, 'no-image.png') === false;
+        });
+        $userSessionUrls = array_filter($userSessionUrls, function($url) {
+            return !empty($url) && 
+                   strpos($url, 'blob:') === false &&
+                   strpos($url, 'no-image.png') === false;
+        });
+        
+        $allUrls = array_merge($imageOther, $sessionUrls, $userSessionUrls);
+        
+        \Illuminate\Support\Facades\Log::info("Product Store: URLs merged - VERIFICATION", [
+            'from_form_count' => count($imageOther),
+            'from_form_urls' => $imageOther,
+            'from_session_count' => count($sessionUrls),
+            'from_session_urls' => $sessionUrls,
+            'from_user_session_count' => count($userSessionUrls),
+            'from_user_session_urls' => $userSessionUrls,
+            'total_after_merge' => count($allUrls),
+            'all_urls' => $allUrls,
+            'session_keys_processed' => $sessionKeysProcessed ?? [],
+            'urls_per_session_key' => $urlsPerSessionKey ?? []
+        ]);
+        
+        // Remove duplicates while preserving order
+        $gallery = [];
+        $seen = [];
+        foreach ($allUrls as $url) {
+            if (!in_array($url, $seen)) {
+                $gallery[] = $url;
+                $seen[] = $url;
+            }
+        }
+        
+        // Final filter to ensure all URLs are valid
+        $gallery = array_filter($gallery, function($url) {
+            $isValid = !empty($url) && 
+                   $url !== asset("public/admin/no-image.png") && 
+                   $url !== url("public/admin/no-image.png") &&
+                   strpos($url, 'no-image.png') === false &&
+                   strpos($url, 'blob:') === false;
+            if (!$isValid) {
+                \Illuminate\Support\Facades\Log::warning("Product Store: Filtered out invalid image URL", ['url' => $url]);
+            }
+            return $isValid;
+        });
+        $gallery = array_values($gallery); // Re-index array
+        
+        \Illuminate\Support\Facades\Log::info("Product Store: Gallery after filtering - FINAL RESULT", [
+            'gallery' => $gallery,
+            'count' => count($gallery),
+            'gallery_json' => json_encode($gallery),
+            'verification' => [
+                'form_urls_count' => count($imageOther),
+                'session_urls_count' => count($sessionUrls),
+                'user_session_urls_count' => count($userSessionUrls),
+                'total_merged' => count($allUrls),
+                'final_gallery_count' => count($gallery),
+                'match' => (count($gallery) >= count($imageOther) + count($sessionUrls)) ? 'OK' : 'MISMATCH'
+            ]
+        ]);
+        
         $image = (count($gallery) > 0) ? $gallery[0] : null;
 
         try {
@@ -254,6 +595,19 @@ class ProductController extends Controller
             
             // Clear Cache
             Cache::flush();
+            
+            // Clear session URLs after successful save
+            // Support multiple session keys (comma-separated)
+            $sessionKeyInput = $request->input('r2_session_key');
+            if ($sessionKeyInput) {
+                $sessionKeys = is_array($sessionKeyInput) ? $sessionKeyInput : explode(',', $sessionKeyInput);
+                $sessionKeys = array_filter(array_map('trim', $sessionKeys)); // Remove empty values
+                foreach ($sessionKeys as $sessionKey) {
+                    \Illuminate\Support\Facades\Session::forget($sessionKey);
+                }
+            }
+            $userSessionKey = 'r2_uploaded_urls_user_' . auth()->id();
+            \Illuminate\Support\Facades\Session::forget($userSessionKey);
 
             return response()->json([
                 'status' => 'success',
@@ -350,45 +704,6 @@ class ProductController extends Controller
             'alert' => 'Đổi thứ tự thành công!',
             'url' => route('product')
         ]);
-    }
-
-    public function upload(Request $request)
-    {
-        $request->validate([
-            'files' => 'required',
-            'files.*' => 'mimes:jpeg,png,jpg,gif,webp'
-        ]);
-        
-        $insert = [];
-        if ($request->TotalFiles > 0) {
-            for ($x = 0; $x < $request->TotalFiles; $x++) {
-                if ($request->hasFile('files' . $x)) {
-                    $file = $request->file('files' . $x);
-                    $name = $file->getClientOriginalName();
-                    
-                    // Upload to R2
-                    try {
-                        // $path = $file->storeAs('images/image', $name, 'r2');
-                        // Fix for R2: Use put() directly to avoid storeAs() issues returning false
-                        $filePath = 'images/image/' . $name;
-                        $result = Storage::disk('r2')->put($filePath, file_get_contents($file));
-                        
-                        if ($result) {
-                            $url = Storage::disk('r2')->url($filePath);
-                            $insert[$x] = $url;
-                        } else {
-                            throw new \Exception("Storage::put returned false for $name");
-                        }
-                    } catch (\Exception $e) {
-                         \Illuminate\Support\Facades\Log::error("R2 Upload Error: " . $e->getMessage());
-                         return response()->json(["message" => "Lỗi upload: " . $e->getMessage()], 500);
-                    }
-                }
-            }
-            return response()->json($insert);
-        } else {
-            return response()->json(["message" => "Xin vui lòng thử lại."]);
-        }
     }
 
     public function variant($id, $code)
@@ -515,5 +830,51 @@ class ProductController extends Controller
                 'alert' => 'Xóa thành công!',
             ]);
         }
+    }
+
+    public function processIngredients($content)
+    {
+        if (empty($content)) return $content;
+
+        // Strip tags to work with plain text
+        $cleanContent = strip_tags($content);
+        
+        // Split by comma (standard ingredient separator)
+        $parts = preg_split('/,\s*/', $cleanContent);
+        
+        // Filter empty
+        $parts = array_filter($parts, function($value) { return trim($value) !== ''; });
+        
+        if (empty($parts)) return $content;
+
+        // Get unique names to query
+        $names = array_map('trim', $parts);
+        $names = array_unique($names);
+
+        // Query DB for these names (Case-insensitive)
+        $ingredients = Ingredient::whereIn('name', $names)->where('status', '1')->get();
+        
+        // Map for lookup
+        $ingMap = [];
+        foreach ($ingredients as $ing) {
+            $ingMap[strtolower($ing->name)] = $ing;
+        }
+
+        // Rebuild content
+        $processedParts = [];
+        foreach ($parts as $part) {
+            $trimPart = trim($part);
+            $lowerPart = strtolower($trimPart);
+            
+            if (isset($ingMap[$lowerPart])) {
+                $ing = $ingMap[$lowerPart];
+                // Link using official name from DB
+                $processedParts[] = '<a href="javascript:;" class="item_ingredient" data-id="'.$ing->slug.'">'.$ing->name.'</a>';
+            } else {
+                $processedParts[] = $trimPart;
+            }
+        }
+
+        return implode(', ', $processedParts);
     }
 }

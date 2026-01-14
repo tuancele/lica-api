@@ -157,7 +157,12 @@ class HomeController extends Controller
 
     public function post($url, Request $request)
     {
+        $url = urldecode($url);
         $post = Post::where([['slug', $url], ['status', '1']])->first();
+        if (!$post) {
+            $post = Product::where([['slug', $url], ['status', '1']])->first();
+        }
+        
         if ($post) {
             switch ($post->type) {
                 case "post":

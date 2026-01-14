@@ -128,7 +128,7 @@
                     <div class="image-grid list_image">
                         @if(isset($gallerys) && !empty($gallerys))
                             @foreach($gallerys as $idx => $gallery)
-                                <div class="image-upload-box has-img @if($idx == 0) is-cover @endif">
+                                <div class="image-upload-box has-img @if($idx == 0) is-cover @endif" data-existing="true">
                                     <img src="{{getImage($gallery)}}">
                                     <input type="hidden" name="imageOther[]" value="{{getImage($gallery)}}">
                                     <a href="javascript:void(0)" class="remove-btn"><i class="fa fa-times"></i></a>
@@ -137,7 +137,7 @@
                         @endif
                         <div class="image-upload-box" id="trigger-upload">
                             <i class="fa fa-camera fa-2x"></i>
-                            <span style="margin-top: 4px;">Thêm hình ảnh ({{count($gallerys)}}/9)</span>
+                            <span style="margin-top: 4px;">Thêm hình ảnh ({{isset($gallerys) && is_array($gallerys) ? count($gallerys) : 0}}/9)</span>
                         </div>
                         <input type="file" id="hidden-file-input" multiple style="display: none;" accept="image/*">
                     </div>
@@ -243,47 +243,8 @@
             </div>
 
             <div class="shopee-card">
-                <div class="section-title">Thông tin khác</div>
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="form-item">
-                            <label class="form-label">Trạng thái</label>
-                            <select class="shopee-input" name="status">
-                                <option value="1" @if($detail->status == '1') selected @endif>Hiển thị</option>
-                                <option value="0" @if($detail->status == '0') selected @endif>Ẩn</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="form-item">
-                            <label class="form-label">Tình trạng kho</label>
-                            <select class="shopee-input" name="stock">
-                                <option value="1" @if($detail->stock == '1') selected @endif>Còn hàng</option>
-                                <option value="0" @if($detail->stock == '0') selected @endif>Hết hàng</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="form-item">
-                            <label class="form-label">Nổi bật</label>
-                            <select class="shopee-input" name="feature">
-                                <option value="0" @if($detail->feature == '0') selected @endif>Không</option>
-                                <option value="1" @if($detail->feature == '1') selected @endif>Có</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="form-item">
-                            <label class="form-label">Bán chạy</label>
-                            <select class="shopee-input" name="best">
-                                <option value="0" @if($detail->best == '0') selected @endif>Không</option>
-                                <option value="1" @if($detail->best == '1') selected @endif>Có</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
+                <div class="section-title">Thành phần sản phẩm</div>
+                <textarea name="ingredient" id="ingredient" class="shopee-textarea" rows="10">{{strip_tags($detail->ingredient)}}</textarea>
             </div>
 
             <div class="shopee-footer">
@@ -311,52 +272,60 @@
 </div>
 
 <script type="text/javascript" src="/public/js/jquery.number.js"></script>
+<script type="text/javascript" src="/public/js/r2-upload-preview.js"></script>
 <script type="text/javascript">
+// Initialize R2 Upload BEFORE other scripts to ensure handlers are registered early
 $(document).ready(function() {
     $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') } });
     $('.price').number(true, 0);
 
-    // 1-Click Upload
-    $('#trigger-upload').click(function() { $('#hidden-file-input').click(); });
-    $('#hidden-file-input').change(function() {
-        let files = this.files;
-        if(files.length === 0) return;
-        let formData = new FormData();
-        for (let i = 0; i < files.length; i++) {
-            formData.append('files[]', files[i]);
-            formData.append('files' + i, files[i]);
-        }
-        formData.append('TotalFiles', files.length);
-
-        $.ajax({
-            type: 'POST',
-            url: "{{ route('product.upload') }}",
-            data: formData,
-            contentType: false,
-            processData: false,
-            beforeSend: function() { $('#trigger-upload').html('<i class="fa fa-spinner fa-spin fa-2x"></i>'); },
-            success: function(data) {
-                for(let i = 0; i < data.length; i++) {
-                    let html = `<div class="image-upload-box has-img">
-                                    <img src="${data[i]}">
-                                    <input type="hidden" name="imageOther[]" value="${data[i]}">
-                                    <a href="javascript:void(0)" class="remove-btn"><i class="fa fa-times"></i></a>
-                                </div>`;
-                    $('#trigger-upload').before(html);
-                }
-                resetUploadBtn();
-                refreshImgStatus();
-            },
-            error: function() {
-                alert('Lỗi upload ảnh');
-                resetUploadBtn();
+    // Initialize R2 Upload Preview Component
+    // IMPORTANT: Initialize BEFORE $.validate() processes the form
+    const r2UploadInstance = initR2UploadPreview({
+        fileInputSelector: '#hidden-file-input',
+        triggerSelector: '#trigger-upload',
+        previewContainerSelector: '.list_image',
+        previewItemClass: 'image-upload-box',
+        hiddenInputName: 'imageOther[]',
+        uploadRoute: "{{ route('r2.upload') }}",
+        folder: 'image',
+        maxFiles: 9,
+        convertWebP: true,
+        quality: 85,
+        onUploadStart: function(count) {
+            console.log('R2 Upload: Starting upload of', count, 'files');
+            const btn = $('#tblForm').find('button[type="submit"]');
+            btn.html('<i class="fa fa-spinner fa-spin"></i> Đang upload ' + count + ' ảnh...').prop('disabled', true);
+        },
+        onUploadComplete: function(urls) {
+            console.log('R2 Upload: Upload complete, URLs:', urls);
+            const btn = $('#tblForm').find('button[type="submit"]');
+            btn.html('Cập nhật').prop('disabled', false);
+            refreshImgStatus();
+        },
+        onUploadError: function(msg) {
+            console.error('R2 Upload: Upload error:', msg);
+            alert('Lỗi upload: ' + msg);
+            $('#tblForm').find('button[type="submit"]').html('Cập nhật').prop('disabled', false);
+        },
+        onPreviewAdd: () => refreshImgStatus(),
+        onPreviewRemove: () => refreshImgStatus()
+    });
+    
+    // Override $.validate() onSuccess to check for pending uploads
+    // This ensures we intercept form submission even if $.validate() processes it first
+    if (typeof $.validate !== 'undefined') {
+        const originalValidate = $.validate;
+        // Note: $.validate is already initialized in ControlPanel.js
+        // We need to intercept the form submit button click instead
+        $('#tblForm').find('button[type="submit"]').on('click', function(e) {
+            const pendingCount = r2UploadInstance ? r2UploadInstance.getPendingCount() : 0;
+            if (pendingCount > 0) {
+                console.log('R2 Upload: Submit button clicked with', pendingCount, 'pending files');
+                // Let the form submit handler in r2-upload-preview.js handle it
+                // Don't prevent default here, let the submit event handler do it
             }
         });
-    });
-
-    function resetUploadBtn() {
-        let count = $('.image-upload-box.has-img').length;
-        $('#trigger-upload').html('<i class="fa fa-camera fa-2x"></i><span style="margin-top:4px;">Thêm hình ảnh ('+count+'/9)</span>');
     }
 
     function refreshImgStatus() {
@@ -366,23 +335,10 @@ $(document).ready(function() {
         if(first.length > 0) $('#preview-main-img img').attr('src', first.find('img').attr('src'));
     }
 
-    $('.list_image').on('click', '.remove-btn', function() {
-        $(this).closest('.image-upload-box').remove();
-        resetUploadBtn();
-        refreshImgStatus();
-    });
-
     $('#product-name-input').on('input', function() {
         let val = $(this).val();
         $('#name-count').text(val.length + '/120');
         $('#preview-name-text').text(val);
-        // Disable auto-slug generation to prevent 404s on existing products
-        // let slug = val.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w ]+/g,'').replace(/ +/g,'-');
-        // $('#slug-target').val(slug);
-        
-        // SEO Title and Desc can still auto-update if desired, but safest to leave them alone too if we want stability
-        // $('#seo-title-auto').val(val);
-        // $('#seo-desc-auto').val(val);
     });
 
     $('.list_variant').on('click', '.btn_delete_variant', function() {

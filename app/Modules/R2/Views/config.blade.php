@@ -40,7 +40,7 @@
                         <h4>Công cụ đồng bộ</h4>
                          <div class="form-group">
                             <p>Sử dụng công cụ này để upload toàn bộ ảnh từ local lên R2.</p>
-                            <a href="/admin/config/tool-sync-r2" class="btn btn-primary"><i class="fa fa-cloud-upload"></i> Truy cập công cụ Upload Media</a>
+                            <a href="/admin/r2/tool-sync" class="btn btn-primary"><i class="fa fa-cloud-upload"></i> Truy cập công cụ Upload Media</a>
                         </div>
                     </div>
                 </div>

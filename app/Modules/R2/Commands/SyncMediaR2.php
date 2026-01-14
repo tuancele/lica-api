@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Modules\R2\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;

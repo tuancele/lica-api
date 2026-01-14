@@ -117,82 +117,39 @@
     </form>
 </section>
 
+<script type="text/javascript" src="/public/js/r2-upload-preview.js"></script>
 <script type="text/javascript">
 $(document).ready(function() {
     $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') } });
 
-    $('#r2-upload-trigger').click(function(e) {
-        if (!$(e.target).closest('#r2-remove').length) {
-            $('#r2-file-input').trigger('click');
+    initR2UploadPreview({
+        fileInputSelector: '#r2-file-input',
+        triggerSelector: '#r2-upload-trigger',
+        previewContainerSelector: '#r2-preview',
+        previewItemClass: 'none', // Slider uses custom layout
+        hiddenInputName: 'image',
+        uploadRoute: "{{ route('r2.upload') }}",
+        folder: 'sliders',
+        maxFiles: 1,
+        onUploadStart: function() {
+            const btn = $('#tblForm').find('button[type="submit"]');
+            btn.html('<i class="fa fa-spinner fa-spin"></i> Đang upload...').prop('disabled', true);
+        },
+        onUploadError: function(msg) {
+            alert('Lỗi upload: ' + msg);
+            $('#tblForm').find('button[type="submit"]').html('<i class="fa fa-floppy-o"></i> Lưu lại').prop('disabled', false);
+        },
+        onPreviewAdd: function(file, url) {
+            $('#preview-img').attr('src', url);
+            $('#r2-upload-trigger').addClass('has-img');
+            $('#upload-text').hide();
+        },
+        onPreviewRemove: function() {
+            $('#preview-img').attr('src', "{{asset('public/admin/no-image.png')}}");
+            $('#r2-upload-trigger').removeClass('has-img');
+            $('#upload-text').show();
         }
     });
-
-    $('#r2-file-input').on('click', function(e) {
-        e.stopPropagation();
-    });
-
-    $('#r2-file-input').change(function() {
-        let files = this.files;
-        if(files.length === 0) return;
-
-        let formData = new FormData();
-        for (let i = 0; i < files.length; i++) {
-            formData.append('files[]', files[i]);
-            formData.append('files' + i, files[i]);
-        }
-        formData.append('TotalFiles', files.length);
-
-        $.ajax({
-            type: 'POST',
-            url: "{{ route('product.upload') }}",
-            data: formData,
-            contentType: false,
-            processData: false,
-            beforeSend: function() {
-                $('#upload-text').html('<i class="fa fa-spinner fa-spin fa-2x"></i><br><span>Đang tải...</span>').show();
-            },
-            success: function(data) {
-                // Kiểm tra nếu data trả về là string (URL đơn) hoặc mảng
-                let url = '';
-                if(Array.isArray(data) && data.length > 0) {
-                    url = data[0];
-                } else if (typeof data === 'string' && data.length > 0) {
-                    url = data;
-                }
-
-                if(url) {
-                    $('#preview-img').attr('src', url);
-                    $('#r2-image-url').val(url);
-                    $('#r2-upload-trigger').addClass('has-img');
-                    $('#upload-text').hide();
-                } else {
-                    console.log('Upload response:', data);
-                    alert('Lỗi: Hệ thống không trả về đường dẫn ảnh. Vui lòng thử lại.');
-                    resetBtn();
-                }
-            },
-            error: function(xhr) {
-                console.log('Upload error:', xhr);
-                alert('Lỗi kết nối đến máy chủ. Mã lỗi: ' + xhr.status);
-                resetBtn();
-            }
-        });
-    });
-
-    $('#r2-remove').on('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        $('#preview-img').attr('src', "{{asset('public/admin/no-image.png')}}");
-        $('#r2-image-url').val('');
-        $('#r2-upload-trigger').removeClass('has-img');
-        $('#upload-text').show();
-        resetBtn();
-    });
-
-    function resetBtn() {
-        $('#upload-text').html('<i class="fa fa-camera fa-2x"></i><br><span>Thêm hình ảnh</span>').show();
-        $('#r2-file-input').val('');
-    }
 });
 </script>
 @endsection

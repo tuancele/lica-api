@@ -176,6 +176,7 @@ return [
         App\Providers\RouteServiceProvider::class,
         Laravel\Socialite\SocialiteServiceProvider::class,
         App\Modules\ModuleServiceProvider::class,
+        App\Modules\R2\Providers\R2ServiceProvider::class,
         App\Themes\ThemesServiceProvider::class,
         Milon\Barcode\BarcodeServiceProvider::class,
     ],

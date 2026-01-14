@@ -101,6 +101,8 @@
 			Route::get('district/{id}', 'CartController@district');
 			Route::get('ward/{id}', 'CartController@ward');
 			Route::get('{url}','HomeController@post');
+			// --- THÊM ĐOẠN NÀY VÀO CUỐI CÙNG ---
+            Route::get('{slug}', 'ProductController@show')->name('product.show');
 		});
 	});
 ?>
