@@ -37,18 +37,21 @@
                         }
                 
                         .slide {
+                            position: relative;
                             min-width: 100%;
                             height: 100%;
                             display: flex;
                             align-items: center;
                             justify-content: center;
-                            padding: 20px;
+                            padding: 0;
                         }
                 
-                        .slide img {
+                        .slide img,
+                        .slide video {
                             max-width: 100%;
                             max-height: 100%;
                             object-fit: contain;
+                            border-radius: 12px;
                         }
                 
                         /* Navigation Arrows */
@@ -150,6 +153,33 @@
                             background: #fafafa;
                             padding: 4px;
                         }
+                        .thumbnail.video {
+                            position: relative;
+                        }
+                        .thumbnail.video::after {
+                            content: '';
+                            position: absolute;
+                            left: 50%;
+                            top: 50%;
+                            transform: translate(-50%, -50%);
+                            width: 24px;
+                            height: 24px;
+                            border-radius: 50%;
+                            background: rgba(0,0,0,0.6);
+                        }
+                        .thumbnail.video::before {
+                            content: '';
+                            position: absolute;
+                            left: 50%;
+                            top: 50%;
+                            transform: translate(-40%, -50%);
+                            width: 0;
+                            height: 0;
+                            border-top: 6px solid transparent;
+                            border-bottom: 6px solid transparent;
+                            border-left: 10px solid #fff;
+                            z-index: 2;
+                        }
                 
                         .thumbnail:hover {
                             border-color: #aaa;
@@ -163,7 +193,7 @@
                         .thumbnail img {
                             width: 100%;
                             height: 100%;
-                            object-fit: contain;
+                            object-fit: cover;
                         }
                 
                         /* Responsive: Desktop */
@@ -218,20 +248,48 @@
                         <!-- Main Slider -->
                         <div class="main-slider" id="mainSlider">
                             <div class="slides-wrapper" id="slidesWrapper">
-                                <!-- Main Image -->
-                                <div class="slide">
-                                    <img src="{{getImage($detail->image)}}" alt="{{$detail->name}}">
-                                </div>
-                                <!-- Gallery Images -->
-                                @if(isset($gallerys) && !empty($gallerys))
-                                    @foreach($gallerys as $key => $image)
-                                        @if(getImage($image) != getImage($detail->image))
-                                        <div class="slide">
-                                            <img src="{{getImage($image)}}" alt="{{$detail->name}}">
-                                        </div>
+                                @php
+                                    $hasVideo = !empty($detail->video);
+                                    // Xây dựng danh sách media: 1 video (nếu có) + tối đa 9 hình
+                                    $mediaItems = [];
+                                    if ($hasVideo) {
+                                        $mediaItems[] = [
+                                            'type' => 'video',
+                                            'src' => getImage($detail->video),
+                                        ];
+                                    }
+                                    // Ảnh bìa luôn là ảnh đầu tiên
+                                    $mainImage = getImage($detail->image);
+                                    $mediaItems[] = [
+                                        'type' => 'image',
+                                        'src' => $mainImage,
+                                    ];
+                                    if(isset($gallerys) && !empty($gallerys)) {
+                                        foreach($gallerys as $image) {
+                                            $imgSrc = getImage($image);
+                                            if ($imgSrc != $mainImage) {
+                                                $mediaItems[] = [
+                                                    'type' => 'image',
+                                                    'src' => $imgSrc,
+                                                ];
+                                            }
+                                            if (count($mediaItems) >= ($hasVideo ? 10 : 9)) {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                @endphp
+                                @foreach($mediaItems as $item)
+                                    <div class="slide" 
+                                         data-type="{{$item['type']}}"
+                                         data-thumb="{{ $item['type'] === 'video' ? $mainImage : $item['src'] }}">
+                                        @if($item['type'] === 'video')
+                                            <video src="{{$item['src']}}" controls playsinline muted></video>
+                                        @else
+                                            <img src="{{$item['src']}}" alt="{{$detail->name}}">
                                         @endif
-                                    @endforeach
-                                @endif
+                                    </div>
+                                @endforeach
                             </div>
                 
                             <!-- Navigation Arrows -->
@@ -278,14 +336,32 @@
                                 this.generateThumbnails();
                                 this.bindEvents();
                                 this.updateUI();
+
+                                // Nếu slide đầu tiên là video thì tự động play
+                                this.autoPlayVideoIfNeeded();
                             }
                 
                             generateThumbnails() {
                                 this.slides.forEach((slide, index) => {
                                     const img = slide.querySelector('img');
+                                    const video = slide.querySelector('video');
                                     const thumbnail = document.createElement('div');
-                                    thumbnail.className = `thumbnail ${index === 0 ? 'active' : ''}`;
-                                    thumbnail.innerHTML = `<img src="${img.src}" alt="Thumbnail ${index + 1}">`;
+                                    const isVideo = !!video;
+                                    thumbnail.className = `thumbnail ${isVideo ? 'video' : ''} ${index === 0 ? 'active' : ''}`;
+                                    
+                                    // Ưu tiên dùng data-thumb (được set ở Blade) để tránh dùng trực tiếp URL .mp4
+                                    let thumbSrc = slide.getAttribute('data-thumb') || '';
+                                    if (!thumbSrc) {
+                                        if (video) {
+                                            thumbSrc = video.currentSrc || video.src;
+                                        } else if (img) {
+                                            thumbSrc = img.src;
+                                        }
+                                    }
+
+                                    if (thumbSrc) {
+                                        thumbnail.innerHTML = `<img src="${thumbSrc}" alt="Thumbnail ${index + 1}">`;
+                                    }
                                     thumbnail.addEventListener('click', () => this.goToSlide(index));
                                     this.thumbnailsContainer.appendChild(thumbnail);
                                 });
@@ -416,11 +492,40 @@
                                         inline: 'center'
                                     });
                                 }
+
+                                this.autoPlayVideoIfNeeded();
+                            }
+
+                            autoPlayVideoIfNeeded() {
+                                // Tạm dừng tất cả video
+                                this.slides.forEach((slide) => {
+                                    const video = slide.querySelector('video');
+                                    if (video) {
+                                        video.pause();
+                                    }
+                                });
+
+                                // Nếu slide hiện tại là video thì play
+                                const currentSlide = this.slides[this.currentIndex];
+                                if (!currentSlide) return;
+                                const currentVideo = currentSlide.querySelector('video');
+                                if (currentVideo) {
+                                    // Tự động play, tắt tiếng để tránh block autoplay
+                                    currentVideo.muted = true;
+                                    const playPromise = currentVideo.play();
+                                    if (playPromise && typeof playPromise.catch === 'function') {
+                                        playPromise.catch(function(){});
+                                    }
+                                }
                             }
                         }
                 
-                        // Initialize slider when DOM is ready
+                        // Initialize slider when DOM is ready (avoid multiple init)
                         document.addEventListener('DOMContentLoaded', () => {
+                            if (window.__ProductSliderInitialized) {
+                                return;
+                            }
+                            window.__ProductSliderInitialized = true;
                             new ProductSlider();
                         });
                     </script>
@@ -450,15 +555,25 @@
                 <a href="/thuong-hieu/{{$detail->brand->slug}}" class="text-uppercase pointer brand-name">{{$detail->brand->name}}</a>
                 @endif
                 <h1 class="title-product">{{$detail->name}}</h1>
+                @php
+                    // Bảo vệ trong trường hợp $t_rates null hoặc không được truyền
+                    $rateCollection = isset($t_rates) && $t_rates ? $t_rates : collect();
+                    $rateCount = $rateCollection->count();
+                    $rateSum   = $rateCollection->sum('rate');
+                @endphp
                 <div class="d-block overflow-hidden mb-2 list_attribute">
                     <div class="item_1 rate-section w40 fs-12 pointer" onclick="window.location='{{getSlug($detail->slug)}}#ratingProduct'">
                         <div class="rating mt-0 mb-0">
-                            {!!getStar($t_rates->sum('rate'),$t_rates->count())!!}
-                            <div class="count-rate">({{$t_rates->count()??'0'}})</div>
+                            {!!getStar($rateSum,$rateCount)!!}
+                            <div class="count-rate">({{$rateCount}})</div>
                         </div>
                     </div>
+                    @php
+                        $wishlistCollection = method_exists($detail, 'wishlists') ? ($detail->wishlists ?? collect()) : collect();
+                        $wishlistCount = $wishlistCollection ? $wishlistCollection->count() : 0;
+                    @endphp
                     <div class="item_2 fav-section w60 fs-12">
-                        <span role="img" class="icon"><svg width="12" height="12" viewBox="0 0 30 26" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21.001 0C18.445 0 16.1584 1.24169 14.6403 3.19326C13.1198 1.24169 10.8355 0 8.27952 0C3.70634 0 0 3.97108 0 8.86991C0 15.1815 9.88903 23.0112 13.4126 25.5976C14.1436 26.1341 15.1369 26.1341 15.8679 25.5976C19.3915 23.0088 29.2805 15.1815 29.2805 8.86991C29.2782 3.97108 25.5718 0 21.001 0Z" fill="#C73130"></path></svg></span> <span class="total-wishlist ms-1">{{$detail->wishlists->count()??'0'}}</span>
+                        <span role="img" class="icon"><svg width="12" height="12" viewBox="0 0 30 26" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21.001 0C18.445 0 16.1584 1.24169 14.6403 3.19326C13.1198 1.24169 10.8355 0 8.27952 0C3.70634 0 0 3.97108 0 8.86991C0 15.1815 9.88903 23.0112 13.4126 25.5976C14.1436 26.1341 15.1369 26.1341 15.8679 25.5976C19.3915 23.0088 29.2805 15.1815 29.2805 8.86991C29.2782 3.97108 25.5718 0 21.001 0Z" fill="#C73130"></path></svg></span> <span class="total-wishlist ms-1">{{$wishlistCount}}</span>
                     </div>
                     @if($detail->origin)
                     <div class="item_3 origin-section w40 fs-12"><b>Xuất xứ:</b> {{$detail->origin->name}}</div>
@@ -466,7 +581,7 @@
                     @if($detail->cbmp != "")
                     <div class="item_4 origin-section w60 fs-12"><b>Số CBMP:</b> {{$detail->cbmp}}</div>
                     @endif
-                    <div class="item_5 sku-section w40 fs-12"><b>SKU:</b> <span>{{$first->sku}}</span></div>
+                    <div class="item_5 sku-section w40 fs-12"><b>SKU:</b> <span id="variant-sku-display">{{$first->sku}}</span></div>
                     @if($detail->verified == 1)
                     <div class="verified w60 fs-12 d-block d-md-none">
                         <strong>Đã xác thực bởi:</strong> {{getConfig('verified')}} 
@@ -474,8 +589,21 @@
                     </div>
                     @endif
                 </div>
+                @php
+                    // Shopee-style: mọi sản phẩm có biến thể đều dùng block phân loại mới
+                    $hasAnyVariant = isset($variants) && $variants->count() > 0;
+                    $isShopeeVariant = $hasAnyVariant;
+                    $currentVariantStock = (int)($first->stock ?? 0);
+                @endphp
                 <div class="price-detail">
-                    <div class="price">{!!checkSale($detail->id)!!}</div>
+                    <!-- VARIANT_DEBUG_A11: isShopeeVariant={{ $isShopeeVariant ? '1' : '0' }}, variants_count={{ isset($variants) ? $variants->count() : 0 }} -->
+                    @if($isShopeeVariant)
+                        <div class="price" id="variant-price-display">
+                            <p>{{number_format($first->price ?? 0)}}đ</p>
+                        </div>
+                    @else
+                        <div class="price">{!!checkSale($detail->id)!!}</div>
+                    @endif
                      @if($detail->verified == 1)
                     <div class="verified w60 fs-12 d-none d-md-block">
                         <strong>Đã xác thực bởi:</strong> {{getConfig('verified')}} 
@@ -600,7 +728,36 @@
                     });
                 </script>
                 @endif
-                @if($colors->count() > 0 && $colors[0]->color_id != 0)
+                @if($isShopeeVariant)
+                <div class="box-variant box-option1">
+                    <div class="label">
+                        <strong>{{ $detail->option1_name ?? 'Phân loại' }}:</strong>
+                        <span id="variant-option1-current">{{ $first->option1_value ?? '' }}</span>
+                    </div>
+                    <div class="list-variant" id="variant-option1-list">
+                        @foreach($variants as $k => $v)
+                        @php
+                            $optLabel = $v->option1_value;
+                            if(!$optLabel){
+                                $color = optional($v->color)->name;
+                                $size  = optional($v->size)->name;
+                                $optLabel = trim(($color ?: '') . (($color && $size) ? ' / ' : '') . ($size ?: ''));
+                            }
+                            if(!$optLabel) $optLabel = 'Mặc định';
+                        @endphp
+                        <div class="item-variant @if($k==0) active @endif"
+                             data-variant-id="{{$v->id}}"
+                             data-sku="{{$v->sku}}"
+                             data-price="{{$v->price}}"
+                             data-stock="{{(int)($v->stock ?? 0)}}"
+                             data-image="{{getImage($v->image ?: $detail->image)}}"
+                             data-option1="{{ $optLabel }}">
+                            <p class="mb-0">{{ $optLabel }}</p>
+                        </div>
+                        @endforeach
+                    </div>
+                </div>
+                @elseif($colors->count() > 0 && $colors[0]->color_id != 0)
                 <div class="box-variant box-color" @if($colors[0]->color->id == '22') style="display:none" @endif>
                     <div class="label">
                         <strong>Màu sắc:</strong>
@@ -616,9 +773,11 @@
                     </div>
                 </div>
                 @endif
+                @if(!$isShopeeVariant)
                 <div class="box-variant box-size">
                     {!!getSizes($detail->id,$colors[0]->color->id??'')!!}
                 </div>
+                @endif
                 @if(checkFlash($detail->id))
                 @php 
                     $date = strtotime(date('Y-m-d H:i:s'));
@@ -748,25 +907,25 @@
                 <input type="hidden" name="variant_id"  value="{{$first->id}}">
                 <div class="group-cart product-action align-center mt-3 space-between">
                     <div class="quantity align-center quantity-selector">
-                        <button class="btn_minus entry" type="button" @if($detail->stock == 0) disabled @endif>
+                        <button class="btn_minus entry" type="button" @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif>
                             <span role="img" class="icon"><svg width="14" height="2" viewBox="0 0 14 2" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 0C0.447715 0 0 0.447715 0 1C0 1.55228 0.447715 2 1 2L1 0ZM13 2C13.5523 2 14 1.55228 14 1C14 0.447715 13.5523 0 13 0V2ZM1 2L13 2V0L1 0L1 2Z" fill="black"></path></svg></span>
                         </button>
-                        <input @if($detail->stock == 0) disabled @endif type="text" class="form-quatity quantity-input" value="1" min="1">
-                        <button @if($detail->stock == 0) disabled @endif class="btn_plus entry" type="button">
+                        <input @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif type="text" class="form-quatity quantity-input" value="1" min="1">
+                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="btn_plus entry" type="button">
                             <span role="img" class="icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 6C0.447715 6 0 6.44772 0 7C0 7.55228 0.447715 8 1 8L1 6ZM13 8C13.5523 8 14 7.55228 14 7C14 6.44772 13.5523 6 13 6V8ZM1 8L13 8V6L1 6L1 8Z" fill="black"></path><path d="M6 13C6 13.5523 6.44772 14 7 14C7.55228 14 8 13.5523 8 13L6 13ZM8 1C8 0.447715 7.55228 -2.41411e-08 7 0C6.44771 2.41411e-08 6 0.447715 6 1L8 1ZM8 13L8 1L6 1L6 13L8 13Z" fill="black"></path></svg></span>
                         </button>
                     </div>
                     <div class="item-action">
-                        <button @if($detail->stock == 0) disabled @endif type="button" class="addCartDetail">
+                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif type="button" class="addCartDetail">
                             <span role="img" class="icon"><svg width="22" height="19" viewBox="0 0 22 19" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 6.99953H16.21L11.83 0.439531C11.64 0.159531 11.32 0.0195312 11 0.0195312C10.68 0.0195312 10.36 0.159531 10.17 0.449531L5.79 6.99953H1C0.45 6.99953 0 7.44953 0 7.99953C0 8.08953 0.00999996 8.17953 0.04 8.26953L2.58 17.5395C2.81 18.3795 3.58 18.9995 4.5 18.9995H17.5C18.42 18.9995 19.19 18.3795 19.43 17.5395L21.97 8.26953L22 7.99953C22 7.44953 21.55 6.99953 21 6.99953ZM11 2.79953L13.8 6.99953H8.2L11 2.79953ZM17.5 16.9995L4.51 17.0095L2.31 8.99953H19.7L17.5 16.9995ZM11 10.9995C9.9 10.9995 9 11.8995 9 12.9995C9 14.0995 9.9 14.9995 11 14.9995C12.1 14.9995 13 14.0995 13 12.9995C13 11.8995 12.1 10.9995 11 10.9995Z" fill="white"></path></svg></span>
                             <span>Thêm vào giỏ hàng</span>
                         </button>
                     </div>
                     <div class="item-action">
                         @if(isset($saledeals) && $saledeals->count() > 0)
-                        <button @if($detail->stock == 0) disabled @endif class="buyNowDetail btnBuyDealSốc" style="background-color: #C73130; color: #fff; border-color: #C73130;" type="button">MUA DEAL SỐC</button>
+                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail btnBuyDealSốc" style="background-color: #C73130; color: #fff; border-color: #C73130;" type="button">MUA DEAL SỐC</button>
                         @else
-                        <button @if($detail->stock == 0) disabled @endif class="buyNowDetail" type="button">Mua ngay</button>
+                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail" type="button">Mua ngay</button>
                         @endif
                     </div>
                     <div class="item-action btnWishlist group-wishlist-{{$detail->id}}">
@@ -841,15 +1000,22 @@
         </div>
         @endif
         <div class="divider-horizontal"></div>
-        <div class="rating-product row mt-5 mb-5" id="ratingProduct">
+                @php
+                    // Chuẩn hoá lại $t_rates và $rates ở block đánh giá để tránh null
+                    $tRateCol = isset($t_rates) && $t_rates ? $t_rates : collect();
+                    $tRateCount = $tRateCol->count();
+                    $tRateSum   = $tRateCol->sum('rate');
+                    $rateCol = isset($rates) && $rates ? $rates : collect();
+                @endphp
+                <div class="rating-product row mt-5 mb-5" id="ratingProduct">
             <div class="col-12 col-md-4 pe-3 pe-md-5">
                 <div class="align-center space-between">
-                    <div class="fs-24 fw-bold">{{$t_rates->count()}} đánh giá</div>
+                    <div class="fs-24 fw-bold">{{$tRateCount}} đánh giá</div>
                     <button class="btn btn_write_review text-uppercase fs-14 fw-bold pe-0 ps-0" type="button" data-bs-toggle="modal" data-bs-target="#myRating">Viết đánh giá</button>
                 </div>
-                <div class="list-star mt-3 mb-1 fs-26">
-                    {!!getStar($t_rates->sum('rate'),$t_rates->count())!!}
-                </div>
+                    <div class="list-star mt-3 mb-1 fs-26">
+                        {!!getStar($tRateSum,$tRateCount)!!}
+                    </div>
                 @php $star5 = itemStar($detail->id,5)@endphp
                 <div class="align-center space-between mb-1">
                     <div class="me-3 fs-18">5</div>
@@ -883,8 +1049,8 @@
             </div>
             <div class="col-12 col-md-8">
                 <div class="list-rate">
-                    @if($rates->count() > 0)
-                    @foreach($rates as $rate)
+                @if($rateCol->count() > 0)
+                    @foreach($rateCol as $rate)
                     @php $images = json_decode($rate->images) @endphp
                     <div class="item-rate">
                         <p class="mb-2">{{$rate->name}}</p>
@@ -981,21 +1147,25 @@
                 </div>
                 <div class="description ms-2">
                     <div class="fs-16 fw-bold">{{$detail->name}}</div>
-                    <div class="price-fix">{!!checkSale($detail->id)!!}</div>
+                    @if($isShopeeVariant)
+                        <div class="price-fix" id="variant-price-fix"><p>{{number_format($first->price ?? 0)}}đ</p></div>
+                    @else
+                        <div class="price-fix">{!!checkSale($detail->id)!!}</div>
+                    @endif
                 </div>
             </div>
             <div class="product-action align-center">
                 <div class="item-action">
-                    <button @if($detail->stock == 0) disabled @endif type="button" class="addCartDetail">
+                    <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif type="button" class="addCartDetail">
                         <span role="img" class="icon"><svg width="22" height="19" viewBox="0 0 22 19" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 6.99953H16.21L11.83 0.439531C11.64 0.159531 11.32 0.0195312 11 0.0195312C10.68 0.0195312 10.36 0.159531 10.17 0.449531L5.79 6.99953H1C0.45 6.99953 0 7.44953 0 7.99953C0 8.08953 0.00999996 8.17953 0.04 8.26953L2.58 17.5395C2.81 18.3795 3.58 18.9995 4.5 18.9995H17.5C18.42 18.9995 19.19 18.3795 19.43 17.5395L21.97 8.26953L22 7.99953C22 7.44953 21.55 6.99953 21 6.99953ZM11 2.79953L13.8 6.99953H8.2L11 2.79953ZM17.5 16.9995L4.51 17.0095L2.31 8.99953H19.7L17.5 16.9995ZM11 10.9995C9.9 10.9995 9 11.8995 9 12.9995C9 14.0995 9.9 14.9995 11 14.9995C12.1 14.9995 13 14.0995 13 12.9995C13 11.8995 12.1 10.9995 11 10.9995Z" fill="white"></path></svg></span>
                         <span>Thêm vào giỏ hàng</span>
                     </button>
                 </div>
                 <div class="item-action">
                     @if(isset($saledeals) && $saledeals->count() > 0)
-                    <button @if($detail->stock == 0) disabled @endif class="buyNowDetail btnBuyDealSốc" style="background-color: #C73130; color: #fff; border-color: #C73130;" type="button">MUA DEAL SỐC</button>
+                    <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail btnBuyDealSốc" style="background-color: #C73130; color: #fff; border-color: #C73130;" type="button">MUA DEAL SỐC</button>
                     @else
-                    <button @if($detail->stock == 0) disabled @endif class="buyNowDetail" type="button">Mua ngay</button>
+                    <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail" type="button">Mua ngay</button>
                     @endif
                 </div>
                 <div class="item-action btnWishlist group-wishlist-{{$detail->id}}">
@@ -1348,6 +1518,38 @@
         }
       })
     });
+    var isShopeeVariant = @json($isShopeeVariant);
+
+    if(isShopeeVariant){
+        $('#detailProduct').on('click','#variant-option1-list .item-variant',function(){
+            var $it = $(this);
+            $('#variant-option1-list .item-variant').removeClass('active');
+            $it.addClass('active');
+
+            var variantId = $it.data('variant-id');
+            var sku = $it.data('sku') || '';
+            var price = parseFloat($it.data('price') || 0);
+            var stock = parseInt($it.data('stock') || 0, 10);
+            var img = $it.data('image') || '';
+            var optionText = $it.data('option1') || '';
+
+            $('#detailProduct input[name="variant_id"]').val(variantId);
+            $('#variant-sku-display').text(sku);
+            $('#variant-option1-current').text(optionText);
+            $('#variant-price-display').html('<p>'+ (price || 0).toLocaleString('vi-VN') +'đ</p>');
+            $('#variant-price-fix').html('<p>'+ (price || 0).toLocaleString('vi-VN') +'đ</p>');
+
+            // Update main slider first image (best-effort)
+            if(img){
+                var firstImg = document.querySelector('#slidesWrapper .slide img');
+                if(firstImg) firstImg.src = img;
+            }
+
+            // Toggle buttons by stock
+            var disabled = stock <= 0;
+            $('.addCartDetail, .buyNowDetail, .btn_plus.entry, .btn_minus.entry, .quantity-input').prop('disabled', disabled);
+        });
+    } else {
     $('#detailProduct .box-color').on('click','.item-variant',function(){
         var id = $(this).attr('data-id');
         var text = $(this).attr('data-text');
@@ -1404,6 +1606,7 @@
             }
         })
     });
+    }
     $(".formRating").submit(function (e) {
         e.preventDefault();
         var formData = new FormData(this);
@@ -1540,6 +1743,66 @@
     }
     #myVerified .btnClose{
         color:#fff;
+    }
+    /* Shopee-style variant selector (box-option1) */
+    .box-variant.box-option1{
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid #f1f1f1;
+    }
+    .box-variant.box-option1 .label{
+        font-size: 13px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .box-variant.box-option1 .label strong{
+        font-weight: 600;
+        color: #222;
+    }
+    .box-variant.box-option1 .label span#variant-option1-current{
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #f5f7fa;
+        font-size: 12px;
+        color: #444;
+    }
+    .box-variant.box-option1 .list-variant{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .box-variant.box-option1 .list-variant .item-variant{
+        min-width: 56px;
+        padding: 6px 14px;
+        border-radius: 6px;
+        border: 1px solid #ddd;
+        background: #f7f7f8;
+        font-size: 13px;
+        color: #333;
+        cursor: pointer;
+        text-align: center;
+        transition: all .18s ease;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        user-select: none;
+        line-height: 1.2;
+    }
+    .box-variant.box-option1 .list-variant .item-variant:hover{
+        border-color: #ee4d2d;
+        color: #ee4d2d;
+        background: #fff5f0;
+    }
+    .box-variant.box-option1 .list-variant .item-variant.active{
+        border-color: #ee4d2d;
+        background: #ee4d2d;
+        color: #fff;
+        box-shadow: 0 2px 6px rgba(238,77,45,0.28);
+    }
+    .box-variant.box-option1 .list-variant .item-variant p{
+        margin-bottom: 0;
     }
     @media(max-width: 568px){
         .w-25p{

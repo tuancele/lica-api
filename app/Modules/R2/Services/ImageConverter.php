@@ -380,7 +380,7 @@ class ImageConverter
                     @unlink($tempPath);
                 }
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $debugLog = storage_path('logs/r2_debug.log');
             $debugMsg = date('Y-m-d H:i:s') . " - ImageConverter: EXCEPTION caught\n";
             $debugMsg .= "File: " . $file->getClientOriginalName() . "\n";

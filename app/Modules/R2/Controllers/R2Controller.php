@@ -750,23 +750,16 @@ class R2Controller extends Controller
         ]);
         
         // Store URLs in session for later retrieval
-        // Use a unique session key for this upload batch (don't merge with existing)
+        // Use a unique session key for this upload batch (scoped to this upload only)
         $sessionKey = 'r2_uploaded_urls_' . $logId;
-        // Store ONLY the URLs from this upload batch (not merged with existing)
+        // Store ONLY the URLs from this upload batch (not merged with any shared bucket)
         Session::put($sessionKey, $uploadedUrls);
-        
-        // Also store in a general session key for this user (append to existing)
-        $userSessionKey = 'r2_uploaded_urls_user_' . auth()->id();
-        $userUrls = Session::get($userSessionKey, []);
-        $userUrls = array_merge($userUrls, $uploadedUrls);
-        Session::put($userSessionKey, $userUrls);
         
         $log('info', "Upload completed successfully - Session storage", [
             'urls_count' => count($uploadedUrls),
             'urls' => $uploadedUrls,
             'session_key' => $sessionKey,
             'session_stored_count' => count(Session::get($sessionKey, [])),
-            'user_session_stored_count' => count(Session::get($userSessionKey, []))
         ]);
         
         return response()->json([
@@ -810,6 +803,108 @@ class R2Controller extends Controller
                     'line' => $e->getLine(),
                     'trace' => $e->getTraceAsString()
                 ] : null
+            ], 500);
+        }
+    }
+
+    /**
+     * Simple upload handler for video files (no WebP conversion)
+     */
+    public function uploadVideo(Request $request)
+    {
+        $logId = uniqid('R2-VIDEO-', true);
+
+        Log::info("R2 Video Upload [$logId]: Request received", [
+            'method' => $request->method(),
+            'content_type' => $request->header('Content-Type'),
+        ]);
+
+        try {
+            $request->validate([
+                // max is in kilobytes → 30720 = 30 MB
+                'file' => 'required|file|mimes:mp4,webm,mov,avi,quicktime|max:30720',
+                'folder' => 'nullable|string|max:100',
+            ]);
+
+            $file = $request->file('file');
+            $folder = $request->input('folder', 'videos/products');
+
+            if (!$file || !$file->isValid()) {
+                Log::error("R2 Video Upload [$logId]: Invalid file upload");
+                return response()->json([
+                    'message' => 'File video không hợp lệ, vui lòng thử lại.'
+                ], 400);
+            }
+
+            $extension = $file->getClientOriginalExtension() ?: 'mp4';
+            $baseName = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+            $safeBase = Str::slug($baseName) ?: 'video';
+
+            // Lưu trực tiếp qua Storage disk r2 bằng nội dung file
+            $relativeDir = trim($folder, '/');
+            $relativePath = $relativeDir . '/' . date('Y/m/d');
+            $fileName = $safeBase . '-' . uniqid() . '.' . $extension;
+            $fullPath = $relativePath . '/' . $fileName;
+
+            Log::info("R2 Video Upload [$logId]: Storing file", [
+                'path' => $fullPath,
+                'size' => $file->getSize(),
+                'mime' => $file->getMimeType(),
+            ]);
+
+            // Dùng get() thay vì rely vào getRealPath() để tránh lỗi "Path cannot be empty"
+            $content = $file->get();
+            if ($content === false || $content === null || $content === '') {
+                Log::error("R2 Video Upload [$logId]: Empty file content when reading upload");
+                return response()->json([
+                    'message' => 'Không đọc được nội dung video, vui lòng thử lại.'
+                ], 500);
+            }
+
+            $stored = Storage::disk('r2')->put($fullPath, $content);
+
+            if (!$stored) {
+                Log::error("R2 Video Upload [$logId]: Storage::put returned false", [
+                    'path' => $fullPath,
+                ]);
+
+                return response()->json([
+                    'message' => 'Upload video thất bại, vui lòng thử lại.'
+                ], 500);
+            }
+
+            $url = Storage::disk('r2')->url($fullPath);
+            if (empty($url)) {
+                $r2Url = config('filesystems.disks.r2.url');
+                if (!empty($r2Url)) {
+                    $url = rtrim($r2Url, '/') . '/' . $fullPath;
+                }
+            }
+
+            Log::info("R2 Video Upload [$logId]: Success", [
+                'url' => $url,
+                'path' => $fullPath,
+            ]);
+
+            return response()->json([
+                'url' => $url,
+                'path' => $fullPath,
+                'log_id' => $logId,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::error("R2 Video Upload [$logId] Validation Error: " . $e->getMessage());
+
+            return response()->json([
+                'message' => 'Dữ liệu không hợp lệ: ' . implode(', ', $e->errors())
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error("R2 Video Upload [$logId] Critical error: " . $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'message' => 'Lỗi hệ thống: ' . $e->getMessage()
             ], 500);
         }
     }

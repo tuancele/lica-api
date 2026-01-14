@@ -102,9 +102,12 @@
 
 			Route::get('district/{id}', 'CartController@district');
 			Route::get('ward/{id}', 'CartController@ward');
-			Route::get('{url}','HomeController@post');
-			// --- THÊM ĐOẠN NÀY VÀO CUỐI CÙNG ---
+
+			// Route chi tiết sản phẩm (ưu tiên bắt slug sản phẩm trước)
             Route::get('{slug}', 'ProductController@show')->name('product.show');
+
+			// Route fallback cho các loại post khác (trang, blog, taxonomy...)
+			Route::get('{url}','HomeController@post');
 		});
 	});
 ?>

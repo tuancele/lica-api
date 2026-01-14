@@ -132,9 +132,18 @@ function initR2UploadPreview(options) {
 
             const file = files[i];
             
-            // Validate type
-            if (!file.type.match(/^image\/(jpeg|jpg|png|gif|webp)$/i)) {
-                alert('File ' + file.name + ' không phải là ảnh hợp lệ.');
+            // Validate type (chỉ cho phép JPG/PNG/GIF, chặn WEBP ngay khi chọn)
+            const mime = (file.type || '').toLowerCase();
+            const nameLower = (file.name || '').toLowerCase();
+
+            // Chặn webp rõ ràng
+            if (mime.indexOf('image/webp') === 0 || nameLower.endsWith('.webp')) {
+                alert('Định dạng ảnh WEBP hiện chưa được hỗ trợ. Vui lòng chọn ảnh JPG, JPEG hoặc PNG.');
+                continue;
+            }
+
+            if (!mime.match(/^image\/(jpeg|jpg|png|gif)$/i)) {
+                alert('File ' + file.name + ' không phải là ảnh hợp lệ. Vui lòng chọn JPG, JPEG hoặc PNG.');
                 continue;
             }
 

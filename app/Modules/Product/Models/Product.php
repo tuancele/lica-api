@@ -13,6 +13,39 @@ use Carbon\Carbon;
 class Product extends Model
 {
     protected $table = "posts";
+    
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array
+     */
+    protected $fillable = [
+        'name',
+        'slug',
+        'image',
+        'gallery',
+        'video',
+        'content',
+        'description',
+        'status',
+        'type',
+        'has_variants',
+        'option1_name',
+        'cat_id',
+        'brand_id',
+        'origin_id',
+        'seo_title',
+        'seo_description',
+        'feature',
+        'best',
+        'stock',
+        'ingredient',
+        'verified',
+        'cbmp',
+        'sort',
+        'view',
+        'user_id',
+    ];
     public function user(){
     	return $this->belongsTo('App\User','user_id','id');
     }

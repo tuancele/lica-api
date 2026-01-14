@@ -4,6 +4,9 @@ namespace App\Modules\Product\Controllers;
 
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Product\StoreProductRequest;
+use App\Http\Requests\Product\UpdateProductRequest;
+use App\Services\Product\ProductServiceInterface;
 use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
 use App\Modules\Brand\Models\Brand;
@@ -11,636 +14,240 @@ use App\Modules\Color\Models\Color;
 use App\Modules\Size\Models\Size;
 use App\Modules\Origin\Models\Origin;
 use App\Modules\Ingredient\Models\Ingredient;
+use App\Enums\ProductStatus;
+use App\Enums\ProductType;
 use Validator;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
-use App\OrderDetail;
-use Illuminate\Support\Facades\Cache;
-use App\Modules\Redirection\Models\Redirection;
+use App\Modules\Order\Models\OrderDetail;
 
 class ProductController extends Controller
 {
     private $model;
     private $module = 'Product';
+    private ProductServiceInterface $productService;
 
-    public function __construct(Product $model)
+    public function __construct(Product $model, ProductServiceInterface $productService)
     {
         $this->model = $model;
+        $this->productService = $productService;
     }
 
+    /**
+     * Display a listing of products
+     * 
+     * @param Request $request
+     * @return \Illuminate\View\View
+     */
     public function index(Request $request)
     {
         active('product', 'list');
-        $query = $this->model::where('type', 'product');
-
+        
+        // Prepare filters
+        $filters = [];
         if ($request->get('status') != "") {
-            $query->where('status', $request->get('status'));
+            $filters['status'] = $request->get('status');
         }
         if ($request->get('cat_id') != "") {
-            $query->where('cat_id', 'like', '%' . $request->get('cat_id') . '%');
+            $filters['cat_id'] = $request->get('cat_id');
         }
         if ($request->get('keyword') != "") {
-            $query->where('name', 'like', '%' . $request->get('keyword') . '%');
+            $filters['keyword'] = $request->get('keyword');
         }
-
-        $data['products'] = $query->orderBy('sort', 'desc')
-            ->paginate(10)
-            ->appends([
-                'cat_id' => $request->get('cat_id'),
-                'keyword' => $request->get('keyword'),
-                'status' => $request->get('status')
-            ]);
-
-        $data['categories'] = $this->model::where([['type', 'taxonomy'], ['status', '1']])->orderBy('sort', 'asc')->get();
+        
+        // Get products using service
+        $data['products'] = $this->productService->getProducts($filters, 10);
+        
+        // Get categories for filter
+        $data['categories'] = $this->model::where([
+            ['type', ProductType::TAXONOMY->value],
+            ['status', ProductStatus::ACTIVE->value]
+        ])->orderBy('sort', 'asc')->get();
+        
         return view($this->module . '::index', $data);
     }
 
+    /**
+     * Show the form for creating a new product
+     * 
+     * @return \Illuminate\View\View
+     */
     public function create()
     {
         active('product', 'list');
-        $data['categories'] = $this->model::where([['type', 'taxonomy'], ['status', '1'], ['cat_id', '0']])->orderBy('sort', 'asc')->get();
-        $data['brands'] = Brand::where('status', '1')->orderBy('name', 'asc')->get();
-        $data['origins'] = Origin::where('status', '1')->orderBy('sort', 'asc')->get();
-        $data['ingredients'] = Ingredient::where('status', '1')->orderBy('name', 'asc')->get();
+        
+        $data['categories'] = $this->model::where([
+            ['type', ProductType::TAXONOMY->value],
+            ['status', ProductStatus::ACTIVE->value],
+            ['cat_id', '0']
+        ])->orderBy('sort', 'asc')->get();
+        
+        $data['brands'] = Brand::where('status', ProductStatus::ACTIVE->value)
+            ->orderBy('name', 'asc')->get();
+        
+        $data['origins'] = Origin::where('status', ProductStatus::ACTIVE->value)
+            ->orderBy('sort', 'asc')->get();
+        
+        $data['ingredients'] = Ingredient::where('status', ProductStatus::ACTIVE->value)
+            ->orderBy('name', 'asc')->get();
+        
         return view($this->module . '::create', $data);
     }
 
+    /**
+     * Show the form for editing a product
+     * 
+     * @param int $id
+     * @return \Illuminate\View\View|\Illuminate\Http\RedirectResponse
+     */
     public function edit($id)
     {
         active('product', 'list');
         
-        // CRITICAL: Use fresh query to bypass any model cache and get latest data from DB
-        // Clear any query cache first
-        \Illuminate\Support\Facades\Cache::forget('product_' . $id);
-        
-        // Use fresh query to ensure we get latest data from DB
-        $detail = $this->model::where('id', $id)->first();
-        if (!$detail) {
-            return redirect()->route('product');
+        try {
+            // Get product with relations using service
+            $detail = $this->productService->getProductWithRelations($id);
+        } catch (\Exception $e) {
+            return redirect()->route('product')
+                ->with('error', 'Sản phẩm không tồn tại');
         }
         
-        $data['categories'] = $this->model::where([['type', 'taxonomy'], ['status', '1'], ['cat_id', '0']])->orderBy('sort', 'asc')->get();
-        $data['detail'] = $detail;
-        $data['brands'] = Brand::where('status', '1')->orderBy('name', 'asc')->get();
-        $data['origins'] = Origin::where('status', '1')->orderBy('sort', 'asc')->get();
-        $data['ingredients'] = Ingredient::where('status', '1')->orderBy('name', 'asc')->get();
+        $data['categories'] = $this->model::where([
+            ['type', ProductType::TAXONOMY->value],
+            ['status', ProductStatus::ACTIVE->value],
+            ['cat_id', '0']
+        ])->orderBy('sort', 'asc')->get();
         
-        // Safely decode gallery JSON - get fresh from DB
+        $data['detail'] = $detail;
+        $data['brands'] = Brand::where('status', ProductStatus::ACTIVE->value)
+            ->orderBy('name', 'asc')->get();
+        
+        $data['origins'] = Origin::where('status', ProductStatus::ACTIVE->value)
+            ->orderBy('sort', 'asc')->get();
+        
+        $data['ingredients'] = Ingredient::where('status', ProductStatus::ACTIVE->value)
+            ->orderBy('name', 'asc')->get();
+        
+        // Safely decode gallery JSON
         $galleryJson = $detail->gallery ?? '[]';
         $decodedGallery = json_decode($galleryJson, true);
         $data['gallerys'] = is_array($decodedGallery) ? $decodedGallery : [];
-        
-        \Illuminate\Support\Facades\Log::info("Product Edit: Gallery loaded from DB", [
-            'product_id' => $id,
-            'gallery_json' => $galleryJson,
-            'gallery_count' => count($data['gallerys']),
-            'gallery_urls' => $data['gallerys']
-        ]);
         
         // Safely decode cat_id JSON
         $catIdJson = $detail->cat_id ?? '[]';
         $decodedCatId = json_decode($catIdJson, true);
         $data['dcat'] = is_array($decodedCatId) ? $decodedCatId : [];
+        
         return view($this->module . '::edit', $data);
     }
 
-    public function update(Request $request)
+    /**
+     * Store a newly created product
+     * 
+     * @param StoreProductRequest $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function store(StoreProductRequest $request)
     {
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|min:1|max:250',
-            'slug' => 'required|min:1|max:250|unique:posts,slug,' . $request->id,
-        ], [
-            'name.required' => 'Tiêu đề không được bỏ trống.',
-            'name.min' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
-            'name.max' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
-            'slug.required' => 'Bạn chưa nhập đường dẫn',
-            'slug.min' => 'Đường dẫn có độ dài từ 1 đến 250 ký tự',
-            'slug.max' => 'Đường dẫn có độ dài từ 1 đến 250 ký tự',
-            'slug.unique' => 'Đường dẫn đã tồn tại',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'errors' => $validator->errors()
-            ]);
-        }
-
-        // Logic: First image in gallery is the main image (Avatar)
-        // Get URLs from request (existing images from form)
-        $imageOther = $request->imageOther ?? [];
-        
-        // Filter out empty, blob, and invalid URLs from form data immediately
-        $imageOther = array_filter($imageOther, function($url) {
-            return !empty($url) && 
-                   strpos($url, 'blob:') === false &&
-                   strpos($url, 'no-image.png') === false;
-        });
-        $imageOther = array_values($imageOther); // Re-index
-        
-        \Illuminate\Support\Facades\Log::info("Product Update: imageOther from form", [
-            'raw_imageOther' => $request->imageOther ?? [],
-            'filtered_imageOther' => $imageOther,
-            'count' => count($imageOther),
-            'values' => $imageOther
-        ]);
-        
-        // Also check session for R2 uploaded URLs (new uploads)
-        // Support multiple session keys (comma-separated) from multiple uploads
-        $sessionKeyInput = $request->input('r2_session_key');
-        $sessionUrls = [];
-        $sessionKeysProcessed = [];
-        $urlsPerSessionKey = [];
-        
-        if ($sessionKeyInput) {
-            // Split by comma to handle multiple session keys
-            $sessionKeys = is_array($sessionKeyInput) ? $sessionKeyInput : explode(',', $sessionKeyInput);
-            $sessionKeys = array_filter(array_map('trim', $sessionKeys)); // Remove empty values
-            
-            foreach ($sessionKeys as $sessionKey) {
-                $urlsFromKey = \Illuminate\Support\Facades\Session::get($sessionKey, []);
-                $sessionKeysProcessed[] = $sessionKey;
-                
-                if (!empty($urlsFromKey)) {
-                    if (is_array($urlsFromKey)) {
-                        $urlsPerSessionKey[$sessionKey] = count($urlsFromKey);
-                        $sessionUrls = array_merge($sessionUrls, $urlsFromKey);
-                    } else {
-                        $urlsPerSessionKey[$sessionKey] = 1;
-                        $sessionUrls[] = $urlsFromKey;
-                    }
-                } else {
-                    $urlsPerSessionKey[$sessionKey] = 0;
-                }
-            }
-            
-            \Illuminate\Support\Facades\Log::info("Product Update: R2 Session URLs retrieval", [
-                'session_keys' => $sessionKeysProcessed,
-                'session_keys_count' => count($sessionKeysProcessed),
-                'urls_per_session_key' => $urlsPerSessionKey,
-                'total_session_urls_count' => count($sessionUrls),
-                'session_urls' => $sessionUrls
-            ]);
-        }
-        
-        // Also check user's general session
-        $userSessionKey = 'r2_uploaded_urls_user_' . auth()->id();
-        $userSessionUrls = \Illuminate\Support\Facades\Session::get($userSessionKey, []);
-        if (!empty($userSessionUrls)) {
-            \Illuminate\Support\Facades\Log::info("Product Update: Found R2 URLs in user session", [
-                'user_session_urls_count' => count($userSessionUrls),
-                'user_session_urls' => $userSessionUrls
-            ]);
-        }
-        
-        // Merge: Form URLs (existing images) FIRST, then session URLs (new uploads)
-        // This ensures existing images are preserved and new uploads are added
-        // Filter session URLs to ensure they are valid
-        $sessionUrls = array_filter($sessionUrls, function($url) {
-            return !empty($url) && 
-                   strpos($url, 'blob:') === false &&
-                   strpos($url, 'no-image.png') === false;
-        });
-        $userSessionUrls = array_filter($userSessionUrls, function($url) {
-            return !empty($url) && 
-                   strpos($url, 'blob:') === false &&
-                   strpos($url, 'no-image.png') === false;
-        });
-        
-        $allUrls = array_merge($imageOther, $sessionUrls, $userSessionUrls);
-        
-        \Illuminate\Support\Facades\Log::info("Product Update: URLs merged - VERIFICATION", [
-            'from_form_count' => count($imageOther),
-            'from_form_urls' => $imageOther,
-            'from_session_count' => count($sessionUrls),
-            'from_session_urls' => $sessionUrls,
-            'from_user_session_count' => count($userSessionUrls),
-            'from_user_session_urls' => $userSessionUrls,
-            'total_after_merge' => count($allUrls),
-            'all_urls' => $allUrls,
-            'session_keys_processed' => $sessionKeysProcessed ?? [],
-            'urls_per_session_key' => $urlsPerSessionKey ?? []
-        ]);
-        
-        // Remove duplicates while preserving order
-        $gallery = [];
-        $seen = [];
-        foreach ($allUrls as $url) {
-            if (!in_array($url, $seen)) {
-                $gallery[] = $url;
-                $seen[] = $url;
-            }
-        }
-        
-        // Final filter to ensure all URLs are valid
-        $gallery = array_filter($gallery, function($url) {
-            $isValid = !empty($url) && 
-                   $url !== asset("public/admin/no-image.png") && 
-                   $url !== url("public/admin/no-image.png") &&
-                   strpos($url, 'no-image.png') === false &&
-                   strpos($url, 'blob:') === false;
-            if (!$isValid) {
-                \Illuminate\Support\Facades\Log::warning("Product Update: Filtered out invalid image URL", ['url' => $url]);
-            }
-            return $isValid;
-        });
-        $gallery = array_values($gallery); // Re-index array
-        
-        \Illuminate\Support\Facades\Log::info("Product Update: Gallery after filtering - FINAL RESULT", [
-            'gallery' => $gallery,
-            'count' => count($gallery),
-            'gallery_json' => json_encode($gallery),
-            'verification' => [
-                'form_urls_count' => count($imageOther),
-                'session_urls_count' => count($sessionUrls),
-                'user_session_urls_count' => count($userSessionUrls),
-                'total_merged' => count($allUrls),
-                'final_gallery_count' => count($gallery),
-                'match' => (count($gallery) >= count($imageOther) + count($sessionUrls)) ? 'OK' : 'MISMATCH'
-            ]
-        ]);
-        
-        $image = (count($gallery) > 0) ? $gallery[0] : null;
-
-        // Get old product to check slug change
-        $oldProduct = $this->model::find($request->id);
-        $oldSlug = $oldProduct->slug;
-
-        \Illuminate\Support\Facades\Log::info("Product Update: Updating product", [
-            'product_id' => $request->id,
-            'image' => $image,
-            'gallery_json' => json_encode($gallery),
-            'gallery_count' => count($gallery)
-        ]);
-        
-        \Illuminate\Support\Facades\Log::info("Product Update: Updating product", [
-            'product_id' => $request->id,
-            'image' => $image,
-            'gallery_json' => json_encode($gallery),
-            'gallery_count' => count($gallery)
-        ]);
-        
-        $updateResult = $this->model::where('id', $request->id)->update([
-            'name' => $request->name,
-            'slug' => $request->slug,
-            'image' => $image,
-            'content' => $request->content,
-            'cbmp' => $request->cbmp,
-            'description' => $request->description ?? $oldProduct->description,
-            'status' => $request->status ?? $oldProduct->status,
-            'cat_id' => json_encode($request->cat_id),
-            'origin_id' => $request->origin_id,
-            'brand_id' => $request->brand_id ?? $oldProduct->brand_id,
-            'seo_title' => $request->seo_title ?? $oldProduct->seo_title,
-            'seo_description' => $request->seo_description ?? $oldProduct->seo_description,
-            'type' => 'product',
-            'feature' => $request->feature ?? $oldProduct->feature,
-            'stock' => $request->stock ?? $oldProduct->stock,
-            'best' => $request->best ?? $oldProduct->best,
-            'ingredient' => $this->processIngredients($request->ingredient ?? $oldProduct->ingredient),
-            'verified' => $request->verified ?? $oldProduct->verified,
-            'gallery' => json_encode($gallery),
-            'user_id' => Auth::id(),
-        ]);
-        
-        // Verify gallery was saved correctly - use fresh query to bypass cache
-        $savedProduct = $this->model::where('id', $request->id)->first();
-        if ($savedProduct) {
-            // Force refresh from DB by re-querying
-            $savedProduct = $this->model::where('id', $request->id)->first();
-        }
-        
-        $savedGalleryJson = $savedProduct->gallery ?? '[]';
-        $savedGallery = json_decode($savedGalleryJson, true);
-        $savedGallery = is_array($savedGallery) ? $savedGallery : [];
-        
-        \Illuminate\Support\Facades\Log::info("Product Update: Product updated successfully - VERIFICATION", [
-            'product_id' => $request->id,
-            'update_result' => $updateResult,
-            'gallery_saved_count' => count($savedGallery),
-            'gallery_expected_count' => count($gallery),
-            'gallery_match' => (count($savedGallery) === count($gallery)) ? 'OK' : 'MISMATCH',
-            'gallery_saved' => $savedGallery,
-            'gallery_expected' => $gallery
-        ]);
-
-        // Handle Redirection if slug changed
-        if ($oldSlug != $request->slug) {
-            try {
-                // Check if redirection already exists to avoid duplicates
-                $exists = Redirection::where('link_from', url($oldSlug))->exists();
-                if (!$exists) {
-                    Redirection::insert([
-                        'link_from' => url($oldSlug),
-                        'link_to' => url($request->slug),
-                        'type' => 301,
-                        'status' => '1',
-                        'user_id' => Auth::id(),
-                        'created_at' => date('Y-m-d H:i:s'),
-                        'updated_at' => date('Y-m-d H:i:s')
+        try {
+            // Check SKU uniqueness if provided
+            if ($request->sku) {
+                $check = Variant::where('sku', $request->sku)->exists();
+                if ($check) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'SKU đã tồn tại'
                     ]);
                 }
-            } catch (\Exception $e) {
-                // Log error but don't stop the process
-                \Illuminate\Support\Facades\Log::error("Failed to create redirection: " . $e->getMessage());
-            }
-        }
-
-        // Clear Cache BEFORE returning response
-        Cache::flush();
-        
-        // Clear session URLs after successful save
-        // Support multiple session keys (comma-separated)
-        $sessionKeyInput = $request->input('r2_session_key');
-        if ($sessionKeyInput) {
-            $sessionKeys = is_array($sessionKeyInput) ? $sessionKeyInput : explode(',', $sessionKeyInput);
-            $sessionKeys = array_filter(array_map('trim', $sessionKeys)); // Remove empty values
-            foreach ($sessionKeys as $sessionKey) {
-                \Illuminate\Support\Facades\Session::forget($sessionKey);
-            }
-        }
-        $userSessionKey = 'r2_uploaded_urls_user_' . auth()->id();
-        \Illuminate\Support\Facades\Session::forget($userSessionKey);
-
-        // Return response with cache busting parameter to ensure fresh page load
-        return response()->json([
-            'status' => 'success',
-            'alert' => 'Sửa thành công!',
-            'url' => '/admin/product/edit/' . $request->id . '?t=' . time(),
-            'gallery_count' => count($savedGallery) // Include gallery count for verification
-        ]);
-    }
-
-    public function store(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|min:1|max:250',
-            'slug' => 'required|min:1|max:250|unique:posts,slug',
-        ], [
-            'name.required' => 'Tiêu đề không được bỏ trống.',
-            'name.min' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
-            'name.max' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
-            'slug.required' => 'Bạn chưa nhập đường dẫn',
-            'slug.min' => 'Đường dẫn có độ dài từ 1 đến 250 ký tự',
-            'slug.max' => 'Đường dẫn có độ dài từ 1 đến 250 ký tự',
-            'slug.unique' => 'Đường dẫn đã tồn tại',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'errors' => $validator->errors()
-            ]);
-        }
-
-        if ($request->sku) {
-            $check = Variant::select('id')->where('sku', $request->sku)->exists();
-            if ($check) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Sku đã tồn tại'
-                ]);
-            }
-        }
-
-        // Logic: First image in gallery is the main image (Avatar)
-        // Get URLs from request (existing images from form)
-        $imageOther = $request->imageOther ?? [];
-        
-        // Filter out empty, blob, and invalid URLs from form data immediately
-        $imageOther = array_filter($imageOther, function($url) {
-            return !empty($url) && 
-                   strpos($url, 'blob:') === false &&
-                   strpos($url, 'no-image.png') === false;
-        });
-        $imageOther = array_values($imageOther); // Re-index
-        
-        // Note: For store (new product), we don't need to load from DB since it's a new product
-        
-        \Illuminate\Support\Facades\Log::info("Product Store: imageOther from form", [
-            'raw_imageOther' => $request->imageOther ?? [],
-            'filtered_imageOther' => $imageOther,
-            'count' => count($imageOther),
-            'values' => $imageOther
-        ]);
-        
-        // Also check session for R2 uploaded URLs (new uploads)
-        // Support multiple session keys (comma-separated) from multiple uploads
-        $sessionKeyInput = $request->input('r2_session_key');
-        $sessionUrls = [];
-        $sessionKeysProcessed = [];
-        $urlsPerSessionKey = [];
-        
-        if ($sessionKeyInput) {
-            // Split by comma to handle multiple session keys
-            $sessionKeys = is_array($sessionKeyInput) ? $sessionKeyInput : explode(',', $sessionKeyInput);
-            $sessionKeys = array_filter(array_map('trim', $sessionKeys)); // Remove empty values
-            
-            foreach ($sessionKeys as $sessionKey) {
-                $urlsFromKey = \Illuminate\Support\Facades\Session::get($sessionKey, []);
-                $sessionKeysProcessed[] = $sessionKey;
-                
-                if (!empty($urlsFromKey)) {
-                    if (is_array($urlsFromKey)) {
-                        $urlsPerSessionKey[$sessionKey] = count($urlsFromKey);
-                        $sessionUrls = array_merge($sessionUrls, $urlsFromKey);
-                    } else {
-                        $urlsPerSessionKey[$sessionKey] = 1;
-                        $sessionUrls[] = $urlsFromKey;
-                    }
-                } else {
-                    $urlsPerSessionKey[$sessionKey] = 0;
-                }
             }
             
-            \Illuminate\Support\Facades\Log::info("Product Store: R2 Session URLs retrieval", [
-                'session_keys' => $sessionKeysProcessed,
-                'session_keys_count' => count($sessionKeysProcessed),
-                'urls_per_session_key' => $urlsPerSessionKey,
-                'total_session_urls_count' => count($sessionUrls),
-                'session_urls' => $sessionUrls
-            ]);
-        }
-        
-        // Also check user's general session
-        $userSessionKey = 'r2_uploaded_urls_user_' . auth()->id();
-        $userSessionUrls = \Illuminate\Support\Facades\Session::get($userSessionKey, []);
-        if (!empty($userSessionUrls)) {
-            \Illuminate\Support\Facades\Log::info("Product Store: Found R2 URLs in user session", [
-                'user_session_urls_count' => count($userSessionUrls),
-                'user_session_urls' => $userSessionUrls
-            ]);
-        }
-        
-        // Merge: Form URLs (existing images) FIRST, then session URLs (new uploads)
-        // This ensures existing images are preserved and new uploads are added
-        // Filter session URLs to ensure they are valid
-        $sessionUrls = array_filter($sessionUrls, function($url) {
-            return !empty($url) && 
-                   strpos($url, 'blob:') === false &&
-                   strpos($url, 'no-image.png') === false;
-        });
-        $userSessionUrls = array_filter($userSessionUrls, function($url) {
-            return !empty($url) && 
-                   strpos($url, 'blob:') === false &&
-                   strpos($url, 'no-image.png') === false;
-        });
-        
-        $allUrls = array_merge($imageOther, $sessionUrls, $userSessionUrls);
-        
-        \Illuminate\Support\Facades\Log::info("Product Store: URLs merged - VERIFICATION", [
-            'from_form_count' => count($imageOther),
-            'from_form_urls' => $imageOther,
-            'from_session_count' => count($sessionUrls),
-            'from_session_urls' => $sessionUrls,
-            'from_user_session_count' => count($userSessionUrls),
-            'from_user_session_urls' => $userSessionUrls,
-            'total_after_merge' => count($allUrls),
-            'all_urls' => $allUrls,
-            'session_keys_processed' => $sessionKeysProcessed ?? [],
-            'urls_per_session_key' => $urlsPerSessionKey ?? []
-        ]);
-        
-        // Remove duplicates while preserving order
-        $gallery = [];
-        $seen = [];
-        foreach ($allUrls as $url) {
-            if (!in_array($url, $seen)) {
-                $gallery[] = $url;
-                $seen[] = $url;
-            }
-        }
-        
-        // Final filter to ensure all URLs are valid
-        $gallery = array_filter($gallery, function($url) {
-            $isValid = !empty($url) && 
-                   $url !== asset("public/admin/no-image.png") && 
-                   $url !== url("public/admin/no-image.png") &&
-                   strpos($url, 'no-image.png') === false &&
-                   strpos($url, 'blob:') === false;
-            if (!$isValid) {
-                \Illuminate\Support\Facades\Log::warning("Product Store: Filtered out invalid image URL", ['url' => $url]);
-            }
-            return $isValid;
-        });
-        $gallery = array_values($gallery); // Re-index array
-        
-        \Illuminate\Support\Facades\Log::info("Product Store: Gallery after filtering - FINAL RESULT", [
-            'gallery' => $gallery,
-            'count' => count($gallery),
-            'gallery_json' => json_encode($gallery),
-            'verification' => [
-                'form_urls_count' => count($imageOther),
-                'session_urls_count' => count($sessionUrls),
-                'user_session_urls_count' => count($userSessionUrls),
-                'total_merged' => count($allUrls),
-                'final_gallery_count' => count($gallery),
-                'match' => (count($gallery) >= count($imageOther) + count($sessionUrls)) ? 'OK' : 'MISMATCH'
-            ]
-        ]);
-        
-        $image = (count($gallery) > 0) ? $gallery[0] : null;
-
-        try {
-            $id = $this->model::insertGetId([
-                'name' => $request->name,
-                'slug' => $request->slug,
-                'image' => $image,
-                'content' => $request->content,
-                'cbmp' => $request->cbmp,
-                'description' => $request->description ?? '',
-                'status' => $request->status ?? '1',
-                'cat_id' => json_encode($request->cat_id ?? []),
-                'seo_title' => $request->seo_title,
-                'seo_description' => $request->seo_description,
-                'origin_id' => $request->origin_id,
-                'brand_id' => $request->brand_id,
-                'type' => 'product',
-                'feature' => $request->feature ?? '0',
-                'ingredient' => $request->ingredient,
-                'best' => $request->best ?? '0',
-                'stock' => $request->stock ?? '1',
-                'user_id' => Auth::id(),
-                'gallery' => json_encode($gallery),
-                'verified' => $request->verified ?? '0',
-                'created_at' => date('Y-m-d H:i:s')
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Lỗi DB Product: ' . $e->getMessage()
-            ]);
-        }
-
-        if ($id > 0) {
-            try {
-                Variant::insertGetId([
-                    'sku' => $request->sku ?? 'SKU-'.time().'-'.rand(10,99),
-                    'product_id' => $id,
-                    'image' => $image, // Use the main image from gallery
-                    'weight' => ($request->weight != "") ? $request->weight : 0,
-                    'size_id' => '0',
-                    'color_id' => '0',
-                    'price' => ($request->price != "") ? str_replace(',', '', $request->price) : 0,
-                    'sale' => ($request->sale != "") ? str_replace(',', '', $request->sale) : 0,
-                    'user_id' => Auth::id(),
-                    'created_at' => date('Y-m-d H:i:s')
-                ]);
-            } catch (\Exception $e) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Lỗi DB Variant: ' . $e->getMessage()
-                ]);
-            }
+            // Create product using service
+            $product = $this->productService->createProduct($request->validated());
             
-            // Clear Cache
-            Cache::flush();
-            
-            // Clear session URLs after successful save
-            // Support multiple session keys (comma-separated)
-            $sessionKeyInput = $request->input('r2_session_key');
-            if ($sessionKeyInput) {
-                $sessionKeys = is_array($sessionKeyInput) ? $sessionKeyInput : explode(',', $sessionKeyInput);
-                $sessionKeys = array_filter(array_map('trim', $sessionKeys)); // Remove empty values
-                foreach ($sessionKeys as $sessionKey) {
-                    \Illuminate\Support\Facades\Session::forget($sessionKey);
-                }
-            }
-            $userSessionKey = 'r2_uploaded_urls_user_' . auth()->id();
-            \Illuminate\Support\Facades\Session::forget($userSessionKey);
-
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Thêm thành công!',
                 'url' => route('product')
             ]);
-        } else {
+            
+        } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'errors' => ['alert' => ['0' => 'Thêm không thành công!']]
-            ]);
+                'message' => 'Lỗi: ' . $e->getMessage()
+            ], 500);
         }
     }
 
+    /**
+     * Update an existing product
+     * 
+     * @param UpdateProductRequest $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function update(UpdateProductRequest $request)
+    {
+        try {
+            // Update product using service
+            $product = $this->productService->updateProduct(
+                $request->id,
+                $request->validated()
+            );
+            
+            return response()->json([
+                'status' => 'success',
+                'alert' => 'Sửa thành công!',
+                'url' => '/admin/product/edit/' . $request->id . '?t=' . time()
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Lỗi: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove the specified product
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function delete(Request $request)
     {
-        $this->model::findOrFail($request->id)->delete();
-        $url = route('product');
-        if ($request->page != "") {
-            $url .= '?page=' . $request->page;
+        try {
+            $this->productService->deleteProduct($request->id);
+            
+            $url = route('product');
+            if ($request->page != "") {
+                $url .= '?page=' . $request->page;
+            }
+            
+            return response()->json([
+                'status' => 'success',
+                'alert' => 'Xóa thành công!',
+                'url' => $url
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 400);
         }
-        return response()->json([
-            'status' => 'success',
-            'alert' => 'Xóa thành công!',
-            'url' => $url
-        ]);
     }
 
+    /**
+     * Update product status
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function status(Request $request)
     {
         $this->model::where('id', $request->id)->update([
             'status' => $request->status
         ]);
+        
         return response()->json([
             'status' => 'success',
             'alert' => 'Đổi trạng thái thành công!',
@@ -648,6 +255,12 @@ class ProductController extends Controller
         ]);
     }
 
+    /**
+     * Bulk actions on products
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function action(Request $request)
     {
         $check = $request->checklist;
@@ -657,23 +270,36 @@ class ProductController extends Controller
                 'errors' => ['alert' => ['0' => 'Chưa chọn dữ liệu cần thao tác!']]
             ]);
         }
+        
         $action = $request->action;
         if ($action == 0) {
-            $this->model::whereIn('id', $check)->update(['status' => '0']);
+            $this->model::whereIn('id', $check)->update([
+                'status' => ProductStatus::INACTIVE->value
+            ]);
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Ẩn thành công!',
                 'url' => route('product')
             ]);
         } elseif ($action == 1) {
-            $this->model::whereIn('id', $check)->update(['status' => '1']);
+            $this->model::whereIn('id', $check)->update([
+                'status' => ProductStatus::ACTIVE->value
+            ]);
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Hiển thị thành công!',
                 'url' => route('product')
             ]);
         } else {
-            $this->model::whereIn('id', $check)->delete();
+            // Delete multiple products
+            foreach ($check as $id) {
+                try {
+                    $this->productService->deleteProduct($id);
+                } catch (\Exception $e) {
+                    // Log error but continue with other deletions
+                    \Illuminate\Support\Facades\Log::error("Failed to delete product {$id}: " . $e->getMessage());
+                }
+            }
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Xóa thành công!',
@@ -682,6 +308,12 @@ class ProductController extends Controller
         }
     }
 
+    /**
+     * Update sort order for multiple products
+     * 
+     * @param Request $req
+     * @return void
+     */
     public function postSort(Request $req)
     {
         $sort = $req->sort;
@@ -694,11 +326,18 @@ class ProductController extends Controller
         }
     }
 
+    /**
+     * Update sort order for a single product
+     * 
+     * @param Request $req
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function sort(Request $req)
     {
         $this->model::where('id', $req->id)->update([
             'sort' => $req->sort
         ]);
+        
         return response()->json([
             'status' => 'success',
             'alert' => 'Đổi thứ tự thành công!',
@@ -706,22 +345,40 @@ class ProductController extends Controller
         ]);
     }
 
+    /**
+     * Show variant edit page
+     * 
+     * @param int $id Product ID
+     * @param int $code Variant ID
+     * @return \Illuminate\View\View|\Illuminate\Http\RedirectResponse
+     */
     public function variant($id, $code)
     {
         active('product', 'list');
+        
         $product = $this->model::find($id);
         $detail = Variant::find($code);
+        
         if (!$product || !$detail) {
             return redirect()->route('product');
         }
+        
         $data['detail'] = $detail;
         $data['product'] = $product;
         $data['variants'] = $product->variants;
-        $data['colors'] = Color::where('status', '1')->get();
-        $data['sizes'] = Size::where('status', '1')->orderBy('sort', 'asc')->get();
+        $data['colors'] = Color::where('status', ProductStatus::ACTIVE->value)->get();
+        $data['sizes'] = Size::where('status', ProductStatus::ACTIVE->value)
+            ->orderBy('sort', 'asc')->get();
+        
         return view($this->module . '::variant', $data);
     }
 
+    /**
+     * Update variant
+     * 
+     * @param Request $req
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function editvariant(Request $req)
     {
         $validator = Validator::make($req->all(), [
@@ -730,12 +387,14 @@ class ProductController extends Controller
             'sku.required' => 'Bạn chưa nhập Sku',
             'sku.unique' => 'Sku đã tồn tại',
         ]);
+        
         if ($validator->fails()) {
             return response()->json([
                 'status' => 'error',
                 'errors' => $validator->errors()
             ]);
         }
+        
         $update = Variant::where('id', $req->id)->update([
             'sku' => $req->sku,
             'size_id' => $req->size_id,
@@ -746,6 +405,7 @@ class ProductController extends Controller
             'sale' => str_replace(',', '', $req->sale),
             'user_id' => Auth::id(),
         ]);
+        
         if ($update > 0) {
             return response()->json([
                 'status' => 'success',
@@ -760,21 +420,38 @@ class ProductController extends Controller
         }
     }
 
+    /**
+     * Show variant creation page
+     * 
+     * @param int $id Product ID
+     * @return \Illuminate\View\View|\Illuminate\Http\RedirectResponse
+     */
     public function variantnew($id)
     {
         active('product', 'list');
+        
         $product = $this->model::find($id);
         if (!$product) {
             return redirect()->route('product');
         }
+        
         $data['product'] = $product;
         $data['variants'] = $product->variants;
-        $data['first'] = Variant::where('product_id', $id)->orderBy('id', 'asc')->first();
-        $data['colors'] = Color::where('status', '1')->get();
-        $data['sizes'] = Size::where('status', '1')->orderBy('sort', 'asc')->get();
+        $data['first'] = Variant::where('product_id', $id)
+            ->orderBy('id', 'asc')->first();
+        $data['colors'] = Color::where('status', ProductStatus::ACTIVE->value)->get();
+        $data['sizes'] = Size::where('status', ProductStatus::ACTIVE->value)
+            ->orderBy('sort', 'asc')->get();
+        
         return view($this->module . '::variantnew', $data);
     }
 
+    /**
+     * Create new variant
+     * 
+     * @param Request $req
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function createvariant(Request $req)
     {
         $validator = Validator::make($req->all(), [
@@ -783,12 +460,14 @@ class ProductController extends Controller
             'sku.required' => 'Bạn chưa nhập Sku',
             'sku.unique' => 'Sku đã tồn tại',
         ]);
+        
         if ($validator->fails()) {
             return response()->json([
                 'status' => 'error',
                 'errors' => $validator->errors()
             ]);
         }
+        
         $id = Variant::insertGetId([
             'sku' => $req->sku,
             'product_id' => $req->product_id,
@@ -801,6 +480,7 @@ class ProductController extends Controller
             'user_id' => Auth::id(),
             'created_at' => date('Y-m-d H:i:s')
         ]);
+        
         if ($id > 0) {
             return response()->json([
                 'status' => 'success',
@@ -815,6 +495,12 @@ class ProductController extends Controller
         }
     }
 
+    /**
+     * Delete variant
+     * 
+     * @param Request $req
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function delvariant(Request $req)
     {
         $order = OrderDetail::select('id')->where('product_id', $req->id)->exists();
@@ -832,9 +518,19 @@ class ProductController extends Controller
         }
     }
 
+    /**
+     * Process ingredients - convert plain text to linked ingredients
+     * 
+     * This method is kept for backward compatibility but logic is now in ProductService
+     * 
+     * @param string|null $content
+     * @return string
+     */
     public function processIngredients($content)
     {
-        if (empty($content)) return $content;
+        if (empty($content)) {
+            return $content;
+        }
 
         // Strip tags to work with plain text
         $cleanContent = strip_tags($content);
@@ -843,16 +539,22 @@ class ProductController extends Controller
         $parts = preg_split('/,\s*/', $cleanContent);
         
         // Filter empty
-        $parts = array_filter($parts, function($value) { return trim($value) !== ''; });
+        $parts = array_filter($parts, function($value) { 
+            return trim($value) !== ''; 
+        });
         
-        if (empty($parts)) return $content;
+        if (empty($parts)) {
+            return $content;
+        }
 
         // Get unique names to query
         $names = array_map('trim', $parts);
         $names = array_unique($names);
 
         // Query DB for these names (Case-insensitive)
-        $ingredients = Ingredient::whereIn('name', $names)->where('status', '1')->get();
+        $ingredients = Ingredient::whereIn('name', $names)
+            ->where('status', ProductStatus::ACTIVE->value)
+            ->get();
         
         // Map for lookup
         $ingMap = [];

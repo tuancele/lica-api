@@ -1,0 +1,70 @@
+<?php
+
+namespace App\Http\Resources\Product;
+
+use Illuminate\Http\Resources\Json\JsonResource;
+
+/**
+ * Product Resource for API responses
+ * 
+ * Formats product data for API output
+ */
+class ProductResource extends JsonResource
+{
+    /**
+     * Transform the resource into an array.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return array
+     */
+    public function toArray($request): array
+    {
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'slug' => $this->slug,
+            'image' => $this->image,
+            'gallery' => $this->getGalleryArray(),
+            'content' => $this->content,
+            'description' => $this->description,
+            'price_info' => $this->price_info ?? null,
+            'status' => $this->status,
+            'feature' => $this->feature,
+            'best' => $this->best,
+            'stock' => $this->stock,
+            'verified' => $this->verified,
+            'sort' => $this->sort,
+            'brand' => new BrandResource($this->whenLoaded('brand')),
+            'origin' => new OriginResource($this->whenLoaded('origin')),
+            'variants' => VariantResource::collection($this->whenLoaded('variants')),
+            'category' => new CategoryResource($this->whenLoaded('category')),
+            'categories' => $this->getCategoriesArray(),
+            'seo_title' => $this->seo_title,
+            'seo_description' => $this->seo_description,
+            'created_at' => $this->created_at?->toISOString(),
+            'updated_at' => $this->updated_at?->toISOString(),
+        ];
+    }
+
+    /**
+     * Get gallery as array
+     * 
+     * @return array
+     */
+    private function getGalleryArray(): array
+    {
+        $gallery = json_decode($this->gallery ?? '[]', true);
+        return is_array($gallery) ? $gallery : [];
+    }
+
+    /**
+     * Get categories as array
+     * 
+     * @return array
+     */
+    private function getCategoriesArray(): array
+    {
+        $catIds = json_decode($this->cat_id ?? '[]', true);
+        return is_array($catIds) ? $catIds : [];
+    }
+}

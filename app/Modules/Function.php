@@ -1,4 +1,6 @@
 <?php 
+use Illuminate\Support\Facades\Session;
+
 if (! function_exists("active")) {
 	function active($active,$subactive){
 	    Session::put("sidebar_active", $active);

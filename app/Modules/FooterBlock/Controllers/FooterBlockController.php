@@ -8,6 +8,8 @@ use App\Modules\FooterBlock\Models\FooterBlock;
 use Validator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class FooterBlockController extends Controller
 {
@@ -32,12 +34,29 @@ class FooterBlockController extends Controller
         } catch (\Exception $e) {}
         // #endregion
         active('themes','footer-block');
+
+        // Nếu bảng chưa tồn tại, trả về paginator rỗng để tránh lỗi
+        if (!Schema::hasTable('footer_blocks')) {
+            $data['blocks'] = new LengthAwarePaginator(
+                [],
+                0,
+                10,
+                1,
+                [
+                    'path'  => $request->url(),
+                    'query' => $request->query(),
+                ]
+            );
+            return view($this->view.'::index',$data);
+        }
+
         // #region agent log
         try {
             $logData2 = ['session_active' => Session::get('sidebar_active'), 'session_sub_active' => Session::get('sidebar_sub_active'), 'after_active' => true];
             @file_put_contents($logPath, json_encode(['sessionId' => 'debug-session', 'runId' => 'run1', 'hypothesisId' => 'B', 'location' => 'FooterBlockController.php:27', 'message' => 'After active() call', 'data' => $logData2, 'timestamp' => time() * 1000]) . "\n", FILE_APPEND);
         } catch (\Exception $e) {}
         // #endregion
+
         $data['blocks'] = $this->model::where(function ($query) use ($request) {
             if($request->get('status') != "") {
                 $query->where('status', $request->get('status'));

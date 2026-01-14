@@ -446,8 +446,30 @@ class CartController extends Controller
             if ($req->combo && is_array($req->combo)) {
                 // Thêm nhiều sản phẩm cùng lúc (Combo)
                 foreach ($req->combo as $item) {
-                    $variant = Variant::find($item['id']);
+                    $variant = Variant::with('product')->find($item['id']);
                     if ($variant) {
+                        $addQty = (int)($item['qty'] ?? 0);
+                        if ($addQty <= 0) continue;
+
+                        // Basic stock guard (Shopee variant stock)
+                        // Compatible with old products: if variant.stock is NULL, use product.stock
+                        $variantStock = isset($variant->stock) && $variant->stock !== null 
+                            ? (int)$variant->stock 
+                            : (isset($variant->product->stock) && $variant->product->stock == 1 ? 999 : 0);
+                        
+                        if ($variantStock > 0 && $addQty > $variantStock) {
+                            return response()->json([
+                                'status' => 'error',
+                                'message' => 'Số lượng vượt quá tồn kho của phân loại'
+                            ]);
+                        }
+                        if ($variantStock === 0) {
+                            return response()->json([
+                                'status' => 'error',
+                                'message' => 'Phân loại đã hết hàng'
+                            ]);
+                        }
+
                         $is_deal = isset($item['is_deal']) ? $item['is_deal'] : 0;
                         if ($is_deal == 1) {
                             $now = strtotime(date('Y-m-d H:i:s'));
@@ -460,7 +482,7 @@ class CartController extends Controller
                                 $variant->sale = 0;
                             }
                         }
-                        $cart->add($variant, $variant->id, $item['qty'], $is_deal);
+                        $cart->add($variant, $variant->id, $addQty, $is_deal);
                     }
                 }
                 Session::put('cart', $cart);
@@ -471,8 +493,32 @@ class CartController extends Controller
             }
 
             // Thêm 1 sản phẩm như cũ
-            $variant = Variant::find($req->id);
+            $variant = Variant::with('product')->find($req->id);
             if ($variant) {
+                $addQty = (int)($req->qty ?? 0);
+                if ($addQty <= 0) {
+                    return response()->json(['status' => 'error', 'message' => 'Số lượng không hợp lệ']);
+                }
+
+                // Basic stock guard (Shopee variant stock)
+                // Compatible with old products: if variant.stock is NULL, use product.stock
+                $variantStock = isset($variant->stock) && $variant->stock !== null 
+                    ? (int)$variant->stock 
+                    : (isset($variant->product->stock) && $variant->product->stock == 1 ? 999 : 0);
+                
+                if ($variantStock > 0 && $addQty > $variantStock) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Số lượng vượt quá tồn kho của phân loại'
+                    ]);
+                }
+                if ($variantStock === 0) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Phân loại đã hết hàng'
+                    ]);
+                }
+
                 $is_deal = $req->is_deal ?? 0;
                 // Xử lý giá deal nếu có yêu cầu
                 if ($is_deal == 1) {
@@ -488,7 +534,7 @@ class CartController extends Controller
                     }
                 }
 
-                $cart->add($variant, $variant->id, $req->qty, $is_deal);
+                $cart->add($variant, $variant->id, $addQty, $is_deal);
                 Session::put('cart', $cart);
                 
                 return response()->json([

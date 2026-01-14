@@ -410,7 +410,7 @@
             <div class="container-lg">
                 <div class="row">
                     <div class="col-12 col-md-12 text-center">
-                        {{$header->title}}
+                        {{$header->title ?? ''}}
                     </div>
                 </div>
             </div>
@@ -424,7 +424,7 @@
                 <i class="fa-bars-menu" aria-hidden="true"></i>
              </button>
                 <a href="/" class="logo">
-                    <img src="{{getImage($header->logo)}}" width="" height="" alt="{{$header->alt}}">
+                    <img src="{{getImage($header->logo ?? '')}}" width="" height="" alt="{{$header->alt ?? ''}}">
                 </a>
                 <div class="head-right">
                     <div class="search-head d-none d-md-block">
@@ -543,7 +543,7 @@
                 </div>
             </div>
             <div class="menu-top mb-0 mb-md-0">
-                @include('Website::layout.menu',['menu' => $header->menu])
+                @include('Website::layout.menu',['menu' => $header->menu ?? []])
             </div>
             <div class="search-head search_mobile">
                 <form action="/tim-kiem" class="search" method="get">
@@ -625,32 +625,34 @@
         <div class="row">
             <div class="col-md-5">
                 <div class="row">
-                    @php $block4 = json_decode($footer->block_4);@endphp
+                    @php $block4 = $footer && $footer->block_4 ? json_decode($footer->block_4) : null;@endphp
                     <div class="col-12 col-md-6">
                         <div class="box-footer">
+                            @if($block4)
                             <a href="/" class="logo_footer">
-                                <img src="{{getImage($block4->logo)}}" alt="{{$block4->alt}}">
+                                <img src="{{getImage($block4->logo ?? '')}}" alt="{{$block4->alt ?? ''}}">
                             </a>
                             <ul class="list_social">
-                                <a href="{{$block4->facebook}}" target="_blank" rel="nofollow"><img src="/public/image/icon-facebook.webp" alt="Facebook" width="24" height="24"></a>
-                                <a href="{{$block4->instagram}}" target="_blank" rel="nofollow"><img src="/public/image/icon-instagram.webp" alt="Facebook" width="24" height="24"></a>
-                                <a href="{{$block4->tiktok}}" target="_blank" rel="nofollow"><img src="/public/image/icon-tiktok.webp" alt="Facebook" width="24" height="24"></a>
+                                <a href="{{$block4->facebook ?? '#'}}" target="_blank" rel="nofollow"><img src="/public/image/icon-facebook.webp" alt="Facebook" width="24" height="24"></a>
+                                <a href="{{$block4->instagram ?? '#'}}" target="_blank" rel="nofollow"><img src="/public/image/icon-instagram.webp" alt="Facebook" width="24" height="24"></a>
+                                <a href="{{$block4->tiktok ?? '#'}}" target="_blank" rel="nofollow"><img src="/public/image/icon-tiktok.webp" alt="Facebook" width="24" height="24"></a>
                             </ul>
-                            <a href="{{$block4->link}}" class="bocongthuong">
+                            <a href="{{$block4->link ?? '#'}}" class="bocongthuong">
                                 <img src="/public/image/verified.png" alt="Bộ công thương" width="122" height="46">
                             </a>
+                            @endif
                         </div>
                     </div>
                     <div class="col-12 col-md-6">
                         <div class="info_footer">
-                            {!!$footer->block_2!!}
+                            {!!$footer->block_2 ?? ''!!}
                         </div>
                     </div>
                 </div>
             </div>
             <div class="col-md-7">
                 <div class="row">
-                    @include('Website::layout.footer',['menu' => $footer->block_0])
+                    @include('Website::layout.footer',['menu' => $footer ? $footer->block_0 : []])
                 </div>
             </div> 
         </div>
@@ -741,7 +743,7 @@ document.addEventListener('DOMContentLoaded', function() {
 @endif
 <div class="copyright">
     <div class="container-lg text-center border-top pt-3 pb-1">
-        {!!$footer->block_1!!}
+        {!!$footer ? $footer->block_1 : ''!!}
     </div>
 </div>
 @if(!isset($member) && empty($member))
@@ -771,13 +773,13 @@ document.addEventListener('DOMContentLoaded', function() {
     <nav id="menu-mobile" class="hidden-pc">
         <div class="mn-mb-header"> 
             <a href="/">
-                <img src="{{getImage($header->logo)}}" width="" height="" alt="{{$header->alt}}">
+                <img src="{{getImage($header->logo ?? '')}}" width="" height="" alt="{{$header->alt ?? ''}}">
             </a>
         </div>
         <button id="close-handle" class="close-handle" aria-label="Đóng" title="Đóng">
             <span class="mb-menu-cls" aria-hidden="true"><span class="bar animate"></span></span>Đóng
         </button>
-        @include('Website::layout.mobile',['menu' => $header->menu])
+        @include('Website::layout.mobile',['menu' => $header->menu ?? []])
         @if(isset($member) && !empty($member))
             <div class="name-user fs-16 pt-3 ps-2">
                 <strong>Xin chào {{$member['first_name']}} {{$member['last_name']}}!</strong>

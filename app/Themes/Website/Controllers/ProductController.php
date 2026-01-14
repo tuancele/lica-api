@@ -32,7 +32,9 @@ class ProductController extends Controller
             
             $data['detail'] = $post;
             $data['gallerys'] = json_decode($post->gallery);
-            $first = Variant::where('product_id', $post->id)->first();
+            $variants = Variant::where('product_id', $post->id)->orderBy('position', 'asc')->orderBy('id', 'asc')->get();
+            $first = $variants->first();
+            $data['variants'] = $variants;
             $data['first'] = $first;
             
             $arrCate = json_decode($post->cat_id);
@@ -48,6 +50,7 @@ class ProductController extends Controller
                 ->limit(9)
                 ->orderBy('posts.created_at', 'desc')->get();
             
+            // Legacy color/size selector (only for old variant mode)
             $data['colors'] = Variant::select('color_id')->where('product_id', $post->id)->distinct()->get();
             
             if (Session::has('product_watched')) {
@@ -83,7 +86,8 @@ class ProductController extends Controller
 
             return view('Website::product.detail', $data);
         } else {
-            return view('Website::404');
+            // Nếu không phải sản phẩm, fallback về HomeController@post để giữ nguyên behavior cũ
+            return app()->call(\App\Themes\Website\Controllers\HomeController::class.'@post', ['url' => $slug]);
         }
     }
 }

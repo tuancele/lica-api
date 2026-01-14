@@ -144,6 +144,28 @@
                 </div>
 
                 <div class="form-item">
+                    <label class="form-label">Video sản phẩm</label>
+                    <p style="font-size: 12px; color: #999; margin-bottom: 12px;">
+                        Định dạng MP4/WEBM, dung lượng tối đa 30MB, thời lượng khuyến nghị 10-60s.
+                    </p>
+                    <div class="image-grid">
+                        <div class="image-upload-box" id="product-video-trigger">
+                            <div class="video-upload-inner" @if($detail->video) style="display:none;" @endif>
+                                <i class="fa fa-video-camera fa-2x"></i>
+                                <span style="margin-top: 4px;">@if($detail->video) Đổi video @else Thêm video @endif</span>
+                            </div>
+                            @if($detail->video)
+                                <video playsinline muted style="width:100%;height:100%;object-fit:cover;border-radius:4px;pointer-events:none;">
+                                    <source src="{{ getImage($detail->video) }}" type="video/mp4">
+                                </video>
+                            @endif
+                        </div>
+                    </div>
+                    <input type="file" id="product-video-input" accept="video/*" style="display:none;">
+                    <input type="hidden" name="video" id="product-video-url" value="{{$detail->video}}">
+                </div>
+
+                <div class="form-item">
                     <label class="form-label required">Tên sản phẩm</label>
                     <div style="position: relative;">
                         <input type="text" name="name" id="product-name-input" class="shopee-input" value="{{$detail->name}}" maxlength="120" required>
@@ -194,47 +216,119 @@
                 </div>
             </div>
 
+            @php
+                $defaultVariant = $detail->variants->sortBy('position')->first() ?? $detail->variants->first();
+                $initialHasVariants = (int)($detail->has_variants ?? 0);
+                // Heuristic: if option1_name exists or any variant has option1_value, enable variants mode
+                if(!$initialHasVariants){
+                    $initialHasVariants = ($detail->option1_name || $detail->variants->whereNotNull('option1_value')->count() > 0) ? 1 : 0;
+                }
+            @endphp
+
             <div class="shopee-card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-                    <div class="section-title" style="margin-bottom: 0;">Phân loại hàng</div>
-                    <a href="{{route('product.variantnew',['id' =>$detail->id])}}" class="btn-shopee btn-shopee-outline" style="padding: 4px 12px; font-size: 12px;">+ Thêm phân loại</a>
+                <div class="section-title">Thông tin bán hàng</div>
+                <input type="hidden" name="has_variants" id="has_variants" value="{{$initialHasVariants}}">
+                <input type="hidden" name="option1_name" id="option1_name" value="{{ $detail->option1_name ?? '' }}">
+                <input type="hidden" name="variants_json" id="variants_json" value="">
+
+                <div id="single-selling" @if($initialHasVariants) style="display:none;" @endif>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-item">
+                                <label class="form-label required">Giá bán</label>
+                                <input type="text" name="price" class="shopee-input price" value="{{number_format($defaultVariant->price ?? 0,0,'',',')}}">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-item">
+                                <label class="form-label">Giá khuyến mại</label>
+                                <input type="text" name="sale" class="shopee-input price" value="{{number_format($defaultVariant->sale ?? 0,0,'',',')}}">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-item">
+                                <label class="form-label required">Kho hàng</label>
+                                <input type="number" name="stock_qty" class="shopee-input" value="{{ (int)($defaultVariant->stock ?? 0) }}" min="0">
+                                <input type="hidden" name="stock" value="1">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-item">
+                                <label class="form-label">Mã SKU</label>
+                                <input type="text" name="sku" class="shopee-input" value="{{$defaultVariant->sku ?? ''}}" placeholder="SKU sản phẩm (Không bắt buộc)">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-item">
+                                <label class="form-label">Trọng lượng (kg)</label>
+                                <input type="text" name="weight" class="shopee-input" value="{{$defaultVariant->weight ?? 0}}">
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                
-                @if($detail->variants->count() > 0)
-                <table class="variant-table list_variant">
-                    <thead>
-                        <tr>
-                            <th width="15%">Ảnh</th>
-                            <th>Tên phân loại</th>
-                            <th>Giá</th>
-                            <th width="15%">Hành động</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($detail->variants as $key => $variant)
-                        <tr>
-                            <td><img src="{{getImage($variant->image)}}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;"></td>
-                            <td>
-                                <strong>@if(!isset($variant->color) && !isset($variant->size)) Mặc định @else {{optional($variant->color)->name}} / {{optional($variant->size)->name}} @endif</strong>
-                                <div style="font-size: 12px; color: #999;">SKU: {{$variant->sku}}</div>
-                            </td>
-                            <td>
-                                @if($variant->sale != 0)
-                                    <span style="color: var(--shopee-orange);">{{number_format($variant->sale)}}₫</span>
-                                    <del style="font-size: 11px; color: #ccc; margin-left: 5px;">{{number_format($variant->price)}}₫</del>
-                                @else
-                                    {{number_format($variant->price)}}₫
-                                @endif
-                            </td>
-                            <td>
-                                <a href="{{route('product.variant',['id' =>$detail->id,'code' =>$variant->id])}}" class="btn btn-default btn-xs"><i class="fa fa-pencil"></i></a>
-                                @if($key != 0)<a href="javascript:void(0)" class="btn btn-danger btn-xs btn_delete_variant" data-id="{{$variant->id}}"><i class="fa fa-trash"></i></a>@endif
-                            </td>
-                        </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-                @endif
+
+                <div id="variant-selling" @if(!$initialHasVariants) style="display:none;" @endif>
+                    <div class="form-item" style="margin-bottom: 10px;">
+                        <div class="align-center space-between">
+                            <label class="form-label required" style="margin:0;">Phân loại hàng</label>
+                            <button type="button" class="btn-shopee btn-shopee-outline" id="btn_disable_variants" style="padding: 4px 12px; font-size: 12px;">Tắt phân loại</button>
+                        </div>
+                    </div>
+
+                    <div class="row" style="margin-bottom: 12px;">
+                        <div class="col-md-4">
+                            <div class="form-item">
+                                <label class="form-label required">Tên phân loại 1</label>
+                                <input type="text" class="shopee-input" id="variant_option1_name" value="{{ $detail->option1_name ?? '' }}" placeholder="VD: Dung tích">
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="form-item">
+                                <label class="form-label required">Tùy chọn</label>
+                                <div style="display:flex; gap:8px;">
+                                    <input type="text" class="shopee-input" id="variant_option1_value_input" placeholder="VD: 100ML (Enter để thêm)">
+                                    <button type="button" class="btn-shopee btn-shopee-primary" id="btn_add_option1" style="white-space:nowrap;">Thêm</button>
+                                </div>
+                                <div id="option1_tags" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-item">
+                        <div class="align-center space-between" style="margin-bottom: 10px;">
+                            <label class="form-label" style="margin:0;">Danh sách phân loại</label>
+                            <button type="button" class="btn-shopee btn-shopee-outline" id="btn_apply_all" style="padding: 4px 12px; font-size: 12px;">Áp dụng cho tất cả</button>
+                        </div>
+
+                        <table class="variant-table" id="variant_table">
+                            <thead>
+                                <tr>
+                                    <th width="18%">Ảnh</th>
+                                    <th width="18%">Phân loại</th>
+                                    <th width="16%">Giá</th>
+                                    <th width="16%">Kho hàng</th>
+                                    <th width="20%">SKU</th>
+                                    <th width="12%">Xóa</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div style="margin-top: 14px;">
+                    <button type="button" class="btn-shopee btn-shopee-outline" id="btn_enable_variants" style="padding: 6px 14px; @if($initialHasVariants)display:none;@endif">+ Thêm nhóm phân loại</button>
+                </div>
+            </div>
+
+            <div class="shopee-card">
+                <div class="section-title">Lưu ý</div>
+                <div style="color:#666; font-size:13px;">
+                    - Nếu bật phân loại, giá/kho sẽ lấy theo từng phân loại.<br>
+                    - Nếu tắt phân loại, hệ thống sẽ dùng 1 biến thể mặc định.
+                </div>
             </div>
 
             <div class="shopee-card">
@@ -273,6 +367,7 @@
 
 <script type="text/javascript" src="/public/js/jquery.number.js"></script>
 <script type="text/javascript" src="/public/js/r2-upload-preview.js"></script>
+<script type="text/javascript" src="/public/js/r2-video-upload.js"></script>
 <script type="text/javascript">
 // Initialize R2 Upload BEFORE other scripts to ensure handlers are registered early
 $(document).ready(function() {
@@ -312,6 +407,8 @@ $(document).ready(function() {
         onPreviewRemove: () => refreshImgStatus()
     });
     
+    const r2VariantUploadRoute = "{{ route('r2.upload') }}";
+    
     // Override $.validate() onSuccess to check for pending uploads
     // This ensures we intercept form submission even if $.validate() processes it first
     if (typeof $.validate !== 'undefined') {
@@ -335,29 +432,330 @@ $(document).ready(function() {
         if(first.length > 0) $('#preview-main-img img').attr('src', first.find('img').attr('src'));
     }
 
+    // Video upload (R2)
+    initR2VideoUpload({
+        fileInputSelector: '#product-video-input',
+        triggerSelector: '#product-video-trigger',
+        previewContainerSelector: '#product-video-trigger',
+        hiddenInputSelector: '#product-video-url',
+        uploadRoute: "{{ route('r2.uploadVideo') }}",
+        folder: 'videos/products'
+    });
+
     $('#product-name-input').on('input', function() {
         let val = $(this).val();
         $('#name-count').text(val.length + '/120');
         $('#preview-name-text').text(val);
     });
 
-    $('.list_variant').on('click', '.btn_delete_variant', function() {
-        if (confirm('Xóa biến thể này?')) {
-            var id = $(this).attr('data-id');
-            var $this = $(this);
-            $.ajax({
-                type: 'post',
-                url: '{{route("product.delvariant")}}',
-                data: {id: id},
-                success: function (res) {
-                    if(res.status == 'success') $this.closest('tr').remove();
-                    else alert(res.message);
+    // --- Variant (Shopee style, 1-level) ---
+    const $singleSelling = $('#single-selling');
+    const $variantSelling = $('#variant-selling');
+    const $btnEnable = $('#btn_enable_variants');
+    const $btnDisable = $('#btn_disable_variants');
+    const $hasVariants = $('#has_variants');
+    const $opt1NameInput = $('#variant_option1_name');
+    const $opt1ValueInput = $('#variant_option1_value_input');
+    const $opt1Tags = $('#option1_tags');
+    const $variantTableBody = $('#variant_table tbody');
+    const $variantsJson = $('#variants_json');
+    const $opt1NameHidden = $('#option1_name');
+    let variantRowCounter = 0;
+
+    @php
+        // Precompute to avoid Blade @json parsing issues with complex expressions
+        $existingVariantsForJs = $detail->variants
+            ->sortBy('position')
+            ->values()
+            ->map(function($v){
+                $label = $v->option1_value;
+                if(!$label){
+                    $color = optional($v->color)->name;
+                    $size = optional($v->size)->name;
+                    $label = trim(($color ?: '') . (($color && $size) ? ' / ' : '') . ($size ?: ''));
                 }
+                if(!$label) $label = 'Mặc định';
+                return [
+                    'id' => $v->id,
+                    'option1_value' => $label,
+                    'image' => $v->image,
+                    'price' => (float)$v->price,
+                    'sale' => (float)$v->sale,
+                    'stock' => (int)($v->stock ?? 0),
+                    'sku' => $v->sku,
+                    'position' => (int)($v->position ?? 0),
+                ];
+            })
+            ->all();
+    @endphp
+    const existingVariants = @json($existingVariantsForJs);
+
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, function (m) {
+            return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]);
+        });
+    }
+
+    function setMode(has) {
+        if (has) {
+            $hasVariants.val('1');
+            $singleSelling.hide();
+            $variantSelling.show();
+            $btnEnable.hide();
+        } else {
+            $hasVariants.val('0');
+            $variantSelling.hide();
+            $singleSelling.show();
+            $btnEnable.show();
+            $opt1Tags.html('');
+            $variantTableBody.html('');
+            $opt1NameInput.val('');
+            $opt1NameHidden.val('');
+            $variantsJson.val('');
+        }
+        buildVariantsJson();
+    }
+
+    function renderTag(value) {
+        const v = escapeHtml(value);
+        return `<span class="badge bg-light" style="border:1px solid #eee; color:#333; padding:6px 10px; border-radius:14px;">
+                    <span class="tag-text">${v}</span>
+                    <a href="javascript:;" class="tag-remove" style="margin-left:6px; color:#999;">×</a>
+                </span>`;
+    }
+
+    function getOptionValues() {
+        const values = [];
+        $opt1Tags.find('.tag-text').each(function() {
+            const t = $(this).text().trim();
+            if (t) values.push(t);
+        });
+        return values;
+    }
+
+    function ensureVariantRow(optionValue, preset) {
+        const safe = optionValue;
+        const exists = $variantTableBody.find('tr').filter(function(){ return $(this).attr('data-option') === safe; }).length > 0;
+        if (exists) return;
+
+        variantRowCounter++;
+        const rowId = 'v' + variantRowCounter;
+        const img = preset && preset.image ? preset.image : '';
+        const imgSrc = img ? img : '/public/admin/no-image.png';
+        const price = preset && preset.price ? preset.price : 0;
+        const stock = preset && typeof preset.stock !== 'undefined' ? preset.stock : 0;
+        const sku = preset && preset.sku ? preset.sku : '';
+        const id = preset && preset.id ? preset.id : '';
+
+        const rowHtml = `
+            <tr data-option="${escapeHtml(safe)}" data-row-id="${rowId}" data-variant-id="${escapeHtml(id)}">
+                <td>
+                    <div class="variant-img-box" style="width:46px;height:46px;border:1px solid #eee;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fafafa;cursor:pointer;">
+                        <img id="variant-img-${rowId}" src="${escapeHtml(imgSrc)}" style="width:46px;height:46px;object-fit:cover;">
+                    </div>
+                    <input type="file" class="variant-file-input" accept="image/*" style="display:none;">
+                    <input type="hidden" id="variant-image-${rowId}" class="variant-image" value="${escapeHtml(img)}">
+                    <small class="variant-img-note" style="font-size:11px;color:#999;display:block;margin-top:4px;">Mặc định dùng ảnh sản phẩm</small>
+                </td>
+                <td><strong>${escapeHtml(safe)}</strong></td>
+                <td><input type="text" class="shopee-input price variant-price" value="${escapeHtml(price)}"></td>
+                <td><input type="number" class="shopee-input variant-stock" value="${escapeHtml(stock)}" min="0"></td>
+                <td><input type="text" class="shopee-input variant-sku" value="${escapeHtml(sku)}"></td>
+                <td><button type="button" class="btn btn-danger btn-xs variant-delete-row"><i class="fa fa-trash"></i></button></td>
+            </tr>
+        `;
+        $variantTableBody.append(rowHtml);
+        $variantTableBody.find('tr:last .variant-price').number(true, 0);
+    }
+
+    function uploadVariantImage(file, rowId) {
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('_token', $('meta[name="csrf-token"]').attr('content'));
+        formData.append('folder', 'image');
+        formData.append('convert_webp', true);
+        formData.append('quality', 85);
+        formData.append('files', file);
+
+        const $row = $variantTableBody.find('tr[data-row-id="' + rowId + '"]');
+        const $img = $row.find('#variant-img-' + rowId);
+
+        $.ajax({
+            url: r2VariantUploadRoute,
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(res) {
+                const url = res && res.urls && res.urls.length ? res.urls[0] : null;
+                if (url) {
+                    $img.attr('src', url);
+                    $row.find('#variant-image-' + rowId).val(url);
+                    $row.find('.variant-img-note').text('Đã chọn ảnh riêng');
+                    buildVariantsJson();
+                } else {
+                    alert('Upload ảnh không thành công, vui lòng thử lại.');
+                }
+            },
+            error: function() {
+                alert('Lỗi upload ảnh, vui lòng thử lại.');
+            }
+        });
+    }
+
+    function syncRowsWithTags() {
+        const values = getOptionValues();
+        $variantTableBody.find('tr').each(function() {
+            const opt = $(this).attr('data-option');
+            if (!values.includes(opt)) $(this).remove();
+        });
+        values.forEach(v => ensureVariantRow(v));
+        buildVariantsJson();
+    }
+
+    function buildVariantsJson() {
+        if ($hasVariants.val() !== '1') return;
+        const name = $opt1NameInput.val().trim();
+        $opt1NameHidden.val(name);
+        const variants = [];
+        $variantTableBody.find('tr').each(function(pos) {
+            const $tr = $(this);
+            variants.push({
+                id: $tr.attr('data-variant-id') || null,
+                option1_value: $tr.attr('data-option'),
+                image: $tr.find('.variant-image').val() || '',
+                price: String($tr.find('.variant-price').val() || '0').replace(/,/g,''),
+                stock: parseInt($tr.find('.variant-stock').val() || '0', 10),
+                sku: $tr.find('.variant-sku').val() || '',
+                position: pos
             });
+        });
+        $variantsJson.val(JSON.stringify({ option1_name: name, variants }));
+    }
+
+    $btnEnable.on('click', function() { setMode(true); });
+    $btnDisable.on('click', function() {
+        if (confirm('Tắt phân loại? Hệ thống sẽ chuyển về 1 biến thể mặc định.')) setMode(false);
+    });
+
+    $('#btn_add_option1').on('click', function() {
+        const v = $opt1ValueInput.val().trim();
+        if (!v) return;
+        const current = getOptionValues();
+        if (current.includes(v)) { $opt1ValueInput.val(''); return; }
+        $opt1Tags.append(renderTag(v));
+        $opt1ValueInput.val('');
+        syncRowsWithTags();
+    });
+
+    $opt1ValueInput.on('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            $('#btn_add_option1').click();
         }
     });
+
+    $opt1Tags.on('click', '.tag-remove', function() {
+        $(this).closest('span').remove();
+        syncRowsWithTags();
+    });
+
+    $opt1NameInput.on('input', buildVariantsJson);
+    $variantTableBody.on('input change', 'input', buildVariantsJson);
+
+    // Variant image click & upload
+    $variantTableBody.on('click', '.variant-img-box', function() {
+        const $tr = $(this).closest('tr');
+        $tr.find('.variant-file-input').trigger('click');
+    });
+
+    $variantTableBody.on('change', '.variant-file-input', function() {
+        const file = this.files[0];
+        const rowId = $(this).closest('tr').attr('data-row-id');
+        uploadVariantImage(file, rowId);
+        this.value = '';
+    });
+
+    $variantTableBody.on('click', '.variant-delete-row', function() {
+        const $tr = $(this).closest('tr');
+        const opt = $tr.attr('data-option');
+        $opt1Tags.find('.tag-text').each(function() {
+            if ($(this).text().trim() === opt) $(this).closest('span').remove();
+        });
+        $tr.remove();
+        buildVariantsJson();
+    });
+
+    $('#btn_apply_all').on('click', function() {
+        const p = prompt('Giá áp dụng cho tất cả (bỏ trống để không thay đổi):', '');
+        const s = prompt('Kho áp dụng cho tất cả (bỏ trống để không thay đổi):', '');
+        $variantTableBody.find('tr').each(function() {
+            if (p !== null && p !== '') $(this).find('.variant-price').val(p);
+            if (s !== null && s !== '') $(this).find('.variant-stock').val(s);
+        });
+        $variantTableBody.find('.variant-price').number(true, 0);
+        buildVariantsJson();
+    });
+
+    // Prefill from existing variants (edit page)
+    if ($hasVariants.val() === '1') {
+        const name = ($opt1NameInput.val() || '').trim();
+        if (name) $opt1NameHidden.val(name);
+        const values = [];
+        existingVariants.forEach(v => {
+            const opt = v.option1_value || 'Mặc định';
+            if (!values.includes(opt)) values.push(opt);
+        });
+        values.forEach(v => $opt1Tags.append(renderTag(v)));
+        // create rows with preset
+        existingVariants.forEach(v => {
+            ensureVariantRow(v.option1_value || 'Mặc định', v);
+        });
+        buildVariantsJson();
+    }
+
+    $('#tblForm').on('submit', function() { buildVariantsJson(); });
 
     $(".list_image").sortable({ items: ".image-upload-box.has-img", update: function() { refreshImgStatus(); } });
 });
 </script>
+<style>
+    /* Variant table layout - compact & clean */
+    #variant-selling {
+        margin-top: 10px;
+    }
+    #variant-selling .variant-table {
+        width: 100%;
+        border: 1px solid #eee;
+        border-radius: 4px;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+    #variant-selling .variant-table th,
+    #variant-selling .variant-table td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #f1f1f1;
+        vertical-align: middle;
+    }
+    #variant-selling .variant-table thead tr {
+        background: #fafafa;
+        font-weight: 600;
+    }
+    #variant-selling .variant-table .shopee-input {
+        width: 100%;
+        padding: 6px 8px;
+        font-size: 12px;
+        height: 34px;
+    }
+    #variant-selling .variant-table .variant-img-box {
+        margin-bottom: 4px;
+    }
+    @media (max-width: 768px) {
+        #variant-selling .variant-table th,
+        #variant-selling .variant-table td {
+            padding: 6px;
+            font-size: 11px;
+        }
+    }
+</style>
 @endsection

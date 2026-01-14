@@ -73,7 +73,7 @@ class ThemesServiceProvider extends ServiceProvider
             $view->with([
                 'totalQty' => $totalQty,
                 'wishlist' => $wishlist,
-                'header' => json_decode($header->block_0),
+                'header' => $header ? json_decode($header->block_0) : null,
                 'footer' => $footer,
                 'footerBlocks' => $footerBlocks
             ]);

@@ -6,6 +6,26 @@ use Illuminate\Database\Eloquent\Model;
 class Variant extends Model
 {
     protected $table = "variants";
+    
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array
+     */
+    protected $fillable = [
+        'sku',
+        'product_id',
+        'option1_value',
+        'image',
+        'size_id',
+        'color_id',
+        'weight',
+        'price',
+        'sale',
+        'stock',
+        'position',
+        'user_id',
+    ];
     public function user(){
     	return $this->belongsTo('App\User','user_id','id');
     }
