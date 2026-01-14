@@ -6,7 +6,7 @@ use App\Repositories\Product\ProductRepositoryInterface;
 use App\Services\Image\ImageServiceInterface;
 use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
-use App\Modules\Ingredient\Models\Ingredient;
+use App\Modules\Dictionary\Models\IngredientPaulas;
 use App\Modules\Redirection\Models\Redirection;
 use App\Modules\Order\Models\OrderDetail;
 use App\Enums\ProductStatus;
@@ -605,6 +605,7 @@ class ProductService implements ProductServiceInterface
 
     /**
      * Process ingredients - convert plain text to linked ingredients
+     * Uses IngredientPaulas from /admin/dictionary/ingredient
      * 
      * @param string|null $content
      * @return string
@@ -613,6 +614,12 @@ class ProductService implements ProductServiceInterface
     {
         if (empty($content)) {
             return '';
+        }
+
+        // If content already contains HTML links, preserve them
+        if (preg_match('/<a[^>]*class=["\']item_ingredient["\'][^>]*>/i', $content)) {
+            // Already processed, return as is
+            return $content;
         }
 
         // Strip tags to work with plain text
@@ -630,33 +637,51 @@ class ProductService implements ProductServiceInterface
             return $content;
         }
 
-        // Get unique names to query
-        $names = array_map('trim', $parts);
-        $names = array_unique($names);
-
-        // Query DB for these names (Case-insensitive)
-        $ingredients = Ingredient::whereIn('name', $names)
-            ->where('status', ProductStatus::ACTIVE->value)
-            ->get();
+        // Get all active ingredients from database (cache for performance)
+        $ingredients = Cache::remember('ingredient_paulas_active_list', 3600, function () {
+            return IngredientPaulas::where('status', '1')
+                ->select('id', 'name', 'slug')
+                ->get();
+        });
         
-        // Map for lookup
+        // Build lookup map: lowercase name => ingredient object
         $ingMap = [];
         foreach ($ingredients as $ing) {
-            $ingMap[strtolower($ing->name)] = $ing;
+            $lowerName = mb_strtolower(trim($ing->name), 'UTF-8');
+            // Store both exact match and allow partial matching
+            $ingMap[$lowerName] = $ing;
         }
 
-        // Rebuild content
+        // Rebuild content with links
         $processedParts = [];
         foreach ($parts as $part) {
             $trimPart = trim($part);
-            $lowerPart = strtolower($trimPart);
+            $lowerPart = mb_strtolower($trimPart, 'UTF-8');
             
+            // Try exact match first
             if (isset($ingMap[$lowerPart])) {
                 $ing = $ingMap[$lowerPart];
-                // Link using official name from DB
-                $processedParts[] = '<a href="javascript:;" class="item_ingredient" data-id="'.$ing->slug.'">'.$ing->name.'</a>';
+                // Link format: /ingredient-dictionary/{slug}
+                $processedParts[] = '<a href="/ingredient-dictionary/' . htmlspecialchars($ing->slug, ENT_QUOTES, 'UTF-8') . '" class="item_ingredient" data-id="' . htmlspecialchars($ing->slug, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($ing->name, ENT_QUOTES, 'UTF-8') . '</a>';
             } else {
-                $processedParts[] = $trimPart;
+                // Try partial match (ingredient name contains the part, or vice versa)
+                $matched = false;
+                foreach ($ingMap as $lowerName => $ing) {
+                    // Check if ingredient name contains the part, or part contains ingredient name
+                    if (mb_strpos($lowerName, $lowerPart) !== false || mb_strpos($lowerPart, $lowerName) !== false) {
+                        // Prefer longer matches (more specific)
+                        if (!$matched || mb_strlen($ing->name) > mb_strlen($matched->name)) {
+                            $matched = $ing;
+                        }
+                    }
+                }
+                
+                if ($matched) {
+                    $processedParts[] = '<a href="/ingredient-dictionary/' . htmlspecialchars($matched->slug, ENT_QUOTES, 'UTF-8') . '" class="item_ingredient" data-id="' . htmlspecialchars($matched->slug, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($trimPart, ENT_QUOTES, 'UTF-8') . '</a>';
+                } else {
+                    // No match found, keep original text
+                    $processedParts[] = htmlspecialchars($trimPart, ENT_QUOTES, 'UTF-8');
+                }
             }
         }
 

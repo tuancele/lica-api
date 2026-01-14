@@ -8,6 +8,7 @@ use App\Modules\Dictionary\Models\IngredientBenefit;
 use App\Modules\Dictionary\Models\IngredientRate;
 use App\Modules\Product\Models\Product;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Drnxloc\LaravelHtmlDom\HtmlDomParser;
 use Validator;
 use Exception;
@@ -90,6 +91,10 @@ class IngredientController extends Controller
             'seo_description' => $request->seo_description,
             'user_id'=> Auth::id()
         ));
+        
+        // Clear ingredient cache to refresh product ingredient links
+        Cache::forget('ingredient_paulas_active_list');
+        
         return response()->json([
             'status' => 'success',
             'alert' => 'Sửa thành công!',
@@ -138,6 +143,9 @@ class IngredientController extends Controller
             ]
         );
         if($id > 0){
+            // Clear ingredient cache to refresh product ingredient links
+            Cache::forget('ingredient_paulas_active_list');
+            
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Thêm thành công!',
@@ -155,6 +163,10 @@ class IngredientController extends Controller
         //$post =  $this->model::find($request->id);
         //$this->authorize($post,'post-delete');
         $data = $this->model::findOrFail($request->id)->delete();
+        
+        // Clear ingredient cache to refresh product ingredient links
+        Cache::forget('ingredient_paulas_active_list');
+        
         if($request->page !=""){
             $url = route('dictionary.ingredient').'?page='.$request->page;
         }else{
@@ -172,6 +184,10 @@ class IngredientController extends Controller
         $this->model::where('id',$request->id)->update(array(
             'status' => $request->status
         ));
+        
+        // Clear ingredient cache to refresh product ingredient links
+        Cache::forget('ingredient_paulas_active_list');
+        
         return response()->json([
             'status' => 'success',
             'alert' => 'Đổi trạng thái thành công!',

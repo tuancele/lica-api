@@ -38,12 +38,14 @@
 
                                                     <td class="product-thumbnail">
                                                         <a href="{{getSlug($product->slug)}}">
-                                                            <img
-                                                                src="{{getImage($product->image)}}"
-                                                                data-src="{{getImage($product->image)}}"
-                                                                class="attachment-commerce_thumbnail size-commerce_thumbnail lazy-load-active"
-                                                                alt="{{$product->name}}"
-                                                            />
+                                                            <div class="skeleton--img-sm js-skeleton">
+                                                                <img
+                                                                    src="{{getImage($product->image)}}"
+                                                                    data-src="{{getImage($product->image)}}"
+                                                                    class="attachment-commerce_thumbnail size-commerce_thumbnail lazy-load-active js-skeleton-img"
+                                                                    alt="{{$product->name}}"
+                                                                />
+                                                            </div>
                                                         </a>
                                                     </td>
 
@@ -142,7 +144,9 @@
                                         <div class="col-12 col-md-6 mb-3">
                                             <div class="item_deal_cart d-flex align-items-center p-3 border br-10 hover-shadow transition-all">
                                                 <div class="thumb_deal" style="width: 80px;">
-                                                    <img src="{{getImage($saledeal->product->image)}}" class="w-100 br-10" alt="{{$saledeal->product->name}}">
+                                                    <div class="skeleton--img-sm js-skeleton br-10" style="width: 80px; height: 80px;">
+                                                        <img src="{{getImage($saledeal->product->image)}}" class="w-100 br-10 js-skeleton-img" alt="{{$saledeal->product->name}}">
+                                                    </div>
                                                 </div>
                                                 <div class="info_deal ps-3 flex-grow-1">
                                                     <h5 class="fs-15 fw-600 mb-1 line-clamp-2">{{$saledeal->product->name}}</h5>

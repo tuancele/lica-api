@@ -68,7 +68,7 @@
                         <span class="fs-18 fw-bold">Thông tin nhận hàng</span>
                     </div>
                     <div class="mb-2 position-relative">
-                        <label>Địa chỉ (Tỉnh/Thành, Quận/Huyện, Phường/Xã) <span>*</span></label>
+                        <label>Địa chỉ: <span>*</span></label>
                         <input type="text" class="form-control" id="search_location_input" autocomplete="off" placeholder="Nhập Xã, Huyện, Tỉnh...">
                         <div id="search_location_results" class="autocomplete-results"></div>
                         <input type="hidden" name="province" id="province_id">
@@ -79,7 +79,7 @@
                         <input type="hidden" id="ward_name">
                     </div>
                     <div class="mb-2">
-                        <label>Chi tiết (Số nhà, đường...)</label>
+                        <label>Chi tiết địa chỉ</label>
                         <input type="text" name="address" class="form-control">
                     </div>
                 @endif
@@ -102,7 +102,7 @@
                     <span class="fs-18 fw-bold">Thông tin nhận hàng</span>
                 </div>
                     <div class="mb-2 position-relative">
-                        <label>Địa chỉ (Tỉnh/Thành, Quận/Huyện, Phường/Xã) <span>*</span></label>
+                        <label>Địa chỉ: <span>*</span></label>
                         <input type="text" class="form-control" id="search_location_input" autocomplete="off" placeholder="Nhập Xã, Huyện, Tỉnh...">
                         <div id="search_location_results" class="autocomplete-results"></div>
                         <input type="hidden" name="province" id="province_id">
@@ -113,7 +113,7 @@
                         <input type="hidden" id="ward_name">
                     </div>
                 <div class="mb-2">
-                    <label>Chi tiết (Số nhà, đường...)</label>
+                    <label>Chi tiết địa chỉ</label>
                     <input type="text" name="address" class="form-control">
                 </div>        
                 @endif
@@ -163,7 +163,9 @@
                         @if(isset($product) && !empty($product))
                         <div class="item-cart d-flex mt-3 mb-3 item-cart-{{$variant['item']['id']}}">
                             <div class="img-thumb">
-                                <img src="{{getImage($product->image)}}" width="60" height="60" alt="{{$product->name}}">
+                                <div class="skeleton--img-sm js-skeleton">
+                                    <img src="{{getImage($product->image)}}" width="60" height="60" alt="{{$product->name}}" class="js-skeleton-img">
+                                </div>
                             </div>
                             <div class="des-cart ms-2">
                                 <div class="header-cart d-flex space-between">
@@ -467,6 +469,64 @@
 </script>
 @endif
 <script>
+    // Text animation đơn giản cho các trường checkout (placeholder gõ từng chữ)
+    $(document).ready(function () {
+        var fields = [
+            {selector: '#checkoutForm input[name="full_name"]', text: 'Nhập tên người mua'},
+            {selector: '#checkoutForm input[name="phone"]', text: 'Nhập số điện thoại liên hệ'},
+            {selector: '#checkoutForm input[name="email"]', text: 'Nhập email (nếu có)'},
+            {selector: '#search_location_input', text: 'Nhập Xã, Huyện, Tỉnh để gợi ý địa chỉ'},
+            {selector: '#checkoutForm input[name="address"]', text: 'Số nhà, tên đường, tòa nhà...'},
+            {selector: '#checkoutForm textarea[name="remark"]', text: 'Ghi chú cho đơn hàng (nếu cần)'},
+            {selector: '#checkoutForm input[name="coupon"]', text: 'NHẬP MÃ GIẢM GIÁ (NẾU CÓ)'}
+        ];
+
+        fields.forEach(function (cfg) {
+            var $input = $(cfg.selector);
+            if (!$input.length) return;
+
+            // Không chạy nếu đã có sẵn giá trị
+            if ($input.val() && $input.val().length > 0) return;
+
+            var fullText = cfg.text;
+            var index = 0;
+            var started = false;
+
+            function typeOnce() {
+                if ($input.is(':focus') || $input.val() !== '') {
+                    return;
+                }
+                if (index <= fullText.length) {
+                    $input.attr('placeholder', fullText.substring(0, index) + (index < fullText.length ? '|' : ''));
+                    index++;
+                    setTimeout(typeOnce, 55);
+                } else {
+                    setTimeout(function () {
+                        if ($input.val() === '' && !$input.is(':focus')) {
+                            $input.attr('placeholder', fullText);
+                        }
+                    }, 350);
+                }
+            }
+
+            setTimeout(function () {
+                if ($input.val() === '' && !$input.is(':focus')) {
+                    started = true;
+                    typeOnce();
+                }
+            }, 800);
+
+            $input.on('focus input', function () {
+                $input.attr('placeholder', '');
+            });
+            $input.on('blur', function () {
+                if ($input.val() === '') {
+                    $input.attr('placeholder', fullText);
+                }
+            });
+        });
+    });
+
     $('#checkoutForm').validate({
     ignore: [],
     invalidHandler: function(event, validator) {
@@ -685,6 +745,40 @@ $('body').on('click','.btn_cancel_promotion',function(){
     }
     #search_location_input {
         height: 45px;
+    }
+
+    /* ========== Hiệu ứng nhập liệu (đen trắng, tinh gọn) cho trang checkout ========== */
+    #page_checkout label {
+        font-weight: 600;
+        letter-spacing: 0.1px;
+    }
+    #page_checkout .form-control,
+    #page_checkout textarea.form-control {
+        position: relative;
+        background: #fff;
+        border-radius: 8px;
+        border: 1px solid #ced4da;
+        padding: 11px 12px;
+        transition: all 0.2s ease;
+        box-shadow: none;
+    }
+    #page_checkout .form-control::placeholder,
+    #page_checkout textarea.form-control::placeholder {
+        color: #9a9a9a;
+        opacity: 1;
+    }
+    #page_checkout .form-control:focus,
+    #page_checkout textarea.form-control:focus {
+        border-color: #111;
+        box-shadow: 0 0 0 2px rgba(0,0,0,0.04);
+        transform: translateY(-1px);
+        outline: none;
+    }
+    #page_checkout input:-webkit-autofill,
+    #page_checkout textarea:-webkit-autofill {
+        -webkit-box-shadow: 0 0 0 30px #fff inset !important;
+        -webkit-text-fill-color: #222 !important;
+        transition: background-color 5000s ease-in-out 0s;
     }
 </style>
 @endsection

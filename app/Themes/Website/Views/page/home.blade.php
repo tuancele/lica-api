@@ -12,7 +12,9 @@
         <div class="slider_home">
             @foreach($sliders as $slider)
             <a href="{{$slider->link}}">
-                <img src="{{getImage($slider->image)}}" alt="{{$slider->name}}" width="100%" height="auto">
+                <div class="skeleton--img-lg js-skeleton" style="min-height: 400px;">
+                    <img src="{{getImage($slider->image)}}" alt="{{$slider->name}}" width="100%" height="auto" class="js-skeleton-img">
+                </div>
             </a>
             @endforeach
         </div>
@@ -25,7 +27,9 @@
         <div class="slider_home">
             @foreach($sliderms as $sliderm)
             <a href="{{$sliderm->link}}">
-                <img src="{{getImage($sliderm->image)}}" alt="{{$sliderm->name}}" width="100%" height="auto">
+                <div class="skeleton--img-lg js-skeleton" style="min-height: 300px;">
+                    <img src="{{getImage($sliderm->image)}}" alt="{{$sliderm->name}}" width="100%" height="auto" class="js-skeleton-img">
+                </div>
             </a>
             @endforeach
         </div>
@@ -46,7 +50,9 @@
             @foreach($brands as $brand)
             <div class="item-brand">
                 <a class="box-icon" href="{{route('home.brand',['url' => $brand->slug])}}">
-                    <img class="br-5" src="{{getImage($brand->image)}}" alt="{{$brand->name}}" loading="lazy">
+                    <div class="skeleton--img-square js-skeleton br-5">
+                        <img class="br-5 js-skeleton-img" src="{{getImage($brand->image)}}" alt="{{$brand->name}}" loading="lazy">
+                    </div>
                 </a>
             </div>
             @endforeach
@@ -86,7 +92,9 @@
             <div class="list-banner" data-carousel-type="banner">
                 @foreach($banners as $banner)
                 <a href="{{$banner->link}}">
-                    <img src="{{getImage($banner->image)}}" class="br-5" alt="{{$banner->name}}" loading="lazy">
+                    <div class="skeleton--img-lg js-skeleton br-5" style="min-height: 200px;">
+                        <img src="{{getImage($banner->image)}}" class="br-5 js-skeleton-img" alt="{{$banner->name}}" loading="lazy">
+                    </div>
                 </a>
                 @endforeach
             </div>
@@ -112,7 +120,9 @@
                             <a href="{{getSlug($category->slug)}}">
                             <div class="taxonomy-item">
                                 <div class="taxonomy-cover">
-                                    <img src="{{getImage($category->image)}}" alt="{{$category->name}}" loading="lazy">
+                                    <div class="skeleton--img-square js-skeleton">
+                                        <img src="{{getImage($category->image)}}" alt="{{$category->name}}" class="js-skeleton-img" loading="lazy">
+                                    </div>
                                 </div>
                                 <div class="taxonomy-title">{{$category->name}}</div>
                             </div>
@@ -236,7 +246,9 @@
                     <div class="col-12 col-md-4">
                         <div class="item-blog">
                             <a href="{{getSlug($post->slug)}}" class="box-image">
-                                 <img src="{{getImage($post->image)}}" alt="{{$post->name}}" loading="lazy">
+                                <div class="skeleton--img-square js-skeleton">
+                                    <img src="{{getImage($post->image)}}" alt="{{$post->name}}" class="js-skeleton-img" loading="lazy">
+                                </div>
                             </a>
                             <div class="ps-3 pe-3 ps-md-0 pe-md-0 mt-2">
                                 <h3 class="post-title"><a href="{{getSlug($post->slug)}}">{{$post->name}}</a></h3>

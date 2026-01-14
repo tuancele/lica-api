@@ -420,8 +420,8 @@ class HomeController extends Controller
         $filter = Session::get('filter');
         $orderby = $this->sortBy();
         $data['products'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-            ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'stock')
-            ->where([['status', '1'], ['type', 'product'], ['stock', '1']])
+            ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'posts.stock')
+            ->where([['status', '1'], ['type', 'product'], ['posts.stock', '1']])
             ->where('posts.name', 'like', '%' . $request->s . '%')
             ->where(function ($query) use ($filter) {
                 $this->applyFilter($query, $filter);
@@ -432,8 +432,8 @@ class HomeController extends Controller
             ->appends(request()->query());
             
         $data['stocks'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-            ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'stock')
-            ->where([['status', '1'], ['type', 'product'], ['stock', '0']])
+            ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'posts.stock')
+            ->where([['status', '1'], ['type', 'product'], ['posts.stock', '0']])
             ->where('posts.name', 'like', '%' . $request->s . '%')
             ->orderBy($orderby[0], $orderby[1])
             ->groupBy('product_id')->get();

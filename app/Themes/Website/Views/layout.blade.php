@@ -424,7 +424,9 @@
                 <i class="fa-bars-menu" aria-hidden="true"></i>
              </button>
                 <a href="/" class="logo">
-                    <img src="{{getImage($header->logo ?? '')}}" width="" height="" alt="{{$header->alt ?? ''}}">
+                    <div class="skeleton--img-logo js-skeleton">
+                        <img src="{{getImage($header->logo ?? '')}}" width="" height="" alt="{{$header->alt ?? ''}}" class="js-skeleton-img">
+                    </div>
                 </a>
                 <div class="head-right">
                     <div class="search-head d-none d-md-block">
@@ -630,7 +632,9 @@
                         <div class="box-footer">
                             @if($block4)
                             <a href="/" class="logo_footer">
-                                <img src="{{getImage($block4->logo ?? '')}}" alt="{{$block4->alt ?? ''}}">
+                                <div class="skeleton--img-logo js-skeleton">
+                                    <img src="{{getImage($block4->logo ?? '')}}" alt="{{$block4->alt ?? ''}}" class="js-skeleton-img">
+                                </div>
                             </a>
                             <ul class="list_social">
                                 <a href="{{$block4->facebook ?? '#'}}" target="_blank" rel="nofollow"><img src="/public/image/icon-facebook.webp" alt="Facebook" width="24" height="24"></a>
@@ -773,7 +777,9 @@ document.addEventListener('DOMContentLoaded', function() {
     <nav id="menu-mobile" class="hidden-pc">
         <div class="mn-mb-header"> 
             <a href="/">
-                <img src="{{getImage($header->logo ?? '')}}" width="" height="" alt="{{$header->alt ?? ''}}">
+                <div class="skeleton--img-logo js-skeleton">
+                    <img src="{{getImage($header->logo ?? '')}}" width="" height="" alt="{{$header->alt ?? ''}}" class="js-skeleton-img">
+                </div>
             </a>
         </div>
         <button id="close-handle" class="close-handle" aria-label="Đóng" title="Đóng">
@@ -2031,7 +2037,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 100);
         }
         
-        // DOMContentLoaded作为备用
+    // DOMContentLoaded作为备用
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(function() {
@@ -2054,7 +2060,76 @@ document.addEventListener('DOMContentLoaded', function() {
             setTimeout(runInitializeSearchFeatures, 300);
         });
     })();
-    
+
+    // ========== Skeleton image loading cho toàn site ==========
+    // CHỈ hiển thị skeleton khi ảnh load LỖI, không hiển thị khi đang load hoặc load thành công
+    function initSkeletonImages() {
+        if (typeof $ === 'undefined') return;
+        $('.js-skeleton-img').each(function () {
+            var img = this;
+            var $img = $(img);
+            var $wrap = $img.closest('.js-skeleton');
+
+            if (!$wrap.length) return;
+
+            // BƯỚC 1: Xóa skeleton class ban đầu (nếu có), ẩn skeleton effect
+            $wrap.removeClass('skeleton');
+            // Đảm bảo ảnh hiển thị bình thường
+            $img.css({
+                'opacity': 1,
+                'visibility': 'visible'
+            });
+
+            function hideSkeleton() {
+                // Ảnh load thành công: XÓA skeleton class hoàn toàn, hiển thị ảnh
+                $wrap.removeClass('skeleton');
+                $img.css({
+                    'opacity': 1,
+                    'visibility': 'visible'
+                });
+            }
+
+            function showSkeletonOnError() {
+                // CHỈ khi load LỖI mới thêm skeleton class và hiển thị skeleton
+                $wrap.addClass('skeleton');
+                $img.css({
+                    'opacity': 0,
+                    'visibility': 'hidden'
+                }).attr('alt', 'Hình ảnh đang cập nhật');
+            }
+
+            // Kiểm tra ảnh đã load chưa
+            if (img.complete) {
+                // Ảnh đã complete (có thể thành công hoặc lỗi)
+                if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                    // Ảnh đã load thành công
+                    hideSkeleton();
+                } else {
+                    // Ảnh load lỗi (naturalWidth = 0 hoặc naturalHeight = 0)
+                    showSkeletonOnError();
+                }
+            } else {
+                // Ảnh chưa load xong, đợi event
+                var loadHandler = function() {
+                    hideSkeleton();
+                    $img.off('load error', loadHandler);
+                    $img.off('load error', errorHandler);
+                };
+                var errorHandler = function() {
+                    showSkeletonOnError();
+                    $img.off('load error', loadHandler);
+                    $img.off('load error', errorHandler);
+                };
+                $img.on('load', loadHandler).on('error', errorHandler);
+            }
+        });
+    }
+
+    if (typeof $ !== 'undefined') {
+        $(document).ready(function () {
+            initSkeletonImages();
+        });
+    }
     // 移动端关闭按钮（使用伪元素，需要通过点击事件处理）
     if (typeof $ !== 'undefined') {
         $(document).ready(function() {
@@ -2609,6 +2684,97 @@ document.addEventListener('DOMContentLoaded', function() {
 .brand-item a:hover img {
     opacity: 1;
     filter: grayscale(0%);
+}
+
+/* ========== Skeleton loading cho ảnh / block ========== */
+/* CHỈ hiển thị skeleton effect khi có class .skeleton */
+.js-skeleton {
+    position: relative;
+}
+/* Khi KHÔNG có class .skeleton: không hiển thị skeleton effect */
+.js-skeleton:not(.skeleton) {
+    background-color: transparent;
+}
+.js-skeleton:not(.skeleton)::after {
+    display: none !important;
+}
+/* Khi CÓ class .skeleton: hiển thị skeleton effect */
+.js-skeleton.skeleton {
+    overflow: hidden;
+    background-color: #f2f2f2;
+    border-radius: 4px;
+}
+.js-skeleton.skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(
+        90deg,
+        rgba(255,255,255,0) 0%,
+        rgba(255,255,255,0.6) 50%,
+        rgba(255,255,255,0) 100%
+    );
+    transform: translateX(-100%);
+    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+    z-index: 1;
+    display: block;
+}
+@keyframes skeleton-shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+.skeleton--img-md {
+    width: 212px;
+    height: 212px;
+    display: inline-block;
+}
+.skeleton--img-sm {
+    width: 60px;
+    height: 60px;
+    display: inline-block;
+}
+.skeleton--img-lg {
+    width: 100%;
+    height: auto;
+    min-height: 200px;
+    display: block;
+}
+.skeleton--img-banner {
+    width: 100%;
+    height: 265px;
+    display: block;
+}
+.skeleton--img-logo {
+    width: auto;
+    height: auto;
+    min-width: 100px;
+    min-height: 50px;
+    display: inline-block;
+}
+.skeleton--img-square {
+    width: 100%;
+    height: 0;
+    padding-bottom: 100%;
+    display: block;
+    position: relative;
+}
+.skeleton--img-square img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.card-cover {
+    position: relative;
+    text-align: center;
+}
+.card-cover .js-skeleton-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
 }
 
 /* ========== 移动端样式 ========== */

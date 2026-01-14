@@ -286,7 +286,9 @@
                                         @if($item['type'] === 'video')
                                             <video src="{{$item['src']}}" controls playsinline muted></video>
                                         @else
-                                            <img src="{{$item['src']}}" alt="{{$detail->name}}">
+                                            <div class="skeleton--img-square js-skeleton">
+                                                <img src="{{$item['src']}}" alt="{{$detail->name}}" class="js-skeleton-img">
+                                            </div>
                                         @endif
                                     </div>
                                 @endforeach
@@ -631,7 +633,9 @@
                             </div>
                             <div class="item_deal_info">
                                 <div class="thumb_deal">
-                                    <img src="{{getImage($product_deal->image)}}" alt="{{$product_deal->name}}">
+                                    <div class="skeleton--img-sm js-skeleton">
+                                        <img src="{{getImage($product_deal->image)}}" alt="{{$product_deal->name}}" class="js-skeleton-img">
+                                    </div>
                                 </div>
                                 <div class="info_deal">
                                     <h5 class="deal-product-name">{{$product_deal->name}}</h5>
@@ -880,7 +884,9 @@
                         @foreach($compares as $compare)
                         <div class="item_compare">
                 <div class="logo_compare">
-                    <img src="{{getImage($compare->store->logo??'')}}" alt="{{$compare->store->name??''}}">
+                    <div class="skeleton--img-logo js-skeleton">
+                        <img src="{{getImage($compare->store->logo??'')}}" alt="{{$compare->store->name??''}}" class="js-skeleton-img">
+                    </div>
                 </div>
                             <div class="caption_compare">
                                 <span>{{number_format($compare->price)}}đ</span>
@@ -1061,10 +1067,12 @@
                         <div class="fw-bold mb-2">{{$rate->title}}</div>
                         <div>{{$rate->content}}</div>
                         @if(isset($images) && !empty($images))
-                        <div class="list_gallery">
+                            <div class="list_gallery">
                             @foreach($images as $image)
                             <a href="{{getImage($image)}}" class="item_gallery image-link">
-                                <img src="{{getImage($image)}}" alt="{{$rate->name}}">
+                                <div class="skeleton--img-sm js-skeleton">
+                                    <img src="{{getImage($image)}}" alt="{{$rate->name}}" class="js-skeleton-img">
+                                </div>
                             </a>
                             @endforeach
                         </div>
@@ -1091,7 +1099,9 @@
                         <div class="item-product text-center">
                             <div class="card-cover">
                                 <a href="{{getSlug($product->slug)}}">
-                                    <img src="{{getImage($product->image)}}" alt="{{$product->name}}" width="212" height="212">
+                                    <div class="skeleton--img-md js-skeleton">
+                                        <img src="{{getImage($product->image)}}" alt="{{$product->name}}" width="212" height="212" class="js-skeleton-img" loading="lazy">
+                                    </div>
                                 </a>
                                 <div class="group-wishlist-{{$product->id}}">
                                     {!!wishList($product->id)!!}
@@ -1143,7 +1153,9 @@
         <div class="box-product d-flex align-center space-between">
             <div class="align-center product-info">
                 <div class="thumb">
-                    <img src="{{getImage($detail->image)}}" width="72" height="72" alt="{{$detail->name}}">
+                    <div class="skeleton--img-sm js-skeleton" style="width: 72px; height: 72px;">
+                        <img src="{{getImage($detail->image)}}" width="72" height="72" alt="{{$detail->name}}" class="js-skeleton-img">
+                    </div>
                 </div>
                 <div class="description ms-2">
                     <div class="fs-16 fw-bold">{{$detail->name}}</div>
@@ -1201,7 +1213,9 @@
         <div class="fw-bold fs-24 text-center mb-3 mt-2">Viết đánh giá</div>
         <div class="align-center bg-gray br-10 pe-3 ps-3 pt-3 pb-3 mb-3">
             <div class="thumb-pro">
-                <img src="{{getImage($detail->image)}}" width="65" height="65" alt="{{$detail->name}}">
+                <div class="skeleton--img-sm js-skeleton" style="width: 65px; height: 65px;">
+                    <img src="{{getImage($detail->image)}}" width="65" height="65" alt="{{$detail->name}}" class="js-skeleton-img">
+                </div>
             </div>
             <div class="des-pro ps-3">
                 @if($detail->brand)<div class="fs-14 fw-600">{{$detail->brand->name}}</div>@endif

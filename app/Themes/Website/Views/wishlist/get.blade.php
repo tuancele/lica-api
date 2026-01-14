@@ -8,7 +8,9 @@
 	@if($value->product)
 	<div class="item-wishlist">
 		<div class="img-thumb">
-			<img src="{{getImage($value->product->image)}}" alt="{{$value->product->name}}">
+			<div class="skeleton--img-sm js-skeleton">
+				<img src="{{getImage($value->product->image)}}" alt="{{$value->product->name}}" class="js-skeleton-img">
+			</div>
 		</div>
 		<div class="des-wishlist">
 			<a class="product-name" href="{{getSlug($value->product->slug)}}">{{$value->product->name}}</a>

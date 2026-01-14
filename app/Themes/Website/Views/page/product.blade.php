@@ -28,7 +28,9 @@
                 <div class="item-product text-center">
                         <div class="card-cover">
                             <a href="{{getSlug($product->slug)}}">
-                                <img src="{{getImage($product->image)}}" alt="{{$product->name}}" width="212" height="212">
+                                <div class="skeleton--img-md js-skeleton">
+                                    <img src="{{getImage($product->image)}}" alt="{{$product->name}}" width="212" height="212" class="js-skeleton-img" loading="lazy">
+                                </div>
                             </a>
                             <div class="group-wishlist-{{$product->id}}">
                                 {!!wishList($product->id)!!}
@@ -88,6 +90,9 @@
                 $('#total_product').html(res.total+' Kết quả');
                 $('.load-product').html(res.view);
                 $('.sort button').html(text);
+                if (typeof initSkeletonImages === 'function') {
+                    initSkeletonImages(); // Re-bind skeleton handler for newly injected images
+                }
             }
         })
     });
@@ -137,6 +142,9 @@
             success: function (res) {
                 $('#total_product').html(res.total+' Kết quả');
                 $('.load-product').html(res.view);
+                if (typeof initSkeletonImages === 'function') {
+                    initSkeletonImages(); // Re-bind skeleton handler for newly injected images
+                }
             }
         })
     });

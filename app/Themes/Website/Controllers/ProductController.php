@@ -21,7 +21,8 @@ class ProductController extends Controller
     public function show($slug)
     {
         // Try to find the product
-        $post = Product::where([['slug', $slug], ['status', '1']])->first();
+        // IMPORTANT: Chỉ match sản phẩm thật sự, tránh nuốt slug của page/blog/taxonomy
+        $post = Product::where([['slug', $slug], ['status', '1'], ['type', 'product']])->first();
 
         if ($post) {
             $watch = Session::get('product_watched', []);
@@ -34,11 +35,18 @@ class ProductController extends Controller
             $data['gallerys'] = json_decode($post->gallery);
             $variants = Variant::where('product_id', $post->id)->orderBy('position', 'asc')->orderBy('id', 'asc')->get();
             $first = $variants->first();
+            // Nếu không có variant thì tạo object rỗng để tránh lỗi view
+            if (!$first) {
+                $first = new Variant();
+                $first->price = 0;
+                $first->sale = 0;
+                $first->sku = '';
+            }
             $data['variants'] = $variants;
             $data['first'] = $first;
             
-            $arrCate = json_decode($post->cat_id);
-            $catid = ($arrCate && !empty($arrCate)) ? $arrCate[0] : "";
+            $arrCate = json_decode($post->cat_id, true);
+            $catid = (is_array($arrCate) && !empty($arrCate)) ? $arrCate[0] : ($post->cat_id ?? "");
             
             $data['rates'] = Rate::where([['status', '1'], ['product_id', $post->id]])->orderBy('created_at', 'desc')->limit(5)->get();
             $data['category'] = Post::select('id', 'name', 'slug', 'cat_id')->where([['type', 'taxonomy'], ['id', $catid]])->first();

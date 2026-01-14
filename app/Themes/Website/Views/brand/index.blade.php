@@ -5,14 +5,18 @@
 <section class="banner">
 	<div class="container-lg">
 		<div class="br-10 overflow-hidden">
-			<img src="{{getImage($detail->banner)}}" alt="{{$detail->name}}" width="1175" height="265">
+			<div class="skeleton--img-banner js-skeleton">
+				<img src="{{getImage($detail->banner)}}" alt="{{$detail->name}}" width="1175" height="265" class="js-skeleton-img w-100">
+			</div>
 		</div>
 	</div>
 </section>
 <section class="content-brand mb-3">
 	<div class="wrapper-container2">
 		<div class="logo-brand text-center">
-			<img src="{{getImage($detail->logo)}}" width="123" height="123" class="br-10" alt="{{$detail->name}}">
+			<div class="skeleton--img-md js-skeleton" style="width: 123px; height: 123px; margin: 0 auto;">
+				<img src="{{getImage($detail->logo)}}" width="123" height="123" class="br-10 js-skeleton-img" alt="{{$detail->name}}">
+			</div>
 		</div>
 		<h1 class="text-center title-brand">{{$detail->name}}</h1>
 		<div class="text-center">
@@ -28,7 +32,9 @@
 			@foreach($galleries as $key => $value)
 			<div class="col-12 mb-3 mb-md-0 col-md-4">
 				<div class="br-10 overflow-hidden">
-					<img src="{{getImage($value)}}" alt="{{$detail->name}}" width="362" height="181" class="w-100">
+					<div class="skeleton--img-lg js-skeleton" style="height: 181px;">
+						<img src="{{getImage($value)}}" alt="{{$detail->name}}" width="362" height="181" class="w-100 js-skeleton-img">
+					</div>
 				</div>
 			</div>
 			@endforeach
@@ -41,7 +47,9 @@
 				<div class="item-product text-center">
 					<div class="card-cover">
 						<a href="{{getSlug($product->slug)}}">
-							<img src="{{getImage($product->image)}}" alt="{{$product->name}}" width="212" height="212">
+							<div class="skeleton--img-md js-skeleton">
+								<img src="{{getImage($product->image)}}" alt="{{$product->name}}" width="212" height="212" class="js-skeleton-img" loading="lazy">
+							</div>
 						</a>
 						<div class="group-wishlist-{{$product->id}}">
 							{!!wishList($product->id)!!}
@@ -79,7 +87,9 @@
 				<div class="item-product text-center">
 						<div class="card-cover">
 							<a href="{{getSlug($product->slug)}}">
-								<img src="{{getImage($product->image)}}" alt="{{$product->name}}" width="212" height="212">
+								<div class="skeleton--img-md js-skeleton">
+									<img src="{{getImage($product->image)}}" alt="{{$product->name}}" width="212" height="212" class="js-skeleton-img" loading="lazy">
+								</div>
 							</a>
 							<div class="group-wishlist-{{$product->id}}">
 								{!!wishList($product->id)!!}

@@ -2,10 +2,12 @@
 	@foreach($products as $product)
 	<div class="product-col">
 		<div class="item-product text-center">
-				<div class="card-cover">
-					<a href="{{getSlug($product->slug)}}">
-						<img src="{{getImage($product->image)}}" alt="{{$product->name}}" width="212" height="212">
-					</a>
+			<div class="card-cover">
+				<a href="{{getSlug($product->slug)}}">
+					<div class="skeleton--img-md js-skeleton">
+						<img src="{{getImage($product->image)}}" alt="{{$product->name}}" width="212" height="212" class="js-skeleton-img" loading="lazy">
+					</div>
+				</a>
 					<div class="group-wishlist-{{$product->id}}">
 						{!!wishList($product->id)!!}
 					</div>

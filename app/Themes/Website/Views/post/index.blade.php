@@ -22,7 +22,9 @@
                     <div class="mb-3 col-12 col-md-4">
                         <div class="item-blog">
                             <a href="{{getSlug($post->slug)}}" class="box-image">
-                                <img width="250" height="" class="lazy w-100" alt="{{$post->name}}" loading="lazy" src="{{getImage($post->image)}}">
+                                <div class="skeleton--img-square js-skeleton">
+                                    <img width="250" height="" class="lazy w-100 js-skeleton-img" alt="{{$post->name}}" loading="lazy" src="{{getImage($post->image)}}">
+                                </div>
                             </a>
                             <div class="ps-3 pe-3 ps-md-0 pe-md-0">
                                 <span class="category">@if($post->category)<a href="{{getSlug($post->category->slug)}}">{{$post->category->name}}</a>@endif</span>
