@@ -27,16 +27,381 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="@yield('title')" />
     <meta name="twitter:description" content="@yield('description')" />
+    <!-- CSS文件加载 -->
     <link rel="stylesheet" href="/public/website/font-awesome/css/font-awesome.min.css">
     <link rel="stylesheet" href="/public/website/css/bootstrap.min.css">
+    
+    <!-- JavaScript优化：jQuery需要同步加载（其他脚本依赖），Bootstrap使用defer -->
     <script src="/public/website/js/jquery.min.js"></script>
     <script src="/public/website/js/bootstrap.bundle.min.js" defer></script>
+    <!-- 异步加载优化脚本 -->
+    <script src="/public/website/js/lazy-load.js" defer></script>
 
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @yield('header')
     <link rel="preload" href="/public/website/css/style.css" as="style">
     <link rel="stylesheet" href="/public/website/css/style.css">
-
+    <style>
+        /* Danh mục nổi bật - Horizontal scroll trên mobile */
+        .list-taxonomy-wrapper {
+            position: relative;
+        }
+        @media (max-width: 768px) {
+            .list-taxonomy-wrapper {
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: thin;
+                scrollbar-color: #ddd transparent;
+                margin: 0 -15px;
+                padding: 0 15px 10px;
+                width: calc(100% + 30px);
+            }
+            .list-taxonomy-wrapper::-webkit-scrollbar {
+                height: 4px;
+            }
+            .list-taxonomy-wrapper::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .list-taxonomy-wrapper::-webkit-scrollbar-thumb {
+                background: #ddd;
+                border-radius: 2px;
+            }
+            .list-taxonomy-wrapper::-webkit-scrollbar-thumb:hover {
+                background: #bbb;
+            }
+            .list-taxonomy {
+                display: flex !important;
+                flex-wrap: nowrap !important;
+                margin-left: 0 !important;
+                margin-right: 0 !important;
+                padding-bottom: 0;
+                width: max-content;
+            }
+            .list-taxonomy .col8 {
+                flex: 0 0 auto !important;
+                width: 140px !important;
+                min-width: 140px;
+                max-width: 140px;
+                margin-left: 12px !important;
+                margin-right: 0 !important;
+            }
+            .list-taxonomy .col8:first-child {
+                margin-left: 0 !important;
+            }
+            .taxonomy-item {
+                padding: 12px 16px 16px !important;
+                border-radius: 8px;
+            }
+            .taxonomy-cover {
+                margin-bottom: 6px;
+            }
+            .taxonomy-cover img {
+                max-width: 100%;
+                height: auto;
+                object-fit: contain;
+            }
+            .taxonomy-title {
+                font-size: 11px;
+                line-height: 1.3;
+                text-align: center;
+                word-break: break-word;
+            }
+        }
+        @media (max-width: 480px) {
+            .list-taxonomy .col8 {
+                width: 120px !important;
+                min-width: 120px;
+                max-width: 120px;
+                margin-left: 10px !important;
+            }
+            .taxonomy-item {
+                padding: 10px 12px 14px !important;
+            }
+            .taxonomy-title {
+                font-size: 10px;
+            }
+        }
+        .footer-blocks {
+            background-color: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+        }
+        .footer-block-item {
+            padding: 10px 15px;
+        }
+        .footer-block-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        .footer-block-title strong {
+            font-weight: 700;
+        }
+        .footer-links {
+            font-size: 11px;
+            line-height: 1.6;
+            color: #666;
+        }
+        .footer-link {
+            color: #666;
+            text-decoration: none;
+            font-size: 11px;
+            transition: color 0.2s ease;
+        }
+        .footer-link:hover {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .footer-link-separator {
+            color: #adb5bd;
+            margin: 0 3px;
+            font-size: 11px;
+        }
+        /* Mobile collapse/expand */
+        .footer-block-toggle {
+            display: none;
+        }
+        @media (max-width: 768px) {
+            .footer-blocks {
+                padding: 0;
+                margin: 0;
+            }
+            .footer-blocks .container-lg {
+                padding: 6px 8px !important;
+            }
+            .footer-blocks .row {
+                margin: 0;
+            }
+            .footer-block-item {
+                padding: 4px 6px !important;
+                margin-bottom: 2px !important;
+                border-bottom: 1px solid #e9ecef;
+                width: 100%;
+                max-width: 100%;
+                flex: 0 0 100%;
+            }
+            .footer-block-item:last-child {
+                border-bottom: none;
+                margin-bottom: 0 !important;
+            }
+            .footer-block-title {
+                font-size: 9px;
+                margin-bottom: 3px;
+                line-height: 1.2;
+                cursor: pointer;
+                position: relative;
+                padding-right: 18px;
+                font-weight: 600;
+            }
+            .footer-block-title::after {
+                content: '+';
+                position: absolute;
+                right: 0;
+                font-size: 11px;
+                font-weight: normal;
+                transition: transform 0.3s ease;
+                color: #666;
+            }
+            .footer-block-item.active .footer-block-title::after {
+                content: '−';
+                transform: rotate(0deg);
+            }
+            .footer-links {
+                font-size: 8px;
+                line-height: 1.3;
+                max-height: 0;
+                overflow: hidden;
+                transition: max-height 0.3s ease, margin-top 0.3s ease;
+                margin-top: 0;
+            }
+            .footer-block-item.active .footer-links {
+                max-height: 400px;
+                margin-top: 3px;
+            }
+            .footer-link {
+                font-size: 8px;
+                display: inline-block;
+                margin-right: 1px;
+                margin-bottom: 1px;
+                line-height: 1.3;
+            }
+            .footer-link-separator {
+                font-size: 8px;
+                margin: 0 1px;
+            }
+            @media (max-width: 480px) {
+                .footer-blocks .container-lg {
+                    padding: 4px 6px !important;
+                }
+                .footer-block-item {
+                    padding: 3px 4px !important;
+                    margin-bottom: 1px !important;
+                }
+            }
+        }
+        /* Footer chính - Mobile optimization */
+        @media (max-width: 768px) {
+            footer.pt-5.pb-5 {
+                padding-top: 12px !important;
+                padding-bottom: 12px !important;
+            }
+            footer .container-lg {
+                padding-left: 8px !important;
+                padding-right: 8px !important;
+            }
+            footer .row {
+                margin: 0;
+            }
+            /* Box footer - Logo và social */
+            .box-footer {
+                padding: 8px 0 !important;
+                margin-bottom: 8px;
+            }
+            .logo_footer img {
+                max-width: 120px;
+                height: auto;
+            }
+            .list_social {
+                margin: 6px 0 !important;
+                padding: 0;
+            }
+            .list_social a img {
+                width: 20px !important;
+                height: 20px !important;
+                margin-right: 8px;
+            }
+            .bocongthuong img {
+                max-width: 90px !important;
+                height: auto !important;
+            }
+            /* Info footer - Thông tin liên hệ */
+            .info_footer {
+                padding: 8px 0 !important;
+                font-size: 9px;
+                line-height: 1.4;
+            }
+            .info_footer p {
+                margin-bottom: 4px;
+                font-size: 9px;
+                line-height: 1.4;
+            }
+            .info_footer strong {
+                font-size: 9px;
+            }
+            /* Menu footer - Collapse/expand */
+            .menu_footer {
+                margin-bottom: 4px;
+                border-bottom: 1px solid #e9ecef;
+                padding-bottom: 4px;
+            }
+            .menu_footer:last-child {
+                border-bottom: none;
+            }
+            .title_nav {
+                font-size: 9px;
+                font-weight: 600;
+                margin-bottom: 4px;
+                cursor: pointer;
+                position: relative;
+                padding-right: 18px;
+                line-height: 1.2;
+            }
+            .title_nav::after {
+                content: '+';
+                position: absolute;
+                right: 0;
+                font-size: 11px;
+                font-weight: normal;
+                transition: transform 0.3s ease;
+                color: #666;
+            }
+            .menu_footer.active .title_nav::after {
+                content: '−';
+            }
+            .menu_footer ul {
+                font-size: 8px;
+                line-height: 1.3;
+                max-height: 0;
+                overflow: hidden;
+                transition: max-height 0.3s ease, margin-top 0.3s ease;
+                margin-top: 0;
+                padding-left: 12px;
+                margin-bottom: 0;
+            }
+            .menu_footer.active ul {
+                max-height: 300px;
+                margin-top: 3px;
+            }
+            .menu_footer ul li {
+                margin-bottom: 2px;
+            }
+            .menu_footer ul li a {
+                font-size: 8px;
+                color: #666;
+                text-decoration: none;
+            }
+            .menu_footer ul li a:hover {
+                color: #007bff;
+            }
+            /* Col adjustments */
+            footer .col-md-5,
+            footer .col-md-7 {
+                padding: 0 4px;
+            }
+            footer .col-12 {
+                padding: 0 4px;
+            }
+            /* First menu expanded by default */
+            .menu_footer:first-child {
+                margin-top: 0;
+            }
+            .menu_footer:first-child.active ul {
+                max-height: 300px;
+                margin-top: 3px;
+            }
+        }
+        @media (max-width: 480px) {
+            footer.pt-5.pb-5 {
+                padding-top: 8px !important;
+                padding-bottom: 8px !important;
+            }
+            footer .container-lg {
+                padding-left: 6px !important;
+                padding-right: 6px !important;
+            }
+            .box-footer {
+                padding: 6px 0 !important;
+            }
+            .logo_footer img {
+                max-width: 100px;
+            }
+            .list_social a img {
+                width: 18px !important;
+                height: 18px !important;
+            }
+            .bocongthuong img {
+                max-width: 80px !important;
+            }
+            .info_footer {
+                font-size: 8px;
+            }
+            .info_footer p {
+                font-size: 8px;
+                margin-bottom: 3px;
+            }
+            .title_nav {
+                font-size: 8px;
+            }
+            .menu_footer ul {
+                font-size: 7px;
+            }
+            .menu_footer ul li a {
+                font-size: 7px;
+            }
+        }
+    </style>
     {!!getConfig('code_header')!!}
 </head>
 <body class="home">
@@ -64,8 +429,44 @@
                 <div class="head-right">
                     <div class="search-head d-none d-md-block">
                         <form action="/tim-kiem" class="search" method="get">
-                            <input type="search" name="s" value="{{request()->s}}" placeholder="Nhập tên sản phẩm, thương hiệu muốn tìm">
-                            <button type="submit"><span role="img" class="icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.29496 18.5899C4.17485 18.5899 0 14.4151 0 9.29496C0 4.17485 4.17485 0 9.29496 0C14.4151 0 18.5899 4.17485 18.5899 9.29496C18.5899 14.4151 14.4151 18.5899 9.29496 18.5899ZM9.29496 1.10279C4.77351 1.10279 1.10279 4.77351 1.10279 9.29496C1.10279 13.8164 4.77351 17.4871 9.29496 17.4871C13.8164 17.4871 17.4871 13.8164 17.4871 9.29496C17.4871 4.77351 13.8164 1.10279 9.29496 1.10279Z" fill="black"></path><path d="M16.3409 15.2585L15.5612 16.0383L21.2202 21.6973L21.9999 20.9175L16.3409 15.2585Z" fill="black"></path></svg></span></button>
+                            <div class="search-wrapper">
+                                <input type="search" name="s" id="search-input" value="{{request()->s}}" placeholder="Nhập tên sản phẩm, thương hiệu muốn tìm" autocomplete="off">
+                                <button type="submit"><span role="img" class="icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.29496 18.5899C4.17485 18.5899 0 14.4151 0 9.29496C0 4.17485 4.17485 0 9.29496 0C14.4151 0 18.5899 4.17485 18.5899 9.29496C18.5899 14.4151 14.4151 18.5899 9.29496 18.5899ZM9.29496 1.10279C4.77351 1.10279 1.10279 4.77351 1.10279 9.29496C1.10279 13.8164 4.77351 17.4871 9.29496 17.4871C13.8164 17.4871 17.4871 13.8164 17.4871 9.29496C17.4871 4.77351 13.8164 1.10279 9.29496 1.10279Z" fill="black"></path><path d="M16.3409 15.2585L15.5612 16.0383L21.2202 21.6973L21.9999 20.9175L16.3409 15.2585Z" fill="black"></path></svg></span></button>
+                            </div>
+                            <div class="search-suggestions" id="search-suggestions" style="display: none;">
+                                <div class="search-suggestions-content">
+                                    <!-- 促销/Deal建议 -->
+                                    <div class="suggestions-section deals-section" id="deals-section" style="display: none;">
+                                        <div class="section-title">Khuyến mại</div>
+                                        <div class="deals-list" id="deals-list"></div>
+                                    </div>
+                                    
+                                    <!-- 搜索建议产品 -->
+                                    <div class="suggestions-section products-section" id="products-section" style="display: none;">
+                                        <div class="section-title">Sản phẩm gợi ý</div>
+                                        <div class="products-list" id="products-list"></div>
+                                    </div>
+                                    
+                                    <!-- 最近搜索 -->
+                                    <div class="suggestions-section recent-section" id="recent-section" style="display: none;">
+                                        <div class="section-title">Tìm kiếm gần đây</div>
+                                        <div class="recent-searches-list" id="recent-searches-list"></div>
+                                        <a href="javascript:;" class="view-more" id="view-more-recent" style="display: none;">Xem thêm <i class="fa fa-chevron-down"></i></a>
+                                    </div>
+                                    
+                                    <!-- 产品类别快速链接 -->
+                                    <div class="suggestions-section categories-section" id="categories-section" style="display: none;">
+                                        <div class="section-title">Danh mục nhanh</div>
+                                        <div class="categories-grid" id="categories-grid"></div>
+                                    </div>
+                                    
+                                    <!-- 品牌logo -->
+                                    <div class="suggestions-section brands-section" id="brands-section" style="display: none;">
+                                        <div class="section-title">Thương hiệu</div>
+                                        <div class="brands-grid" id="brands-grid"></div>
+                                    </div>
+                                </div>
+                            </div>
                         </form>
                     </div>
                     <div class="system-store d-none d-md-block">
@@ -146,8 +547,49 @@
             </div>
             <div class="search-head search_mobile">
                 <form action="/tim-kiem" class="search" method="get">
-                    <input type="search" name="s" value="{{request()->s}}" placeholder="Nhập tên sản phẩm, thương hiệu muốn tìm">
-                    <button type="submit"><span role="img" class="icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.29496 18.5899C4.17485 18.5899 0 14.4151 0 9.29496C0 4.17485 4.17485 0 9.29496 0C14.4151 0 18.5899 4.17485 18.5899 9.29496C18.5899 14.4151 14.4151 18.5899 9.29496 18.5899ZM9.29496 1.10279C4.77351 1.10279 1.10279 4.77351 1.10279 9.29496C1.10279 13.8164 4.77351 17.4871 9.29496 17.4871C13.8164 17.4871 17.4871 13.8164 17.4871 9.29496C17.4871 4.77351 13.8164 1.10279 9.29496 1.10279Z" fill="black"></path><path d="M16.3409 15.2585L15.5612 16.0383L21.2202 21.6973L21.9999 20.9175L16.3409 15.2585Z" fill="black"></path></svg></span></button>
+                    <div class="search-wrapper">
+                        <input type="search" name="s" id="search-input-mobile" value="{{request()->s}}" placeholder="Nhập tên sản phẩm, thương hiệu muốn tìm" autocomplete="off">
+                        <button type="submit"><span role="img" class="icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.29496 18.5899C4.17485 18.5899 0 14.4151 0 9.29496C0 4.17485 4.17485 0 9.29496 0C14.4151 0 18.5899 4.17485 18.5899 9.29496C18.5899 14.4151 14.4151 18.5899 9.29496 18.5899ZM9.29496 1.10279C4.77351 1.10279 1.10279 4.77351 1.10279 9.29496C1.10279 13.8164 4.77351 17.4871 9.29496 17.4871C13.8164 17.4871 17.4871 13.8164 17.4871 9.29496C17.4871 4.77351 13.8164 1.10279 9.29496 1.10279Z" fill="black"></path><path d="M16.3409 15.2585L15.5612 16.0383L21.2202 21.6973L21.9999 20.9175L16.3409 15.2585Z" fill="black"></path></svg></span></button>
+                    </div>
+                    <div class="search-suggestions" id="search-suggestions-mobile" style="display: none;">
+                        <button type="button" class="close-search-mobile" onclick="closeMobileSuggestions()">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <div class="search-suggestions-content">
+                            <!-- 促销/Deal建议 -->
+                            <div class="suggestions-section deals-section" id="deals-section-mobile" style="display: none;">
+                                <div class="section-title">Khuyến mại</div>
+                                <div class="deals-list" id="deals-list-mobile"></div>
+                            </div>
+                            
+                            <!-- 搜索建议产品 -->
+                            <div class="suggestions-section products-section" id="products-section-mobile" style="display: none;">
+                                <div class="section-title">Sản phẩm gợi ý</div>
+                                <div class="products-list" id="products-list-mobile"></div>
+                            </div>
+                            
+                            <!-- 最近搜索 -->
+                            <div class="suggestions-section recent-section" id="recent-section-mobile" style="display: none;">
+                                <div class="section-title">Tìm kiếm gần đây</div>
+                                <div class="recent-searches-list" id="recent-searches-list-mobile"></div>
+                                <a href="javascript:;" class="view-more" id="view-more-recent-mobile" style="display: none;">Xem thêm <i class="fa fa-chevron-down"></i></a>
+                            </div>
+                            
+                            <!-- 产品类别快速链接 -->
+                            <div class="suggestions-section categories-section" id="categories-section-mobile" style="display: none;">
+                                <div class="section-title">Danh mục nhanh</div>
+                                <div class="categories-grid" id="categories-grid-mobile"></div>
+                            </div>
+                            
+                            <!-- 品牌logo -->
+                            <div class="suggestions-section brands-section" id="brands-section-mobile" style="display: none;">
+                                <div class="section-title">Thương hiệu</div>
+                                <div class="brands-grid" id="brands-grid-mobile"></div>
+                            </div>
+                        </div>
+                    </div>
                 </form>
             </div>
         </div>
@@ -214,6 +656,89 @@
         </div>
     </div>
 </footer>
+<?php 
+// #region agent log
+try {
+    $logPath = base_path('.cursor/debug.log');
+    $logDir = dirname($logPath);
+    if (!is_dir($logDir)) {
+        @mkdir($logDir, 0755, true);
+    }
+    $hasFooterBlocks = isset($footerBlocks);
+    $footerBlocksCount = $hasFooterBlocks ? $footerBlocks->count() : 0;
+    $footerBlocksType = $hasFooterBlocks ? get_class($footerBlocks) : 'not_set';
+    @file_put_contents($logPath, json_encode(['sessionId' => 'debug-session', 'runId' => 'run1', 'hypothesisId' => 'I', 'location' => 'layout.blade.php:371', 'message' => 'Footer blocks check', 'data' => ['isset' => $hasFooterBlocks, 'count' => $footerBlocksCount, 'type' => $footerBlocksType, 'condition_met' => $hasFooterBlocks && $footerBlocksCount > 0], 'timestamp' => time() * 1000]) . "\n", FILE_APPEND);
+} catch (\Exception $e) {}
+// #endregion
+?>
+@if(isset($footerBlocks) && $footerBlocks->count() > 0)
+<div class="footer-blocks">
+    <div class="container-lg pt-4 pb-4">
+        <div class="row">
+            @foreach($footerBlocks as $block)
+            <div class="col-md-3 col-sm-6 footer-block-item mb-4">
+                @if($block->title)
+                <div class="footer-block-title mb-2"><strong>{{$block->title}}</strong></div>
+                @endif
+                
+                @if(count($block->links) > 0)
+                <div class="footer-links">
+                    @foreach($block->links as $link)
+                    <a href="{{getSlug($link['url'])}}" class="footer-link">{{$link['text']}}</a>
+                    @if(!$loop->last) <span class="footer-link-separator">|</span> @endif
+                    @endforeach
+                </div>
+                @endif
+            </div>
+            @endforeach
+        </div>
+    </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Mobile collapse/expand functionality
+    if (window.innerWidth <= 768) {
+        const footerBlockItems = document.querySelectorAll('.footer-block-item');
+        footerBlockItems.forEach(function(item) {
+            const title = item.querySelector('.footer-block-title');
+            if (title) {
+                title.addEventListener('click', function() {
+                    item.classList.toggle('active');
+                });
+                // First 2 items expanded by default on mobile
+                if (item === footerBlockItems[0] || item === footerBlockItems[1]) {
+                    item.classList.add('active');
+                }
+            }
+        });
+    }
+    
+    // Handle window resize
+    let resizeTimer;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+            const footerBlockItems = document.querySelectorAll('.footer-block-item');
+            if (window.innerWidth > 768) {
+                // Desktop: expand all
+                footerBlockItems.forEach(function(item) {
+                    item.classList.add('active');
+                });
+            } else {
+                // Mobile: only first 2 expanded
+                footerBlockItems.forEach(function(item, index) {
+                    if (index < 2) {
+                        item.classList.add('active');
+                    } else {
+                        item.classList.remove('active');
+                    }
+                });
+            }
+        }, 250);
+    });
+});
+</script>
+@endif
 <div class="copyright">
     <div class="container-lg text-center border-top pt-3 pb-1">
         {!!$footer->block_1!!}
@@ -1157,7 +1682,1098 @@
     // if($(window).width() <= 420){
     //     $('.g_id_signin').attr('data-width',$('#main .container-lg').width());
     // }
+    
+    // 搜索建议功能
+    var searchTimeout;
+    var isSearchSuggestionsVisible = false;
+    
+    function initSearchSuggestions(inputId, suggestionsId, prefix) {
+        var $input = $('#' + inputId);
+        var $suggestions = $('#' + suggestionsId);
+        var isMobile = prefix === 'mobile';
+        
+        if ($input.length === 0 || $suggestions.length === 0) {
+            console.warn('Search input or suggestions element not found:', inputId, suggestionsId);
+            return;
+        }
+        
+        // 移除旧的事件监听器，避免重复绑定
+        $input.off('focus.searchSuggestions input.searchSuggestions click.searchSuggestions');
+        
+        // 当输入框获得焦点或点击时显示建议
+        $input.on('focus.searchSuggestions click.searchSuggestions', function(e) {
+            e.stopPropagation();
+            if ($(this).val().length === 0) {
+                loadSearchSuggestions('', prefix);
+            }
+            if (isMobile) {
+                $('body').css('overflow', 'hidden');
+            }
+        });
+        
+        // 当输入时显示建议
+        $input.on('input.searchSuggestions', function() {
+            var keyword = $(this).val();
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(function() {
+                loadSearchSuggestions(keyword, prefix);
+            }, 300);
+        });
+        
+        // 点击外部时隐藏建议（仅桌面端）
+        if (!isMobile) {
+            $(document).on('click', function(e) {
+                if (!$(e.target).closest('.search-wrapper, .search-suggestions').length) {
+                    $suggestions.hide();
+                    isSearchSuggestionsVisible = false;
+                }
+            });
+        }
+        
+        // 移动端关闭按钮已在HTML中定义，通过onclick处理
+    }
+    
+    function closeMobileSuggestions() {
+        $('#search-suggestions-mobile').fadeOut(200);
+        $('#search-input-mobile').blur();
+        $('body').css('overflow', '');
+    }
+    
+    // 全局函数，供onclick调用
+    window.closeMobileSuggestions = closeMobileSuggestions;
+    
+    function loadSearchSuggestions(keyword, prefix) {
+        var $suggestions = $('#' + (prefix ? 'search-suggestions-mobile' : 'search-suggestions'));
+        var suffix = prefix ? '-mobile' : '';
+        
+        $.ajax({
+            type: 'post',
+            url: '/ajax-search-suggestions',
+            data: {
+                keyword: keyword,
+                _token: $('meta[name="csrf-token"]').attr('content')
+            },
+            success: function(res) {
+                // 后端直接返回数据对象，没有status包装
+                var data = res;
+                
+                // 兼容两种格式：直接数据对象或包装在data中的对象
+                if (res.status === 'success' && res.data) {
+                    data = res.data;
+                }
+                
+                // 显示/隐藏各个部分
+                if (data.deals && data.deals.length > 0) {
+                    renderDeals(data.deals, suffix);
+                    $('#deals-section' + suffix).show();
+                } else {
+                    $('#deals-section' + suffix).hide();
+                }
+                
+                if (data.suggest_products && data.suggest_products.length > 0) {
+                    renderProducts(data.suggest_products, suffix);
+                    $('#products-section' + suffix).show();
+                } else {
+                    $('#products-section' + suffix).hide();
+                }
+                
+                if (data.recent_searches && data.recent_searches.length > 0) {
+                    renderRecentSearches(data.recent_searches, suffix);
+                    $('#recent-section' + suffix).show();
+                } else {
+                    $('#recent-section' + suffix).hide();
+                }
+                
+                if (data.categories && data.categories.length > 0) {
+                    renderCategories(data.categories, suffix);
+                    $('#categories-section' + suffix).show();
+                } else {
+                    $('#categories-section' + suffix).hide();
+                }
+                
+                if (data.brands && data.brands.length > 0) {
+                    renderBrands(data.brands, suffix);
+                    $('#brands-section' + suffix).show();
+                } else {
+                    $('#brands-section' + suffix).hide();
+                }
+                
+                $suggestions.show();
+                isSearchSuggestionsVisible = true;
+                
+                // 移动端添加关闭按钮点击事件
+                if (prefix === 'mobile') {
+                    setTimeout(function() {
+                        $('.search_mobile .search-suggestions').off('click.closeBtn').on('click.closeBtn', function(e) {
+                            if ($(e.target).is('.search_mobile .search-suggestions')) {
+                                closeMobileSuggestions();
+                            }
+                        });
+                    }, 100);
+                }
+            },
+            error: function() {
+                console.log('Error loading search suggestions');
+            }
+        });
+    }
+    
+    function renderDeals(deals, suffix) {
+        var html = '';
+        deals.forEach(function(deal) {
+            html += '<div class="deal-item"><a href="' + (deal.link || '#') + '">' + (deal.title || deal.description || '') + '</a></div>';
+        });
+        $('#deals-list' + suffix).html(html);
+    }
+    
+    function renderProducts(products, suffix) {
+        var html = '';
+        products.forEach(function(product) {
+            var productUrl = product.slug ? '/' + product.slug : '#';
+            html += '<div class="product-item"><a href="' + productUrl + '">';
+            html += '<img src="' + (product.image || '/public/image/no-image.jpg') + '" alt="' + product.name + '" width="40" height="40">';
+            html += '<span>' + product.name + '</span></a></div>';
+        });
+        $('#products-list' + suffix).html(html);
+    }
+    
+    function renderRecentSearches(searches, suffix) {
+        var html = '';
+        // 显示所有搜索历史，使用标签形式
+        searches.forEach(function(search) {
+            html += '<span class="recent-tag">';
+            html += '<a href="/tim-kiem?s=' + encodeURIComponent(search) + '" title="' + search + '">' + search + '</a>';
+            html += '<button type="button" class="remove-recent-tag" data-search="' + encodeURIComponent(search) + '" title="Xóa"><i class="fa fa-times"></i></button>';
+            html += '</span>';
+        });
+        
+        $('#recent-searches-list' + suffix).html(html);
+        // 隐藏"查看更多"按钮，因为标签形式已经可以显示所有内容
+        $('#view-more-recent' + suffix).hide();
+    }
+    
+    function renderCategories(categories, suffix) {
+        var html = '';
+        categories.forEach(function(cat) {
+            var catUrl = cat.slug ? '/' + cat.slug : '#';
+            html += '<div class="category-item">';
+            html += '<a href="' + catUrl + '">';
+            html += '<img src="' + (cat.image || '/public/image/no-image.jpg') + '" alt="' + cat.name + '">';
+            html += '<span>' + cat.name + '</span>';
+            html += '</a></div>';
+        });
+        $('#categories-grid' + suffix).html(html);
+    }
+    
+    function renderBrands(brands, suffix) {
+        var html = '';
+        brands.forEach(function(brand) {
+            var brandUrl = brand.slug ? '/thuong-hieu/' + brand.slug : '#';
+            html += '<div class="brand-item">';
+            html += '<a href="' + brandUrl + '">';
+            html += '<img src="' + (brand.image || '/public/image/no-image.jpg') + '" alt="' + brand.name + '">';
+            html += '</a></div>';
+        });
+        $('#brands-grid' + suffix).html(html);
+    }
+    
+    // Placeholder打字机动画效果
+    function initPlaceholderAnimation() {
+        var placeholderTexts = [
+            'Nhập tên sản phẩm, thương hiệu muốn tìm',
+            'Tìm kiếm sản phẩm làm đẹp',
+            'Tìm kem chống nắng, serum, toner...',
+            'Tìm thương hiệu: CeraVe, La Roche-Posay...'
+        ];
+        
+        var currentTextIndex = 0;
+        var currentCharIndex = 0;
+        var isDeleting = false;
+        var typingSpeed = 100;
+        var deletingSpeed = 50;
+        var pauseTime = 2000;
+        
+        function typePlaceholder() {
+            var $inputs = $('#search-input, #search-input-mobile');
+            if ($inputs.length === 0) return;
+            
+            var $input = $inputs.first();
+            var currentText = placeholderTexts[currentTextIndex];
+            
+            if (!isDeleting && currentCharIndex < currentText.length) {
+                // 正在输入
+                $input.attr('placeholder', currentText.substring(0, currentCharIndex + 1) + '|');
+                currentCharIndex++;
+                setTimeout(typePlaceholder, typingSpeed);
+            } else if (isDeleting && currentCharIndex > 0) {
+                // 正在删除
+                $input.attr('placeholder', currentText.substring(0, currentCharIndex - 1) + '|');
+                currentCharIndex--;
+                setTimeout(typePlaceholder, deletingSpeed);
+            } else if (!isDeleting && currentCharIndex === currentText.length) {
+                // 输入完成，等待后开始删除
+                setTimeout(function() {
+                    isDeleting = true;
+                    typePlaceholder();
+                }, pauseTime);
+            } else if (isDeleting && currentCharIndex === 0) {
+                // 删除完成，切换到下一个文本
+                isDeleting = false;
+                currentTextIndex = (currentTextIndex + 1) % placeholderTexts.length;
+                setTimeout(typePlaceholder, 500);
+            }
+        }
+        
+        // 只在输入框为空且未获得焦点时显示动画
+        function checkAndStartAnimation() {
+            var $inputs = $('#search-input, #search-input-mobile');
+            $inputs.each(function() {
+                var $input = $(this);
+                if ($input.val() === '' && !$input.is(':focus')) {
+                    if (!$input.data('typing-started')) {
+                        $input.data('typing-started', true);
+                        typePlaceholder();
+                    }
+                } else {
+                    $input.data('typing-started', false);
+                    $input.attr('placeholder', placeholderTexts[0]);
+                }
+            });
+        }
+        
+        // 监听输入框焦点事件
+        $(document).on('focus', '#search-input, #search-input-mobile', function() {
+            var $input = $(this);
+            $input.data('typing-started', false);
+            $input.attr('placeholder', placeholderTexts[0]);
+        });
+        
+        $(document).on('blur', '#search-input, #search-input-mobile', function() {
+            var $input = $(this);
+            if ($input.val() === '') {
+                setTimeout(function() {
+                    checkAndStartAnimation();
+                }, 500);
+            }
+        });
+        
+        // 启动动画
+        setTimeout(function() {
+            checkAndStartAnimation();
+        }, 1000);
+    }
+    
+    // 初始化搜索建议 - 确保在DOM和jQuery都准备好后执行
+    function initializeSearchFeatures() {
+        if (typeof $ === 'undefined' || typeof jQuery === 'undefined') {
+            setTimeout(initializeSearchFeatures, 100);
+            return;
+        }
+        
+        // 确保DOM元素存在
+        if ($('#search-input').length > 0 && $('#search-suggestions').length > 0) {
+            // 检查是否已经初始化过，避免重复绑定
+            var $input = $('#search-input');
+            var events = $._data ? $._data($input[0], 'events') : null;
+            if (!events || !events.focus || events.focus.length === 0) {
+                initSearchSuggestions('search-input', 'search-suggestions', '');
+            }
+        }
+        
+        if ($('#search-input-mobile').length > 0 && $('#search-suggestions-mobile').length > 0) {
+            var $mobileInput = $('#search-input-mobile');
+            var mobileEvents = $._data ? $._data($mobileInput[0], 'events') : null;
+            if (!mobileEvents || !mobileEvents.focus || mobileEvents.focus.length === 0) {
+                initSearchSuggestions('search-input-mobile', 'search-suggestions-mobile', 'mobile');
+            }
+        }
+        
+        // 启动placeholder动画
+        if (typeof initPlaceholderAnimation !== 'undefined') {
+            initPlaceholderAnimation();
+        }
+    }
+    
+    // 使用多种方式确保代码执行
+    function runInitializeSearchFeatures() {
+        if (typeof $ === 'undefined' || typeof jQuery === 'undefined') {
+            setTimeout(runInitializeSearchFeatures, 100);
+            return;
+        }
+        initializeSearchFeatures();
+    }
+    
+    // 确保初始化代码在jQuery加载后执行
+    // 使用jQuery ready作为主要方式（最可靠）
+    (function initSearchOnReady() {
+        // 如果jQuery已经加载，立即使用ready
+        if (typeof $ !== 'undefined' && typeof jQuery !== 'undefined') {
+            $(document).ready(function() {
+                setTimeout(runInitializeSearchFeatures, 100);
+            });
+        } else {
+            // 如果jQuery还没加载，等待后重试
+            var checkCount = 0;
+            var maxChecks = 100; // 最多检查10秒
+            var checkInterval = setInterval(function() {
+                checkCount++;
+                if (typeof $ !== 'undefined' && typeof jQuery !== 'undefined') {
+                    clearInterval(checkInterval);
+                    $(document).ready(function() {
+                        setTimeout(runInitializeSearchFeatures, 100);
+                    });
+                } else if (checkCount >= maxChecks) {
+                    clearInterval(checkInterval);
+                    console.warn('jQuery not loaded after 10 seconds, search suggestions may not work');
+                }
+            }, 100);
+        }
+        
+        // DOMContentLoaded作为备用
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(function() {
+                    if (typeof $ !== 'undefined') {
+                        runInitializeSearchFeatures();
+                    }
+                }, 200);
+            });
+        } else {
+            // DOM已经加载完成，延迟执行确保jQuery已加载
+            setTimeout(function() {
+                if (typeof $ !== 'undefined') {
+                    runInitializeSearchFeatures();
+                }
+            }, 300);
+        }
+        
+        // window.onload作为最后的安全网
+        window.addEventListener('load', function() {
+            setTimeout(runInitializeSearchFeatures, 300);
+        });
+    })();
+    
+    // 移动端关闭按钮（使用伪元素，需要通过点击事件处理）
+    if (typeof $ !== 'undefined') {
+        $(document).ready(function() {
+            $(document).on('click', function(e) {
+                // 检查是否点击在移动端建议面板的关闭区域
+                if ($(e.target).closest('#search-suggestions-mobile').length === 0 && 
+                    $('#search-suggestions-mobile').is(':visible') &&
+                    !$(e.target).closest('.search-wrapper').length) {
+                    closeMobileSuggestions();
+                }
+            });
+        });
+    }
+    
+    // 删除最近搜索（支持两种选择器：旧的.recent-item和新的标签形式）
+    if (typeof $ !== 'undefined') {
+        $(document).ready(function() {
+            $(document).on('click', '.remove-recent, .remove-recent-tag', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var search = decodeURIComponent($(this).data('search'));
+                var isMobile = $(this).closest('#search-suggestions-mobile').length > 0;
+                $.ajax({
+                    type: 'post',
+                    url: '/ajax-remove-recent-search',
+                    data: {
+                        search: search,
+                        _token: $('meta[name="csrf-token"]').attr('content')
+                    },
+                    success: function() {
+                        var keyword = isMobile ? $('#search-input-mobile').val() : $('#search-input').val();
+                        loadSearchSuggestions(keyword, isMobile ? 'mobile' : '');
+                    }
+                });
+            });
+        });
+    }
 </script>
+<style>
+/* ========== 搜索区域样式 - 桌面端 ========== */
+.search-head {
+    position: relative;
+    width: 100%;
+    height: auto;
+    background: transparent;
+    padding: 0;
+    border: none;
+    margin: 0;
+}
+
+.search-head .search {
+    position: relative;
+    width: 100%;
+}
+
+.search-wrapper {
+    position: relative;
+    width: 100%;
+    height: 40px;
+    background: rgb(246, 246, 246);
+    border-radius: 42px;
+    border: 1px solid transparent;
+    padding: 0;
+    transition: all 0.3s ease;
+}
+
+.search-wrapper:hover {
+    background: rgb(240, 240, 240);
+    border-color: #e0e0e0;
+}
+
+.search-wrapper:focus-within {
+    background: #fff;
+    border-color: var(--main-color, #b20a2c);
+    box-shadow: 0 0 0 3px rgba(178, 10, 44, 0.1);
+}
+
+.search-wrapper form {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+}
+
+.search-wrapper input[type="search"] {
+    flex: 1;
+    padding: 0 45px 0 15px;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    color: #333;
+    transition: all 0.3s ease;
+    outline: none;
+    text-overflow: ellipsis;
+    min-width: 0;
+    line-height: 40px;
+    height: 40px;
+    box-sizing: border-box;
+    margin: 0;
+}
+
+.search-wrapper input[type="search"]::placeholder {
+    color: #999;
+}
+
+.search-wrapper button[type="submit"] {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    padding: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+    z-index: 1;
+    height: auto;
+    width: auto;
+}
+
+.search-wrapper button[type="submit"]:hover {
+    opacity: 0.7;
+}
+
+.search-wrapper button[type="submit"] .icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ========== 搜索建议面板 ========== */
+.search-suggestions {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: 100%;
+    min-width: 500px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+    z-index: 1000;
+    max-height: 650px;
+    overflow-y: auto;
+    animation: slideDown 0.3s ease;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.search-suggestions-content {
+    padding: 20px 20px 16px 20px;
+}
+
+/* 滚动条样式 */
+.search-suggestions::-webkit-scrollbar {
+    width: 6px;
+}
+
+.search-suggestions::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.search-suggestions::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 10px;
+}
+
+.search-suggestions::-webkit-scrollbar-thumb:hover {
+    background: #999;
+}
+
+/* ========== 建议部分 ========== */
+.suggestions-section {
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.suggestions-section:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.section-title {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 10px;
+    color: #333;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-family: 'SVN-Mont-SemiBold', sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ========== 促销/Deal列表 ========== */
+.deals-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.deals-list .deal-item {
+    padding: 12px 15px !important;
+    background: linear-gradient(135deg, #b20a2c 0%, #d32f2f 100%) !important;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(178, 10, 44, 0.2) !important;
+    border-left: 4px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+.deals-list .deal-item:hover {
+    background: linear-gradient(135deg, #d32f2f 0%, #b20a2c 100%) !important;
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(178, 10, 44, 0.3) !important;
+}
+
+.deals-list .deal-item a {
+    color: #fff !important;
+    text-decoration: none;
+    font-size: 13px;
+    line-height: 1.5;
+    display: block;
+    font-weight: 500;
+}
+
+.deals-list .deal-item a:hover {
+    color: #fff !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* ========== 产品建议列表 ========== */
+.products-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.products-list .product-item {
+    padding: 10px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.products-list .product-item:hover {
+    background: #f8f9fa;
+}
+
+.products-list .product-item a {
+    display: flex;
+    align-items: center;
+    color: #333;
+    text-decoration: none;
+    gap: 12px;
+}
+
+.products-list .product-item img {
+    width: 50px;
+    height: 50px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    flex-shrink: 0;
+}
+
+.products-list .product-item span {
+    font-size: 13px;
+    line-height: 1.4;
+    flex: 1;
+}
+
+.products-list .product-item:hover span {
+    color: var(--main-color, #b20a2c);
+}
+
+/* ========== 最近搜索列表 ========== */
+/* ========== 搜索历史标签形式 - 优化空间占用 ========== */
+.recent-searches-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: flex-start;
+    line-height: 1.2;
+    margin-top: -2px;
+}
+
+.recent-searches-list .recent-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: #f5f5f5;
+    border-radius: 16px;
+    transition: all 0.2s ease;
+    border: 1px solid #e8e8e8;
+    font-size: 11px;
+    line-height: 1.3;
+    max-width: 100%;
+    height: auto;
+    min-height: 24px;
+}
+
+.recent-searches-list .recent-tag:hover {
+    background: #eeeeee;
+    border-color: #d0d0d0;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.recent-searches-list .recent-tag a {
+    color: #555;
+    text-decoration: none;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+    display: inline-block;
+    transition: color 0.2s ease;
+    line-height: 1.3;
+}
+
+.recent-searches-list .recent-tag a:hover {
+    color: var(--main-color, #b20a2c);
+}
+
+.recent-searches-list .remove-recent-tag {
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    padding: 0;
+    width: 14px;
+    height: 14px;
+    min-width: 14px;
+    min-height: 14px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    font-size: 9px;
+    flex-shrink: 0;
+    line-height: 1;
+    margin-left: 2px;
+}
+
+.recent-searches-list .remove-recent-tag:hover {
+    background: rgba(0, 0, 0, 0.1);
+    color: #333;
+}
+
+/* 兼容旧的.recent-item样式（列表形式） */
+.recent-searches-list .recent-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.recent-searches-list .recent-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.recent-searches-list .recent-item:hover {
+    background: #f8f9fa;
+}
+
+.recent-searches-list .recent-item a {
+    color: #333;
+    text-decoration: none;
+    font-size: 13px;
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+.recent-searches-list .recent-item a:hover {
+    color: var(--main-color, #b20a2c);
+}
+
+.recent-searches-list .remove-recent {
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+    font-size: 14px;
+}
+
+.recent-searches-list .remove-recent:hover {
+    background: #f0f0f0;
+    color: #333;
+}
+
+/* 搜索历史部分优化 - 减少间距，最小化占用空间 */
+.recent-section {
+    margin-bottom: 14px !important;
+    padding-bottom: 14px !important;
+}
+
+.recent-section .section-title {
+    margin-bottom: 8px !important;
+}
+
+.view-more {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 10px;
+    color: var(--main-color, #b20a2c);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.view-more:hover {
+    background: #f8f9fa;
+    color: var(--main-color, #b20a2c);
+}
+
+.view-more i {
+    font-size: 11px;
+    transition: transform 0.3s ease;
+}
+
+.view-more:hover i {
+    transform: translateY(2px);
+}
+
+/* ========== 产品类别网格 ========== */
+.categories-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.category-item {
+    text-align: center;
+}
+
+.category-item a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-decoration: none;
+    color: #333;
+    padding: 12px;
+    border-radius: 10px;
+    transition: all 0.3s ease;
+    background: #f8f9fa;
+}
+
+.category-item a:hover {
+    background: #e9ecef;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.category-item img {
+    width: 100%;
+    max-width: 70px;
+    height: 70px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    border: 1px solid #e0e0e0;
+}
+
+.category-item span {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.3;
+    text-align: center;
+}
+
+.category-item a:hover span {
+    color: var(--main-color, #b20a2c);
+}
+
+/* ========== 品牌网格 ========== */
+.brands-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+}
+
+.brand-item {
+    text-align: center;
+}
+
+.brand-item a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    border-radius: 10px;
+    background: #f8f9fa;
+    transition: all 0.3s ease;
+    border: 1px solid transparent;
+}
+
+.brand-item a:hover {
+    background: #fff;
+    border-color: #e0e0e0;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.brand-item img {
+    width: 100%;
+    max-width: 70px;
+    height: auto;
+    object-fit: contain;
+    opacity: 0.8;
+    transition: all 0.3s ease;
+    filter: grayscale(20%);
+}
+
+.brand-item a:hover img {
+    opacity: 1;
+    filter: grayscale(0%);
+}
+
+/* ========== 移动端样式 ========== */
+@media (max-width: 991px) {
+    .search-head.search_mobile {
+        width: 100%;
+        padding: 0 15px;
+        margin: 10px 0;
+    }
+    
+    .search_mobile .search-wrapper {
+        width: 100%;
+    }
+    
+    .search_mobile .search-wrapper input[type="search"] {
+        padding: 14px 50px 14px 20px;
+        font-size: 16px; /* 防止iOS自动缩放 */
+        border-radius: 30px;
+    }
+    
+    .search_mobile .search-suggestions {
+        position: fixed;
+        top: 0 !important;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        max-height: 100vh;
+        border-radius: 0;
+        border: none;
+        box-shadow: none;
+        z-index: 9999;
+        background: #fff;
+    }
+    
+    .search_mobile .search-suggestions-content {
+        padding: 20px 15px;
+        height: 100%;
+        overflow-y: auto;
+        padding-top: 60px; /* 为关闭按钮留空间 */
+    }
+    
+    /* 移动端关闭按钮 */
+    .search_mobile .close-search-mobile {
+        position: fixed;
+        top: 15px;
+        right: 15px;
+        width: 44px;
+        height: 44px;
+        background: #f0f0f0;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        cursor: pointer;
+        z-index: 10000;
+        transition: all 0.3s ease;
+        padding: 0;
+    }
+    
+    .search_mobile .close-search-mobile:hover {
+        background: #e0e0e0;
+        transform: scale(1.1);
+    }
+    
+    .search_mobile .close-search-mobile svg {
+        width: 20px;
+        height: 20px;
+        color: #333;
+    }
+    
+    .search_mobile .categories-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+    }
+    
+    .search_mobile .category-item img {
+        max-width: 60px;
+        height: 60px;
+    }
+    
+    .search_mobile .category-item span {
+        font-size: 11px;
+    }
+    
+    .search_mobile .brands-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+    }
+    
+    .search_mobile .brand-item img {
+        max-width: 50px;
+    }
+    
+    .search_mobile .section-title {
+        font-size: 12px;
+    }
+    
+    .search_mobile .deals-list .deal-item a,
+    .search_mobile .products-list .product-item span,
+    .search_mobile .recent-searches-list .recent-item a {
+        font-size: 14px;
+    }
+    
+    /* 移动端搜索历史标签 */
+    .search_mobile .recent-searches-list .recent-tag {
+        padding: 5px 10px;
+        font-size: 11px;
+    }
+    
+    .search_mobile .recent-searches-list .recent-tag a {
+        font-size: 11px;
+        max-width: 120px;
+    }
+}
+
+/* ========== 桌面端搜索框优化 ========== */
+@media (min-width: 992px) {
+    .search-head {
+        width: 300px;
+        max-width: 400px;
+        margin-left: 20px;
+        margin-right: 40px;
+    }
+    
+    .search-head .search-suggestions {
+        width: 500px;
+        min-width: 500px;
+        max-width: 600px;
+        left: 0;
+        right: auto;
+        transform: none;
+    }
+    
+    .search-wrapper input[type="search"] {
+        font-size: 14px;
+    }
+}
+
+/* ========== 空状态样式 ========== */
+.search-suggestions-content:empty::before {
+    content: 'Nhập từ khóa để tìm kiếm...';
+    display: block;
+    text-align: center;
+    padding: 40px 20px;
+    color: #999;
+    font-size: 14px;
+}
+
+/* ========== 加载状态 ========== */
+.search-suggestions.loading .search-suggestions-content::after {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 40px;
+    margin: 20px auto;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid var(--main-color, #b20a2c);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
 <div id="fb-root"></div>
 <script async defer crossorigin="anonymous" src="https://connect.facebook.net/vi_VN/sdk.js#xfbml=1&version=v13.0&appId={{getConfig('facebook_api')}}&autoLogAppEvents=1" nonce="w7xgUtuR"></script>
 </body>

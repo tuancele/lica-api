@@ -98,8 +98,24 @@ function initR2UploadPreview(options) {
     R2Logger.info('Form found', { formId: $form.attr('id'), ajaxUrl: $form.attr('ajax') });
 
     // Trigger file selection
-    $trigger.on('click', function() {
-        $fileInput.trigger('click');
+    // Fix: Prevent infinite recursion when trigger contains file input
+    $trigger.on('click', function(e) {
+        // If the click target is the file input itself or its children, don't handle
+        const target = e.target;
+        if (target === $fileInput[0] || $fileInput[0].contains(target)) {
+            return;
+        }
+        // Stop event propagation to prevent bubbling
+        e.stopPropagation();
+        // Use native DOM click instead of jQuery trigger to avoid event system issues
+        if ($fileInput.length > 0 && $fileInput[0]) {
+            $fileInput[0].click();
+        }
+    });
+    
+    // Prevent event bubbling from file input
+    $fileInput.on('click', function(e) {
+        e.stopPropagation();
     });
 
     // Handle file selection
@@ -360,8 +376,37 @@ function initR2UploadPreview(options) {
                         return;
                     }
                     
-                    const $input = $item.find('input[name="imageOther[]"]');
-                    const inputVal = $input.length > 0 ? $input.val() : '';
+                    // Check both preview item input and actual form input
+                    let $input = $item.find('input[name="' + settings.hiddenInputName + '"]');
+                    let inputVal = $input.length > 0 ? $input.val() : '';
+                    
+                    // If preview item input is empty or blob, check form input
+                    if (!inputVal || inputVal.indexOf('blob:') !== -1) {
+                        const $formInput = $form.find('input[name="' + settings.hiddenInputName + '"]');
+                        if ($formInput.length > 0) {
+                            inputVal = $formInput.val();
+                            $input = $formInput;
+                            R2Logger.info('Using form input for verification', {
+                                inputId: $formInput.attr('id'),
+                                inputName: $formInput.attr('name'),
+                                inputValue: inputVal
+                            });
+                        }
+                    }
+                    
+                    // Also check by ID pattern for compatibility (especially for Slider with id="r2-image-url")
+                    if ((!inputVal || inputVal.indexOf('blob:') !== -1) && settings.hiddenInputName === 'image') {
+                        const $idInput = $form.find('input[id="r2-image-url"], input[id^="ImageUrl"]');
+                        if ($idInput.length > 0) {
+                            inputVal = $idInput.val();
+                            $input = $idInput;
+                            R2Logger.info('Using input by ID pattern for verification', {
+                                inputId: $idInput.attr('id'),
+                                inputValue: inputVal
+                            });
+                        }
+                    }
+                    
                     const imgSrc = $item.find('img').attr('src');
                     const hasPendingFlag = $item.attr('data-pending') !== undefined;
                     const status = {
@@ -790,14 +835,38 @@ function initR2UploadPreview(options) {
                         throw new Error('Preview item not found: ' + item.id);
                     }
                     
-                    const $input = $item.find('input[name="imageOther[]"]');
+                    // Find input field - try multiple strategies
+                    let $input = $item.find('input[name="' + settings.hiddenInputName + '"]');
+                    
+                    // If not found in preview item, try to find in the form (for single image uploads)
+                    if ($input.length === 0) {
+                        $input = $form.find('input[name="' + settings.hiddenInputName + '"]');
+                        R2Logger.info('Input not found in preview item, searching in form', {
+                            inputName: settings.hiddenInputName,
+                            found: $input.length > 0
+                        });
+                    }
+                    
+                    // Fallback: try to find by ID pattern (ImageUrl + number)
+                    if ($input.length === 0 && settings.hiddenInputName === 'image') {
+                        const inputId = $item.closest('.panel-body, .form-group, .input-group').find('input[id^="ImageUrl"]');
+                        if (inputId.length > 0) {
+                            $input = inputId.first();
+                            R2Logger.info('Found input by ID pattern', { inputId: $input.attr('id') });
+                        }
+                    }
+                    
                     const $img = $item.find('img');
                     
                     if ($input.length === 0) {
                         R2Logger.error('Input field not found in preview item', {
                             itemId: item.id,
                             fileName: item.file.name,
-                            html: $item.html()
+                            inputName: settings.hiddenInputName,
+                            html: $item.html(),
+                            formInputs: $form.find('input[type="hidden"], input[type="text"]').map(function() {
+                                return { name: $(this).attr('name'), id: $(this).attr('id') };
+                            }).get()
                         });
                         throw new Error('Input field not found in item: ' + item.id);
                     }
@@ -807,6 +876,31 @@ function initR2UploadPreview(options) {
                     
                     // Update input field with R2 URL
                     $input.val(url);
+                    
+                    // Also update the actual form input if it's different from preview item input
+                    // (for single image uploads where preview item input is just a placeholder)
+                    const $formInput = $form.find('input[name="' + settings.hiddenInputName + '"]');
+                    if ($formInput.length > 0 && $formInput[0] !== $input[0]) {
+                        $formInput.val(url);
+                        R2Logger.info('Updated form input field', {
+                            inputId: $formInput.attr('id'),
+                            inputName: $formInput.attr('name'),
+                            url: url
+                        });
+                    }
+                    
+                    // Also try to update by ID pattern for compatibility
+                    if (settings.hiddenInputName === 'image') {
+                        const $idInput = $form.find('input[id="r2-image-url"], input[id^="ImageUrl"]');
+                        if ($idInput.length > 0 && $idInput[0] !== $input[0] && $idInput[0] !== $formInput[0]) {
+                            $idInput.val(url);
+                            R2Logger.info('Updated input by ID pattern', {
+                                inputId: $idInput.attr('id'),
+                                url: url
+                            });
+                        }
+                    }
+                    
                     // Update img src with R2 URL (replace Blob URL) - set immediately
                     $img.attr('src', url);
                     

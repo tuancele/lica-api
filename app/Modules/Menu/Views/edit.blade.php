@@ -82,13 +82,7 @@
             <tr>
                 <td width="30%"><label class="control-label">Hình ảnh:</label></td>
                 <td width="30%">
-                    <div class="input-group">
-                        <input type="text" class="form-control" name="image" id="ImageUrl1" value="">
-                        <span class="input-group-btn">
-                          <button class="btn btn-default btnImage" type="button" number="1"><i class="fa fa-folder-open-o" aria-hidden="true"></i></button>
-                        </span>
-                    </div>
-                    <div class="avantar1 showimage" style="margin-top:10px"></div>
+                    @include('Layout::image-r2-input-group',['number' => 1, 'folder' => 'menus'])
                 </td>
             </tr>
             <tr>

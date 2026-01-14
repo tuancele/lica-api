@@ -38,7 +38,7 @@
                     </div>
                 </div>
                 <div class="panel panel-default">
-                    @include('Layout::image',['image' => $detail->image,'number' => 1])
+                    @include('Layout::image-r2',['image' => $detail->image,'number' => 1, 'folder' => 'members'])
                 </div>
                 <div class="panel panel-default">
                     <div class="panel-body">

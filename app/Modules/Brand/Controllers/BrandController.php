@@ -55,19 +55,66 @@ class BrandController extends Controller
                 'errors' => $validator->errors()
             ]);
         }
+        
+        // Handle R2 session URLs for gallery
+        $imageOther = $request->imageOther ?? [];
+        $imageOther = array_filter($imageOther, function($url) {
+            return !empty($url) && 
+                   strpos($url, 'blob:') === false &&
+                   strpos($url, 'no-image.png') === false;
+        });
+        $imageOther = array_values($imageOther);
+        
+        // Check session for R2 uploaded URLs
+        $sessionKeyInput = $request->input('r2_session_key');
+        $sessionUrls = [];
+        if ($sessionKeyInput) {
+            $sessionKeys = is_array($sessionKeyInput) ? $sessionKeyInput : explode(',', $sessionKeyInput);
+            $sessionKeys = array_filter(array_map('trim', $sessionKeys));
+            foreach ($sessionKeys as $sessionKey) {
+                $urlsFromKey = Session::get($sessionKey, []);
+                if (!empty($urlsFromKey)) {
+                    if (is_array($urlsFromKey)) {
+                        $sessionUrls = array_merge($sessionUrls, $urlsFromKey);
+                    } else {
+                        $sessionUrls[] = $urlsFromKey;
+                    }
+                }
+            }
+        }
+        
+        // Merge form URLs and session URLs
+        $sessionUrls = array_filter($sessionUrls, function($url) {
+            return !empty($url) && 
+                   strpos($url, 'blob:') === false &&
+                   strpos($url, 'no-image.png') === false;
+        });
+        
+        $allUrls = array_merge($imageOther, $sessionUrls);
+        $gallery = array_values(array_unique($allUrls));
+        
         $up = $this->model::where('id',$request->id)->update(array(
             'name' => $request->name,
 			'slug' => $request->slug,
             'content' => $request->content,
             'image' => $request->image,
             'banner' => $request->banner,
-            'gallery' => json_encode($request->imageOther),
+            'gallery' => json_encode($gallery),
             'logo' => $request->logo,
 			'seo_title' => $request->seo_title,
 			'seo_description' => $request->seo_description,
 			'status' => $request->status,
             'user_id'=> Auth::id()
         ));
+        
+        // Clear session URLs after successful save
+        if ($sessionKeyInput) {
+            $sessionKeys = is_array($sessionKeyInput) ? $sessionKeyInput : explode(',', $sessionKeyInput);
+            $sessionKeys = array_filter(array_map('trim', $sessionKeys));
+            foreach ($sessionKeys as $sessionKey) {
+                Session::forget($sessionKey);
+            }
+        }
         if($up > 0){
             return response()->json([
                 'status' => 'success',
@@ -97,6 +144,44 @@ class BrandController extends Controller
                 'errors' => $validator->errors()
             ]);
         }
+        
+        // Handle R2 session URLs for gallery
+        $imageOther = $request->imageOther ?? [];
+        $imageOther = array_filter($imageOther, function($url) {
+            return !empty($url) && 
+                   strpos($url, 'blob:') === false &&
+                   strpos($url, 'no-image.png') === false;
+        });
+        $imageOther = array_values($imageOther);
+        
+        // Check session for R2 uploaded URLs
+        $sessionKeyInput = $request->input('r2_session_key');
+        $sessionUrls = [];
+        if ($sessionKeyInput) {
+            $sessionKeys = is_array($sessionKeyInput) ? $sessionKeyInput : explode(',', $sessionKeyInput);
+            $sessionKeys = array_filter(array_map('trim', $sessionKeys));
+            foreach ($sessionKeys as $sessionKey) {
+                $urlsFromKey = Session::get($sessionKey, []);
+                if (!empty($urlsFromKey)) {
+                    if (is_array($urlsFromKey)) {
+                        $sessionUrls = array_merge($sessionUrls, $urlsFromKey);
+                    } else {
+                        $sessionUrls[] = $urlsFromKey;
+                    }
+                }
+            }
+        }
+        
+        // Merge form URLs and session URLs
+        $sessionUrls = array_filter($sessionUrls, function($url) {
+            return !empty($url) && 
+                   strpos($url, 'blob:') === false &&
+                   strpos($url, 'no-image.png') === false;
+        });
+        
+        $allUrls = array_merge($imageOther, $sessionUrls);
+        $gallery = array_values(array_unique($allUrls));
+        
         $id = $this->model::insertGetId(
             [
                 'name' => $request->name,
@@ -104,7 +189,7 @@ class BrandController extends Controller
                 'content' => $request->content,
                 'image' => $request->image,
                 'banner' => $request->banner,
-                'gallery' => json_encode($request->imageOther),
+                'gallery' => json_encode($gallery),
                 'logo' => $request->logo,
                 'seo_title' => $request->seo_title,
                 'seo_description' => $request->seo_description,
@@ -113,6 +198,15 @@ class BrandController extends Controller
                 'created_at' => date('Y-m-d H:i:s')
             ]
         );
+        
+        // Clear session URLs after successful save
+        if ($sessionKeyInput) {
+            $sessionKeys = is_array($sessionKeyInput) ? $sessionKeyInput : explode(',', $sessionKeyInput);
+            $sessionKeys = array_filter(array_map('trim', $sessionKeys));
+            foreach ($sessionKeys as $sessionKey) {
+                Session::forget($sessionKey);
+            }
+        }
         if($id > 0){
             return response()->json([
                 'status' => 'success',

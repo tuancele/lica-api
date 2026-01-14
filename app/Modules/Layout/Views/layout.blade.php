@@ -276,6 +276,8 @@
                 <li @if(Session::get('sidebar_sub_active')=='header') class="active" @endif><a href="/admin/themes/header"><i class="fa fa-circle-o"></i> Đầu trang</a></li>
                 
                 <li @if(Session::get('sidebar_sub_active')=='footer') class="active" @endif><a href="/admin/themes/footer"><i class="fa fa-circle-o"></i> Cuối trang</a></li>
+                
+                <li @if(Session::get('sidebar_sub_active')=='footer-block') class="active" @endif><a href="/admin/footer-block"><i class="fa fa-circle-o"></i> Block Footer</a></li>
               </ul>
             </li>
            
@@ -391,32 +393,47 @@
           preventDuplicates: $('#preventDuplicates').prop('checked'),
           onclick: null
       };
-      $('.content-wrapper').on('click','.addImageMore',function(){
-          var number = $(this).attr('number');
-          window.open('/filemanager?type=Images', 'FileManager', 'width=900,height=600');
-          window.SetUrl = function (items) {
-              var fileUrl = items[0].url;
-              $('.list_image').append('<div class="col-md-3 item'+number+'"><img src="'+fileUrl+'"><input type="hidden" value="'+fileUrl+'" name="imageOther[]"><a data-id="'+number+'" href="javascript:;" title="Xóa ảnh" class="delete_image"><i class="fa fa-times"   aria-hidden="true"></i></a></div>');
-          };
-          number1 = parseInt(number) + 1;
-          $(this).attr('number',number1);
-      });
+      // DEPRECATED: FileManager code - replaced by R2 upload
+      // $('.content-wrapper').on('click','.addImageMore',function(){
+      //     var number = $(this).attr('number');
+      //     window.open('/filemanager?type=Images', 'FileManager', 'width=900,height=600');
+      //     window.SetUrl = function (items) {
+      //         var fileUrl = items[0].url;
+      //         $('.list_image').append('<div class="col-md-3 item'+number+'"><img src="'+fileUrl+'"><input type="hidden" value="'+fileUrl+'" name="imageOther[]"><a data-id="'+number+'" href="javascript:;" title="Xóa ảnh" class="delete_image"><i class="fa fa-times"   aria-hidden="true"></i></a></div>');
+      //     };
+      //     number1 = parseInt(number) + 1;
+      //     $(this).attr('number',number1);
+      // });
+      
+      // Keep delete_image handler for backward compatibility
       $('.content-wrapper').on('click','.delete_image',function(){
         var number = $(this).attr('data-id');
-        $('.item'+number+'').remove();
+        if (number) {
+            $('.item'+number+'').remove();
+        } else {
+            // If no data-id, remove the parent container
+            $(this).closest('.has-img, .col-md-3').remove();
+        }
       });
-      $('body').on('click','.btnImage',function(){
-            var number = $(this).attr('number');
-            window.open('/filemanager?type=Images', 'FileManager', 'width=900,height=600');
-            window.SetUrl = function (items) {
-                var fileUrl = items[0].url;
-                $('#ImageUrl'+number+'').val(fileUrl);
-                $('.avantar'+number+'').html('<img src="'+fileUrl+'">');
-            };
-        });
+      
+      // DEPRECATED: FileManager code - replaced by R2 upload
+      // $('body').on('click','.btnImage',function(){
+      //       var number = $(this).attr('number');
+      //       window.open('/filemanager?type=Images', 'FileManager', 'width=900,height=600');
+      //       window.SetUrl = function (items) {
+      //           var fileUrl = items[0].url;
+      //           $('#ImageUrl'+number+'').val(fileUrl);
+      //           $('.avantar'+number+'').html('<img src="'+fileUrl+'">');
+      //       };
+      //   });
+      
+      // Keep btn_delete_image handler for backward compatibility
       $('body').on('click','.btn_delete_image',function(){
         var number = $(this).attr('number');
-        $('#ImageUrl'+number+'').val();
+        if (number) {
+            $('#ImageUrl'+number+'').val('');
+            $('.avantar'+number+'').html('<img src="{{asset("public/admin/no-image.png")}}">');
+        }
         $('.avantar'+number+'').html('<img src="/public/admin/no-image.png">');
       });
       $('body').on('click','.click_noti',function(){

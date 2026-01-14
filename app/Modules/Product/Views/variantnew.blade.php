@@ -89,13 +89,7 @@
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <div class="form-group avantar1">
-                                <img src="{{getImage('')}}" class="img-responsive" alt="">
-                            </div>
-                            <div class="form-group" style="text-align: center;">
-                                <input type="hidden" id="ImageUrl1" name="image" value="" class="form-control medium_input pull-left">
-                                <button type="button" class="btn btn-default btn_image btn-sm btnImage" type="button" number="1"><i class="fa fa-folder-open-o" aria-hidden="true"></i> Chọn ảnh</button>
-                            </div> 
+                            @include('Layout::image-r2',['number' => 1, 'folder' => 'variants'])
                         </div>
                     </div>
                 </div>

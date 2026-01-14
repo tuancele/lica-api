@@ -29,6 +29,8 @@ use App\Modules\Compare\Models\Compare;
 use App\Modules\Deal\Models\Deal;
 use App\Modules\Deal\Models\ProductDeal;
 use App\Modules\Deal\Models\SaleDeal;
+use App\Modules\Marketing\Models\MarketingCampaign;
+use Carbon\Carbon;
 use Session;
 use Validator;
 use GuzzleHttp\Client;
@@ -467,6 +469,148 @@ class HomeController extends Controller
         ];
         Session::put('filter', $filter);
         return $this->loadProduct($req->page, $req->url, $req->cat_id);
+    }
+
+    public function ajaxSearchSuggestions(Request $request)
+    {
+        $keyword = $request->get('keyword', '');
+        $data = [];
+        
+        // 1. 获取营销活动和闪购信息
+        $now = Carbon::now();
+        $nowTimestamp = time();
+        
+        // 获取闪购页面URL（查找Post表中temp='page.flashsale'的页面）
+        $flashSalePage = Post::where([['temp', 'page.flashsale'], ['status', '1']])->first();
+        $flashSaleUrl = $flashSalePage ? getSlug($flashSalePage->slug) : '/flash-sale-hot';
+        
+        // 获取营销活动页面URL（查找Post表中temp='page.promotion'或相关的营销页面）
+        $promotionPage = Post::where([['temp', 'page.promotion'], ['status', '1']])->first();
+        $marketingUrl = $promotionPage ? getSlug($promotionPage->slug) : '/khuyen-mai';
+        
+        // 获取营销活动 (Marketing Campaign)
+        $marketingCampaigns = MarketingCampaign::where('status', '1')
+            ->where('start_at', '<=', $now)
+            ->where('end_at', '>=', $now)
+            ->orderBy('created_at', 'desc')
+            ->limit(3)
+            ->get();
+        
+        // 获取闪购 (FlashSale)
+        $flashSales = FlashSale::where('status', '1')
+            ->where('start', '<=', $nowTimestamp)
+            ->where('end', '>=', $nowTimestamp)
+            ->orderBy('created_at', 'desc')
+            ->limit(3)
+            ->get();
+        
+        $deals = collect();
+        
+        // 合并营销活动
+        foreach ($marketingCampaigns as $campaign) {
+            $deals->push([
+                'title' => $campaign->name ?? 'Chương trình khuyến mại',
+                'description' => $campaign->name ?? '',
+                'link' => $marketingUrl . '?campaign=' . $campaign->id,
+                'type' => 'campaign'
+            ]);
+        }
+        
+        // 合并闪购
+        foreach ($flashSales as $flashSale) {
+            $deals->push([
+                'title' => $flashSale->name ?? 'Flash Sale',
+                'description' => $flashSale->name ?? 'Flash Sale',
+                'link' => $flashSaleUrl . '?flashsale=' . $flashSale->id,
+                'type' => 'flashsale'
+            ]);
+        }
+        
+        $data['deals'] = $deals->take(6);
+        
+        // 2. 获取最近搜索历史（从Session）
+        $recentSearches = Session::get('recent_searches', []);
+        if (!empty($keyword) && !in_array($keyword, $recentSearches)) {
+            array_unshift($recentSearches, $keyword);
+            $recentSearches = array_slice($recentSearches, 0, 10); // 只保留最近10条
+            Session::put('recent_searches', $recentSearches);
+        }
+        $data['recent_searches'] = array_slice($recentSearches, 0, 5);
+        
+        // 3. 获取产品类别快速链接
+        $categories = Product::select('id', 'name', 'slug', 'image')
+            ->where([['status', '1'], ['type', 'taxonomy'], ['feature', '1']])
+            ->orderBy('sort', 'asc')
+            ->limit(6)
+            ->get();
+        
+        $data['categories'] = $categories->map(function($cat) {
+            return [
+                'id' => $cat->id,
+                'name' => $cat->name,
+                'slug' => $cat->slug,
+                'image' => getImage($cat->image ?? ''),
+            ];
+        });
+        
+        // 4. 获取品牌logo
+        $brands = Brand::select('id', 'name', 'slug', 'image')
+            ->where('status', '1')
+            ->orderBy('sort', 'asc')
+            ->limit(8)
+            ->get();
+        
+        $data['brands'] = $brands->map(function($brand) {
+            return [
+                'id' => $brand->id,
+                'name' => $brand->name,
+                'slug' => $brand->slug,
+                'image' => getImage($brand->image ?? ''),
+            ];
+        });
+        
+        // 5. 如果有关键词，获取搜索建议产品
+        if (!empty($keyword)) {
+            $suggestProducts = Product::join('variants', 'variants.product_id', '=', 'posts.id')
+                ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image')
+                ->where([['status', '1'], ['type', 'product']])
+                ->where('posts.name', 'like', '%' . $keyword . '%')
+                ->groupBy('posts.id')
+                ->limit(5)
+                ->get();
+            
+            $data['suggest_products'] = $suggestProducts->map(function($product) {
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'slug' => $product->slug,
+                    'image' => getImage($product->image ?? ''),
+                ];
+            });
+        } else {
+            $data['suggest_products'] = [];
+        }
+        
+        return response()->json([
+            'status' => 'success',
+            'data' => $data
+        ]);
+    }
+
+    public function ajaxRemoveRecentSearch(Request $request)
+    {
+        $search = $request->get('search', '');
+        $recentSearches = Session::get('recent_searches', []);
+        
+        if (($key = array_search($search, $recentSearches)) !== false) {
+            unset($recentSearches[$key]);
+            $recentSearches = array_values($recentSearches); // 重新索引数组
+            Session::put('recent_searches', $recentSearches);
+        }
+        
+        return response()->json([
+            'status' => 'success'
+        ]);
     }
 
     public function loadProduct($type, $url, $catid)

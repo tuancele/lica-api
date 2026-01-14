@@ -27,12 +27,7 @@
                                 <label>Hình ảnh </label>
                             </div>
                             <div class="col-md-8">
-                                <div class="input-group">
-                                    <input type="text" class="form-control" value="{{$block0->image}}" name="image_0" id="ImageUrl10">
-                                    <span class="input-group-btn">
-                                      <button class="btn btn-info btn-flat btnImage" number="10" type="button"><i class="fa fa-folder-open-o" aria-hidden="true"></i></button>
-                                    </span>
-                                </div>
+                                @include('Layout::image-r2-input-group',['image' => $block0->image,'number' => 10, 'name' => 'image_0', 'folder' => 'website'])
                             </div>
                         </div>
                         <div class="row form-group">
@@ -211,12 +206,7 @@
                                 <label>Hình ảnh </label>
                             </div>
                             <div class="col-md-8">
-                                <div class="input-group">
-                                    <input type="text" class="form-control" value="{{$block5->image}}" name="image_5" id="ImageUrl50">
-                                    <span class="input-group-btn">
-                                        <button class="btn btn-info btn-flat btnImage" number="50" type="button"><i class="fa fa-folder-open-o" aria-hidden="true"></i></button>
-                                    </span>
-                                </div>
+                                @include('Layout::image-r2-input-group',['image' => $block5->image,'number' => 50, 'name' => 'image_5', 'folder' => 'website'])
                             </div>
                         </div>
                         <hr/>

@@ -2,14 +2,17 @@
 @font-face {
     font-family: 'SVN-Mont-Bold';
     src:url('../fonts/SVN-Mont-Bold.ttf')  format('truetype'); /* Safari, Android, iOS */ /* Legacy iOS */
+    font-display: swap; /* 优化字体加载性能 */
 }
 @font-face {
     font-family: 'SVN-Mont-Regular';
     src:url('../fonts/SVN-Mont-Regular.ttf')  format('truetype'); /* Safari, Android, iOS */ /* Legacy iOS */
+    font-display: swap; /* 优化字体加载性能 */
 }
 @font-face {
     font-family: 'SVN-Mont-SemiBold';
     src:url('../fonts/SVN-Mont-SemiBold.ttf')  format('truetype'); /* Safari, Android, iOS */ /* Legacy iOS */
+    font-display: swap; /* 优化字体加载性能 */
 }
 :root{
     --main-color:#b20a2c;
@@ -4635,3 +4638,82 @@ textarea.form-control{
     }
 }
 
+/* ========== 异步加载优化样式 ========== */
+/* 延迟加载占位符样式 */
+.lazy-placeholder {
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f5f5f5;
+    border-radius: 8px;
+    margin: 20px 0;
+}
+
+.lazy-placeholder.loading {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: lazy-loading 1.5s infinite;
+}
+
+.lazy-placeholder.error {
+    background: #fff3cd;
+    color: #856404;
+    padding: 20px;
+    text-align: center;
+}
+
+@keyframes lazy-loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* 图片懒加载 */
+img[data-src] {
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+}
+
+img[data-src].loaded {
+    opacity: 1;
+}
+
+img[data-src].error {
+    opacity: 0.5;
+}
+
+/* 骨架屏效果 */
+.skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: lazy-loading 1.5s infinite;
+    border-radius: 4px;
+}
+
+/* 加载动画 */
+.spinner-border {
+    display: inline-block;
+    width: 2rem;
+    height: 2rem;
+    vertical-align: text-bottom;
+    border: 0.25em solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spinner-border 0.75s linear infinite;
+}
+
+@keyframes spinner-border {
+    to { transform: rotate(360deg); }
+}
+
+.visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}

@@ -38,19 +38,7 @@
                 </div>
             </div>
             <div class="col-lg-3">
-                <div class="panel panel-default">
-                    <div class="panel-body">
-                        <label class="fw-700">Hình ảnh đại diện</label>
-                        <div class="form-group avantar1">
-                            <img src="{{asset('public/admin/no-image.png')}}" class="img-responsive" alt="">
-                        </div>
-                        <div class="form-group" style="text-align: center;">
-                            <input type="hidden" id="ImageUrl1" name="image" class="form-control medium_input pull-left">
-                            <button type="button" class="btn btn-default btn_image btn-sm btnImage" type="button" number="1"><i class="fa fa-folder-open-o" aria-hidden="true"></i> Chọn ảnh</button>
-                            <button type="button" class="btn btn-danger btn_delete_image btn-sm" number="1"><i class="fa fa-times" aria-hidden="true"></i> Xóa ảnh</button>
-                        </div>     
-                    </div>
-                </div>
+                @include('Layout::image-r2',['number' => 1, 'folder' => 'feedback'])
             </div>
         </div>
         <div class="fix_action">

@@ -34,63 +34,93 @@
 @endif
 @include('Website::product.flashsale')
 @if(count($brands) > 0)
-<section class="brand-shop mt-3">
+<section class="brand-shop mt-3" data-lazy-load="section">
     <div class="container-lg">
-        <div class="list-brand">
-        @foreach($brands as $brand)
-        <div class="item-brand">
-            <a class="box-icon" href="{{route('home.brand',['url' => $brand->slug])}}">
-                <img class="br-5" src="{{getImage($brand->image)}}" alt="{{$brand->name}}" loading="lazy">
-            </a>
+        <div class="lazy-placeholder" style="min-height: 150px;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Đang tải...</span>
+            </div>
         </div>
-        @endforeach
+        <div class="lazy-hidden-content" style="display: none;">
+            <div class="list-brand" data-carousel-type="brand">
+            @foreach($brands as $brand)
+            <div class="item-brand">
+                <a class="box-icon" href="{{route('home.brand',['url' => $brand->slug])}}">
+                    <img class="br-5" src="{{getImage($brand->image)}}" alt="{{$brand->name}}" loading="lazy">
+                </a>
+            </div>
+            @endforeach
+            </div>
         </div>
     </div>
 </section>
 @endif
 @if(isset($deals) && count($deals) > 0)
-<section class="product_home mt-5">
+<section class="product_home mt-5" data-lazy-load="section">
     <div class="container-lg">
         <h2 class="fs-25 fw-bold text-uppercase text-center">Top sản phẩm bán chạy</h2>
-        <div class="list-watch mt-3">
-            @foreach($deals as $deal)
-            @include('Website::product.item',['product' => $deal])
-            @endforeach
+        <div class="lazy-placeholder" style="min-height: 300px;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Đang tải...</span>
+            </div>
+        </div>
+        <div class="lazy-hidden-content" style="display: none;">
+            <div class="list-watch mt-3" data-carousel-type="default">
+                @foreach($deals as $deal)
+                @include('Website::product.item',['product' => $deal])
+                @endforeach
+            </div>
         </div>
     </div>
 </section>
 @endif
 @if(count($banners) > 0)
-<section class="banner-home mt-3">
+<section class="banner-home mt-3" data-lazy-load="section">
     <div class="container-lg">
-        <div class="list-banner">
-            @foreach($banners as $banner)
-            <a href="{{$banner->link}}">
-                <img src="{{getImage($banner->image)}}" class="br-5" alt="{{$banner->name}}" loading="lazy">
-            </a>
-            @endforeach
+        <div class="lazy-placeholder" style="min-height: 200px;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Đang tải...</span>
+            </div>
+        </div>
+        <div class="lazy-hidden-content" style="display: none;">
+            <div class="list-banner" data-carousel-type="banner">
+                @foreach($banners as $banner)
+                <a href="{{$banner->link}}">
+                    <img src="{{getImage($banner->image)}}" class="br-5" alt="{{$banner->name}}" loading="lazy">
+                </a>
+                @endforeach
+            </div>
         </div>
     </div>
 </section>
 @endif
 
 @if(count($categories) > 0)
-<section class="product_home mt-5">
+<section class="product_home mt-5" data-lazy-load="section">
     <div class="container-lg">
         <h2 class="fs-25 fw-bold text-uppercase text-center">Danh mục nổi bật</h2>
-        <div class="list-taxonomy mt-3">
-            @foreach($categories as $category)
-                <div class="col8 pt-2">
-                    <a href="{{getSlug($category->slug)}}">
-                    <div class="taxonomy-item">
-                        <div class="taxonomy-cover">
-                            <img src="{{getImage($category->image)}}" alt="{{$category->name}}" loading="lazy">
+        <div class="lazy-placeholder" style="min-height: 300px;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Đang tải...</span>
+            </div>
+        </div>
+        <div class="lazy-hidden-content" style="display: none;">
+            <div class="list-taxonomy-wrapper">
+                <div class="list-taxonomy mt-3">
+                    @foreach($categories as $category)
+                        <div class="col8 pt-2">
+                            <a href="{{getSlug($category->slug)}}">
+                            <div class="taxonomy-item">
+                                <div class="taxonomy-cover">
+                                    <img src="{{getImage($category->image)}}" alt="{{$category->name}}" loading="lazy">
+                                </div>
+                                <div class="taxonomy-title">{{$category->name}}</div>
+                            </div>
+                            </a>
                         </div>
-                        <div class="taxonomy-title">{{$category->name}}</div>
-                    </div>
-                    </a>
+                    @endforeach
                 </div>
-            @endforeach
+            </div>
         </div>
     </div>
 </section>
@@ -103,9 +133,15 @@
     $child_tabs = $tax_item['child_tabs'];
     $initial_products = $tax_item['initial_products'];
 @endphp
-<section class="taxonomy-product mt-5">
+<section class="taxonomy-product mt-5" data-lazy-load="section">
      <div class="container-lg">
         <h2 class="fs-25 fw-bold text-uppercase text-center">{{$taxonomy->name}}</h2>
+        <div class="lazy-placeholder" style="min-height: 300px;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Đang tải...</span>
+            </div>
+        </div>
+        <div class="lazy-hidden-content" style="display: none;">
         @if(count($child_tabs) > 0)
         <ul class="nav nav-pills taxonomy-home mb-3 text-center" id="pills-tab-{{$taxonomy->id}}" role="tablist">
           @foreach($child_tabs as $p => $parent)
@@ -142,6 +178,7 @@
             <a href="{{getSlug($taxonomy->slug)}}" class="btn-view-all">Xem tất cả</a>
         </div>
         @endif
+        </div>
     </div>
 </section>
 @endforeach
@@ -173,9 +210,15 @@
 @endif
 
 @if(count($blogs) > 0)
-<section class="blogs pt-5 pb-5">
+<section class="blogs pt-5 pb-5" data-lazy-load="section">
     <div class="container-lg">
         <h2 class="fs-25 fw-bold text-uppercase text-center">Tin tức</h2>
+        <div class="lazy-placeholder" style="min-height: 400px;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Đang tải...</span>
+            </div>
+        </div>
+        <div class="lazy-hidden-content" style="display: none;">
         <ul class="nav nav-pills mb-3 text-center" id="pills-tab-blog" role="tablist">
           @foreach($blogs as $b => $blog)
           <li class="nav-item" role="presentation">
@@ -209,6 +252,7 @@
                 </div>
             </div>
             @endforeach
+        </ul>
         </div>
     </div>
 </section>
@@ -229,27 +273,35 @@
         nav:true,
         navText:['<i class="fa fa-angle-left"></i>','<i class="fa fa-angle-right"></i>'],
     });
-    $('.list-watch').owlCarousel({
-        navText:['<i class="fa fa-angle-left"></i>','<i class="fa fa-angle-right"></i>'],
-        responsiveclass: true,
-        autoplay: true,
-        dots:false,
-        loop: true,
-        autoWidth:true,
-        responsive: {
-            0: {
-                items: 2,
-                nav: true
-            },
-            768: {
-                items: 3,
-                nav: true
-            },
-            1000: {
-                items: 4,
-                nav: true,
+    $('.list-watch').each(function() {
+        // 跳过在 lazy-hidden-content 中且隐藏的元素（由 lazy-load.js 处理）
+        if ($(this).closest('.lazy-hidden-content').length > 0 && !$(this).closest('.lazy-hidden-content').is(':visible')) {
+            return;
+        }
+        if (!$(this).data('owlCarousel')) {
+            $(this).owlCarousel({
+                navText:['<i class="fa fa-angle-left"></i>','<i class="fa fa-angle-right"></i>'],
+                responsiveclass: true,
+                autoplay: true,
+                dots:false,
+                loop: true,
+                autoWidth:true,
+                responsive: {
+                    0: {
+                        items: 2,
+                        nav: true
+                    },
+                    768: {
+                        items: 3,
+                        nav: true
+                    },
+                    1000: {
+                        items: 4,
+                        nav: true,
 
-            }
+                    }
+                }
+            });
         }
     });
     $('.list-flash').owlCarousel({
@@ -275,49 +327,65 @@
             }
         }
     });
-    $('.list-brand').owlCarousel({
-        navText:['<i class="fa fa-angle-left"></i>','<i class="fa fa-angle-right"></i>'],
-        responsiveclass: true,
-        autoplay: true,
-        dots:false,
-        autoWidth:true,
-        responsive: {
-            0: {
-                items: 2,
-                nav: true
-            },
-            768: {
-                items: 3,
-                nav: true
-            },
-            1000: {
-                items: 5,
-                nav: true,
-                loop: true
-            }
+    $('.list-brand').each(function() {
+        // 跳过在 lazy-hidden-content 中且隐藏的元素（由 lazy-load.js 处理）
+        if ($(this).closest('.lazy-hidden-content').length > 0 && !$(this).closest('.lazy-hidden-content').is(':visible')) {
+            return;
+        }
+        if (!$(this).data('owlCarousel')) {
+            $(this).owlCarousel({
+                navText:['<i class="fa fa-angle-left"></i>','<i class="fa fa-angle-right"></i>'],
+                responsiveclass: true,
+                autoplay: true,
+                dots:false,
+                autoWidth:true,
+                responsive: {
+                    0: {
+                        items: 2,
+                        nav: true
+                    },
+                    768: {
+                        items: 3,
+                        nav: true
+                    },
+                    1000: {
+                        items: 5,
+                        nav: true,
+                        loop: true
+                    }
+                }
+            });
         }
     });
     
-    $('.list-banner').owlCarousel({
-        navText:['<i class="fa fa-angle-left"></i>','<i class="fa fa-angle-right"></i>'],
-        responsiveclass: true,
-        autoplay: true,
-        dots:false,
-        autoWidth:true,
-        responsive: {
-            0: {
-                items: 1,
-                nav: true
-            },
-            768: {
-                items: 2,
-                nav: true
-            },
-            1000: {
-                items: 3,
-                nav: true,
-                loop: true
-            }
+    $('.list-banner').each(function() {
+        // 跳过在 lazy-hidden-content 中且隐藏的元素（由 lazy-load.js 处理）
+        if ($(this).closest('.lazy-hidden-content').length > 0 && !$(this).closest('.lazy-hidden-content').is(':visible')) {
+            return;
+        }
+        if (!$(this).data('owlCarousel')) {
+            $(this).owlCarousel({
+                navText:['<i class="fa fa-angle-left"></i>','<i class="fa fa-angle-right"></i>'],
+                responsiveclass: true,
+                autoplay: true,
+                dots:false,
+                autoWidth:true,
+                responsive: {
+                    0: {
+                        items: 1,
+                        nav: true
+                    },
+                    768: {
+                        items: 2,
+                        nav: true
+                    },
+                    1000: {
+                        items: 3,
+                        nav: true,
+                        loop: true
+                    }
+                }
+            });
         }
     });
     $('.taxonomy-home').on('click','.nav-link', function(){

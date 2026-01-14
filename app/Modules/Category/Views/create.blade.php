@@ -55,7 +55,7 @@
                     </div>
                 </div>
                 <div class="panel panel-default">
-                    @include('Layout::image',['number' => 1])
+                    @include('Layout::image-r2',['number' => 1, 'folder' => 'categories'])
                 </div>
             </div>
             <!-- /.col-lg-12 -->

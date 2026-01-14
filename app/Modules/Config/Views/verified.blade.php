@@ -20,13 +20,7 @@
                         </div>  
                         <div class="form-group">
                             <label class="control-label">Ảnh xác thực:</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" name="data[verified_content]" id="ImageUrl1" value="{{getConfig('verified_content')}}">
-                                <span class="input-group-btn">
-                                  <button class="btn btn-default btnImage" type="button" number="1"><i class="fa fa-folder-open-o" aria-hidden="true"></i></button>
-                                </span>
-                            </div>
-                            <div class="avantar1 showimage">@if(getConfig('verified_content') != "") <img src="{{getConfig('verified_content')}}"> @endif</div>
+                            @include('Layout::image-r2-input-group',['image' => getConfig('verified_content'),'number' => 1, 'name' => 'data[verified_content]', 'folder' => 'config'])
                         </div>
                         <div class="form-group">
                             <label class="control-label">Link xác thực:</label>

@@ -7,13 +7,7 @@
     <tr>
         <td width="30%"><label class="control-label">Hình ảnh:</label></td>
             <td width="30%">
-                <div class="input-group">
-                    <input type="text" class="form-control" name="image" id="ImageUrl1" value="{{$detail->image}}">
-                    <span class="input-group-btn">
-                      <button class="btn btn-default btnImage" type="button" number="1"><i class="fa fa-folder-open-o" aria-hidden="true"></i></button>
-                    </span>
-                </div>
-                <div class="avantar1 showimage" style="margin-top:10px"><img src="{{getImage($detail->image)}}" style="width:100%"></div>
+                @include('Layout::image-r2-input-group',['image' => $detail->image,'number' => 1, 'folder' => 'menus'])
             </td>
         </tr>
     <tr>

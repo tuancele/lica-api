@@ -15,6 +15,8 @@
 			Route::get('testCrawl', 'HomeController@testCrawl');
 
 			Route::post('ajax-search', 'HomeController@ajaxSearch');
+			Route::post('ajax-search-suggestions', 'HomeController@ajaxSearchSuggestions');
+			Route::post('ajax-remove-recent-search', 'HomeController@ajaxRemoveRecentSearch');
 			Route::post('load-filter', 'HomeController@ajaxFilter');
 			Route::post('load-sort', 'HomeController@ajaxSort');
 			Route::post('ajax/post-subcriber', 'HomeController@subcriber');

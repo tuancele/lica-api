@@ -8,6 +8,21 @@ if (! function_exists('getImage')) {
 	    }
 	}
 }
+
+// 图片懒加载辅助函数
+if (! function_exists('getImageLazy')) {
+	function getImageLazy($image, $alt = '', $class = '', $width = '', $height = ''){
+	    $src = getImage($image);
+	    $placeholder = 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 1 1\'%3E%3C/svg%3E';
+	    
+	    $attributes = [];
+	    if ($class) $attributes[] = 'class="' . htmlspecialchars($class) . '"';
+	    if ($width) $attributes[] = 'width="' . htmlspecialchars($width) . '"';
+	    if ($height) $attributes[] = 'height="' . htmlspecialchars($height) . '"';
+	    
+	    return '<img src="' . $placeholder . '" data-src="' . htmlspecialchars($src) . '" alt="' . htmlspecialchars($alt) . '" loading="lazy" ' . implode(' ', $attributes) . '>';
+	}
+}
 if (! function_exists('formatDate')) {
 	function formatDate($date){
 	    if($date != ""){

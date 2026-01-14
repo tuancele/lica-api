@@ -25,7 +25,7 @@
             </div>
             <div class="col-lg-3">
                 <div class="panel panel-default">
-                    @include('Layout::image',['image' => $detail->logo,'number' => 1])
+                    @include('Layout::image-r2',['image' => $detail->logo,'number' => 1, 'name' => 'logo', 'folder' => 'compares'])
                 </div>
             </div>
             <!-- /.col-lg-12 -->

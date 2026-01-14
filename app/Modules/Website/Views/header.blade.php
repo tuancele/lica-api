@@ -35,12 +35,7 @@
                             <label>Logo </label>
                         </div>
                         <div class="col-md-8">
-                            <div class="input-group">
-                                <input type="text" class="form-control" value="{{$info->logo}}" name="logo" id="ImageUrl1">
-                                <span class="input-group-btn">
-                                  <button class="btn btn-info btn-flat btnImage" number="1" type="button"><i class="fa fa-folder-open-o" aria-hidden="true"></i></button>
-                                </span>
-                            </div>
+                            @include('Layout::image-r2-input-group',['image' => $info->logo,'number' => 1, 'name' => 'logo', 'folder' => 'website'])
                         </div>
                     </div>
                     <div class="row form-group">

@@ -20,33 +20,15 @@
                         </div> 
                         <div class="form-group">
                             <label class="control-label">Logo:</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" name="data[logo]" id="ImageUrl1" value="{{getConfig('logo')}}">
-                                <span class="input-group-btn">
-                                  <button class="btn btn-default btnImage" type="button" number="1"><i class="fa fa-folder-open-o" aria-hidden="true"></i></button>
-                                </span>
-                            </div>
-                            <div class="avantar1 showimage">@if(getConfig('logo') != "") <img src="{{getConfig('logo')}}"> @endif</div>
+                            @include('Layout::image-r2-input-group',['image' => getConfig('logo'),'number' => 1, 'name' => 'data[logo]', 'folder' => 'config'])
                         </div>
                         <div class="form-group">
                             <label class="control-label">Favicon: (32x32px)</label>  
-                            <div class="input-group">
-                                <input type="text" class="form-control" name="data[favicon]" id="ImageUrl2" value="{{getConfig('favicon')}}">
-                                <span class="input-group-btn">
-                                  <button class="btn btn-default btnImage" type="button" number="2"><i class="fa fa-folder-open-o" aria-hidden="true"></i></button>
-                                </span>
-                            </div>
-                            <div class="avantar2 show_favicon">@if(getConfig('favicon') != "") <img src="{{getConfig('favicon')}}"> @endif</div>
+                            @include('Layout::image-r2-input-group',['image' => getConfig('favicon'),'number' => 2, 'name' => 'data[favicon]', 'folder' => 'config'])
                         </div> 
                         <div class="form-group">
                             <label class="control-label">Banner:</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" name="data[banner]" id="ImageUrl3" value="{{getConfig('banner')}}">
-                                <span class="input-group-btn">
-                                  <button class="btn btn-default btnImage" type="button" number="3"><i class="fa fa-folder-open-o" aria-hidden="true"></i></button>
-                                </span>
-                            </div>
-                            <div class="avantar3" style="margin-top:10px">@if(getConfig('banner') != "") <img src="{{getConfig('banner')}}"> @endif</div>
+                            @include('Layout::image-r2-input-group',['image' => getConfig('banner'),'number' => 3, 'name' => 'data[banner]', 'folder' => 'config'])
                         </div>
                         <div class="form-group">
                             <label class="control-label">Cho phép google đánh chỉ mục:</label>

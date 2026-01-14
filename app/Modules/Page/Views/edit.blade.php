@@ -38,10 +38,10 @@
                     </div>
                 </div>
                 <div class="panel panel-default">
-                    @include('Layout::image',['image' => $detail->image,'number' => 1])
+                    @include('Layout::image-r2',['image' => $detail->image,'number' => 1, 'folder' => 'pages'])
                 </div>
                 <div class="panel panel-default">
-                    @include('Layout::image',['image' => $detail->banner,'number' => 2,'title' => 'Banner','name' => 'banner'])
+                    @include('Layout::image-r2',['image' => $detail->banner,'number' => 2,'title' => 'Banner','name' => 'banner', 'folder' => 'pages'])
                     <div class="panel-body" style="padding-top: 0px">
                         <div class="form-group">
                             <label>Liên kết</label>
