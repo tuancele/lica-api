@@ -2,8 +2,13 @@
 @section('title', ($detail->seo_title)?$detail->seo_title:$detail->name)
 @section('description',$detail->seo_description)
 @section('header')
+<!-- 资源预连接优化 -->
+<link rel="preconnect" href="{{url('/')}}" crossorigin>
+<link rel="dns-prefetch" href="{{url('/')}}">
+<!-- CSS样式表 -->
 <link rel="stylesheet" href="/public/website/owl-carousel/owl.carousel-2.0.0.css">
-<script src="/public/website/owl-carousel/owl.carousel-2.0.0.min.js"></script>
+<!-- JavaScript延迟加载 -->
+<script src="/public/website/owl-carousel/owl.carousel-2.0.0.min.js" defer></script>
 @endsection
 @section('content')
 @if(count($sliders) > 0)
@@ -37,25 +42,83 @@
 </section>
 @endif
 @include('Website::product.flashsale')
+@if(count($categories) > 0)
+<section class="product_home mt-5" data-lazy-load="section">
+    <div class="container-lg">
+        <div class="box-category-shop">
+            <h2 class="fs-25 fw-bold text-uppercase text-center">Danh mục nổi bật</h2>
+            <div class="lazy-placeholder" style="min-height: 200px; padding: 20px 0;">
+                <div class="list-taxonomy-wrapper">
+                    <div class="list-taxonomy mt-3 skeleton-container" style="justify-content: center;">
+                        @for($i = 0; $i < 4; $i++)
+                        <div class="col8 pt-2">
+                            <div class="skeleton-category">
+                                <div class="skeleton-category-image"></div>
+                                <div class="skeleton-category-name"></div>
+                            </div>
+                        </div>
+                        @endfor
+                    </div>
+                </div>
+            </div>
+            <div class="lazy-hidden-content" style="display: none;">
+                <div class="list-taxonomy-wrapper">
+                    <div class="list-taxonomy mt-3">
+                        @foreach($categories as $category)
+                            <div class="col8 pt-2">
+                                <a href="{{getSlug($category->slug)}}">
+                                <div class="taxonomy-item">
+                                    <div class="taxonomy-cover">
+                                        <div class="skeleton--img-square js-skeleton">
+                                            <img src="{{getImage($category->image)}}" alt="{{$category->name}}" class="js-skeleton-img" loading="lazy">
+                                        </div>
+                                    </div>
+                                    <div class="taxonomy-title">{{$category->name}}</div>
+                                </div>
+                                </a>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+@endif
 @if(count($brands) > 0)
 <section class="brand-shop mt-3" data-lazy-load="section">
     <div class="container-lg">
-        <div class="lazy-placeholder" style="min-height: 150px;">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Đang tải...</span>
+        <div class="box-brand-shop">
+            <h2 class="fs-25 fw-bold text-uppercase text-center mb-4">Thương hiệu nổi bật</h2>
+            <div class="lazy-placeholder" style="min-height: 120px; padding: 20px;">
+                <div class="list-brand skeleton-container brand-grid-2x7" style="justify-content: center;">
+                    @for($i = 0; $i < 8; $i++)
+                    <div class="item-brand">
+                        <div class="box-icon">
+                            <div class="skeleton-brand-logo"></div>
+                        </div>
+                        <div class="brand-name">
+                            <div class="skeleton--text skeleton--brand-name shimmer"></div>
+                        </div>
+                    </div>
+                    @endfor
             </div>
         </div>
         <div class="lazy-hidden-content" style="display: none;">
-            <div class="list-brand" data-carousel-type="brand">
-            @foreach($brands as $brand)
+                <div class="list-brand brand-grid-no-carousel brand-grid-2x7">
+                @foreach($brands->take(14) as $brand)
             <div class="item-brand">
                 <a class="box-icon" href="{{route('home.brand',['url' => $brand->slug])}}">
-                    <div class="skeleton--img-square js-skeleton br-5">
-                        <img class="br-5 js-skeleton-img" src="{{getImage($brand->image)}}" alt="{{$brand->name}}" loading="lazy">
+                        <div class="skeleton--img-square js-skeleton brand-icon-square">
+                            <img class="js-skeleton-img" src="{{getImage($brand->image)}}" alt="{{$brand->name}}" loading="lazy">
+                        </div>
+                    </a>
+                    <div class="brand-name">
+                        <a href="{{route('home.brand',['url' => $brand->slug])}}">{{$brand->name}}</a>
                     </div>
-                </a>
             </div>
             @endforeach
+                </div>
             </div>
         </div>
     </div>
@@ -65,14 +128,16 @@
 <section class="product_home mt-5" data-lazy-load="section">
     <div class="container-lg">
         <h2 class="fs-25 fw-bold text-uppercase text-center">Top sản phẩm bán chạy</h2>
-        <div class="lazy-placeholder" style="min-height: 300px;">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Đang tải...</span>
+        <div class="lazy-placeholder" style="min-height: 400px; padding: 20px 0;">
+            <div class="list-watch mt-3 deals-grid-2x5 skeleton-container skeleton-grid">
+                @for($i = 0; $i < 6; $i++)
+                @include('Website::product.skeleton-item')
+                @endfor
             </div>
         </div>
         <div class="lazy-hidden-content" style="display: none;">
-            <div class="list-watch mt-3" data-carousel-type="default">
-                @foreach($deals as $deal)
+            <div class="list-watch mt-3 deals-grid-2x5 deals-no-carousel">
+                @foreach($deals->take(10) as $deal)
                 @include('Website::product.item',['product' => $deal])
                 @endforeach
             </div>
@@ -83,9 +148,11 @@
 @if(count($banners) > 0)
 <section class="banner-home mt-3" data-lazy-load="section">
     <div class="container-lg">
-        <div class="lazy-placeholder" style="min-height: 200px;">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Đang tải...</span>
+        <div class="lazy-placeholder" style="min-height: 200px; padding: 20px 0;">
+            <div class="list-banner skeleton-container" style="justify-content: center;">
+                @for($i = 0; $i < 3; $i++)
+                <div class="skeleton-banner"></div>
+                @endfor
             </div>
         </div>
         <div class="lazy-hidden-content" style="display: none;">
@@ -103,52 +170,33 @@
 </section>
 @endif
 
-@if(count($categories) > 0)
-<section class="product_home mt-5" data-lazy-load="section">
-    <div class="container-lg">
-        <h2 class="fs-25 fw-bold text-uppercase text-center">Danh mục nổi bật</h2>
-        <div class="lazy-placeholder" style="min-height: 300px;">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Đang tải...</span>
-            </div>
-        </div>
-        <div class="lazy-hidden-content" style="display: none;">
-            <div class="list-taxonomy-wrapper">
-                <div class="list-taxonomy mt-3">
-                    @foreach($categories as $category)
-                        <div class="col8 pt-2">
-                            <a href="{{getSlug($category->slug)}}">
-                            <div class="taxonomy-item">
-                                <div class="taxonomy-cover">
-                                    <div class="skeleton--img-square js-skeleton">
-                                        <img src="{{getImage($category->image)}}" alt="{{$category->name}}" class="js-skeleton-img" loading="lazy">
-                                    </div>
-                                </div>
-                                <div class="taxonomy-title">{{$category->name}}</div>
-                            </div>
-                            </a>
-                        </div>
-                    @endforeach
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-@endif
-
 @if(count($taxonomies) > 0)
 @foreach($taxonomies as $tax_item)
 @php 
     $taxonomy = $tax_item['info'];
     $child_tabs = $tax_item['child_tabs'];
     $initial_products = $tax_item['initial_products'];
+    // 需要隐藏的分类名称列表
+    $hidden_categories = ['Sữa rửa mặt', 'Sữa  rửa mặt', 'Kem dưỡng ẩm', 'Dầu gội', 'Tẩy tế bào chết', 'Kem chống nắng'];
+    // 使用trim()来确保比较时忽略多余空格
+    $taxonomy_name_trimmed = trim($taxonomy->name);
+    $is_hidden = false;
+    foreach($hidden_categories as $hidden) {
+        if(trim($hidden) === $taxonomy_name_trimmed) {
+            $is_hidden = true;
+            break;
+        }
+    }
 @endphp
+@if(!$is_hidden)
 <section class="taxonomy-product mt-5" data-lazy-load="section">
      <div class="container-lg">
         <h2 class="fs-25 fw-bold text-uppercase text-center">{{$taxonomy->name}}</h2>
-        <div class="lazy-placeholder" style="min-height: 300px;">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Đang tải...</span>
+        <div class="lazy-placeholder" style="min-height: 300px; padding: 20px 0;">
+            <div class="list-watch mt-3 skeleton-container" style="justify-content: center;">
+                @for($i = 0; $i < 4; $i++)
+                @include('Website::product.skeleton-item')
+                @endfor
             </div>
         </div>
         <div class="lazy-hidden-content" style="display: none;">
@@ -191,6 +239,7 @@
         </div>
     </div>
 </section>
+@endif
 @endforeach
 @endif
 
@@ -206,69 +255,48 @@
     </div>
 </section>
 @endif
-@if(isset($watchs) && count($watchs) > 0)
-<section class="product_home mt-5">
-    <div class="container-lg">
-        <h2 class="fs-25 fw-bold text-uppercase text-center">Các mẫu bạn đã xem</h2>
-        <div class="list-watch mt-3">
-            @foreach($watchs as $watch)
-            @include('Website::product.item',['product' => $watch])
-            @endforeach
-        </div>
-    </div>
-</section>
-@endif
 
-@if(count($blogs) > 0)
-<section class="blogs pt-5 pb-5" data-lazy-load="section">
+<!-- 智能推荐产品区块 - 4行 x 6项 = 24个产品骨架屏 -->
+<section class="product_home mt-5" data-lazy-load="section">
     <div class="container-lg">
-        <h2 class="fs-25 fw-bold text-uppercase text-center">Tin tức</h2>
-        <div class="lazy-placeholder" style="min-height: 400px;">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Đang tải...</span>
+        <h2 class="fs-25 fw-bold text-uppercase text-center">Gợi ý cho bạn</h2>
+            <div class="lazy-placeholder" style="min-height: 400px; padding: 20px 0;">
+            <div class="list-flash mt-3 product-recommendations-home recommendations-grid-3x6 skeleton-grid recommendations-no-carousel" 
+                 data-exclude=""
+                 data-limit="18"
+                 data-loaded="0"
+                 data-per-load="12">
+                @for($i = 0; $i < 6; $i++)
+                @include('Website::product.skeleton-item')
+                @endfor
             </div>
         </div>
         <div class="lazy-hidden-content" style="display: none;">
-        <ul class="nav nav-pills mb-3 text-center" id="pills-tab-blog" role="tablist">
-          @foreach($blogs as $b => $blog)
-          <li class="nav-item" role="presentation">
-            <button class="nav-link @if($b == 0) active @endif" id="category-tab-{{$blog->id}}" data-bs-toggle="pill" data-bs-target="#category-{{$blog->id}}" type="button" role="tab" aria-controls="category-{{$blog->id}}" aria-selected="true">{{$blog->name}}</button>
-          </li>
-          @endforeach
-        </ul>
-        <div class="tab-content" id="pills-tabContent-blog">
-            @foreach($blogs as $b => $blog)
-            <div class="tab-pane fade @if($b == 0) show active @endif" id="category-{{$blog->id}}" role="tabpanel" aria-labelledby="category-tab-{{$blog->id}}" tabindex="0">
-                @php $posts = App\Modules\Post\Models\Post::select('name','slug','image','user_id','created_at','description','cat_id')->where([['status','1'],['type','post']])->whereIn('cat_id',$blog->arrayCate($blog->id,'category'))->latest()->limit(3)->get(); @endphp
-                @if($posts->count() > 0)
-                <div class="row">
-                    @foreach($posts as $post)
-                    <div class="col-12 col-md-4">
-                        <div class="item-blog">
-                            <a href="{{getSlug($post->slug)}}" class="box-image">
-                                <div class="skeleton--img-square js-skeleton">
-                                    <img src="{{getImage($post->image)}}" alt="{{$post->name}}" class="js-skeleton-img" loading="lazy">
-                                </div>
-                            </a>
-                            <div class="ps-3 pe-3 ps-md-0 pe-md-0 mt-2">
-                                <h3 class="post-title"><a href="{{getSlug($post->slug)}}">{{$post->name}}</a></h3>
-                                <p class="blog-excerpt mt-2">{{$post->description}}</p>
-                            </div>
-                        </div>
+            <div class="list-flash mt-3 product-recommendations-home recommendations-grid-3x6 recommendations-no-carousel" 
+                 data-exclude=""
+                 data-limit="18"
+                 data-loaded="0"
+                 data-per-load="12">
+                <div class="recommendations-loading text-center py-5" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Đang tải sản phẩm đề xuất...</span>
                     </div>
-                    @endforeach
-                </div>
-                @endif
-                <div class="text-center mt-3">
-                    <a href="{{getSlug($blog->slug)}}" class="btn-view-all">Xem tất cả</a>
                 </div>
             </div>
-            @endforeach
-        </ul>
+            <div class="text-center mt-4 recommendations-load-more-wrapper" style="display: none;">
+                <button type="button" class="btn btn-primary recommendations-load-more-btn">
+                    <span class="btn-text">Xem thêm</span>
+                    <span class="btn-loading" style="display: none;">
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        Đang tải...
+                    </span>
+                </button>
+            </div>
         </div>
     </div>
 </section>
-@endif
+
+{{-- Tin tức 区块已删除 --}}
 
 @endsection
 @section('footer')
@@ -288,6 +316,10 @@
     $('.list-watch').each(function() {
         // 跳过在 lazy-hidden-content 中且隐藏的元素（由 lazy-load.js 处理）
         if ($(this).closest('.lazy-hidden-content').length > 0 && !$(this).closest('.lazy-hidden-content').is(':visible')) {
+            return;
+        }
+        // 跳过不使用carousel的Top sản phẩm bán chạy
+        if ($(this).hasClass('deals-no-carousel')) {
             return;
         }
         if (!$(this).data('owlCarousel')) {
@@ -333,7 +365,7 @@
                 nav: true
             },
             1000: {
-                items: 4,
+                items: 6,
                 nav: true,
 
             }
@@ -438,5 +470,173 @@
     .carousel-four {
           width: 537px;
         }
+    
+    /* 推荐产品3行x6列网格布局 - 类似Flashsale */
+    @media (min-width: 1000px) {
+        .recommendations-grid-3x6 {
+            display: grid !important;
+            grid-template-columns: repeat(6, 1fr) !important;
+            grid-auto-rows: auto !important;
+            gap: 20px !important;
+        }
+        .recommendations-grid-3x6 .item-product {
+            min-width: 190px !important;
+            width: 190px !important;
+            margin-right: 0 !important;
+            margin-bottom: 0 !important;
+            border-radius: 10px;
+            padding: 0px;
+            height: 380px;
+        }
+        .recommendations-grid-3x6 .item-product img {
+            height: 100%;
+            width: initial;
+            display: inline-block;
+        }
+        .recommendations-grid-3x6 .card-cover {
+            text-align: center;
+            height: 168px;
+        }
+        .recommendations-grid-3x6 .card-cover a {
+            display: block;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+        .recommendations-grid-3x6 .item-product .status-product {
+            left: 10px;
+            top: 10px;
+        }
+        .recommendations-grid-3x6 .item-product .btn_login_wishlist {
+            top: 10px;
+            right: 10px;
+        }
+        .recommendations-grid-3x6 .item-product .card-content {
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+        /* 6x6布局保持原样 */
+        .recommendations-grid-6x6 {
+            display: grid !important;
+            grid-template-columns: repeat(6, 1fr) !important;
+            grid-template-rows: repeat(6, auto) !important;
+            gap: 20px !important;
+        }
+        .recommendations-grid-6x6 .item-product {
+            min-width: 190px !important;
+            width: 190px !important;
+            margin-right: 0 !important;
+            margin-bottom: 0 !important;
+            border-radius: 10px;
+            padding: 0px;
+            height: 380px;
+        }
+        .recommendations-grid-6x6 .item-product img {
+            height: 100%;
+            width: initial;
+            display: inline-block;
+        }
+        .recommendations-grid-6x6 .card-cover {
+            text-align: center;
+            height: 168px;
+        }
+        .recommendations-grid-6x6 .card-cover a {
+            display: block;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+        .recommendations-grid-6x6 .item-product .status-product {
+            left: 10px;
+            top: 10px;
+        }
+        .recommendations-grid-6x6 .item-product .btn_login_wishlist {
+            top: 10px;
+            right: 10px;
+        }
+        .recommendations-grid-6x6 .item-product .card-content {
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+    }
+    
+    @media (max-width: 999px) {
+        .recommendations-grid-3x6,
+        .recommendations-grid-6x6 {
+            display: block !important;
+        }
+        .recommendations-grid-3x6 .item-product,
+        .recommendations-grid-6x6 .item-product {
+            min-width: 160px !important;
+            width: 160px !important;
+            margin-right: 10px !important;
+            height: auto !important;
+        }
+        .recommendations-grid-3x6 .item-product img,
+        .recommendations-grid-6x6 .item-product img {
+            height: 100%;
+            width: initial;
+            display: inline-block;
+        }
+        .recommendations-grid-3x6 .card-cover,
+        .recommendations-grid-6x6 .card-cover {
+            text-align: center;
+            height: 168px;
+        }
+        .recommendations-grid-3x6 .card-cover a,
+        .recommendations-grid-6x6 .card-cover a {
+            display: block;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+    }
 </style>
+<script>
+    // 推荐产品网格布局初始化
+    $(document).ready(function() {
+        function initRecommendationsGrid() {
+            if (window.innerWidth >= 1000) {
+                // 3x6布局（自动扩展行数）
+                $('.recommendations-grid-3x6').css({
+                    'display': 'grid',
+                    'grid-template-columns': 'repeat(6, 1fr)',
+                    'grid-auto-rows': 'auto',
+                    'gap': '20px'
+                });
+                $('.recommendations-grid-3x6 .item-product').css({
+                    'min-width': '190px',
+                    'width': '190px',
+                    'margin-right': '0',
+                    'margin-bottom': '0'
+                });
+                // 6x6布局
+                $('.recommendations-grid-6x6').css({
+                    'display': 'grid',
+                    'grid-template-columns': 'repeat(6, 1fr)',
+                    'grid-template-rows': 'repeat(6, auto)',
+                    'gap': '20px'
+                });
+                $('.recommendations-grid-6x6 .item-product').css({
+                    'min-width': '190px',
+                    'width': '190px',
+                    'margin-right': '0',
+                    'margin-bottom': '0'
+                });
+            } else {
+                $('.recommendations-grid-3x6 .item-product, .recommendations-grid-6x6 .item-product').css({
+                    'min-width': '160px',
+                    'width': '160px',
+                    'margin-right': '10px'
+                });
+            }
+        }
+        
+        initRecommendationsGrid();
+        
+        $(window).on('resize', function() {
+            initRecommendationsGrid();
+        });
+    });
+</script>
 @endsection

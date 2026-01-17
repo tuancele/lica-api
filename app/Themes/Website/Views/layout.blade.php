@@ -36,11 +36,15 @@
     <script src="/public/website/js/bootstrap.bundle.min.js" defer></script>
     <!-- 异步加载优化脚本 -->
     <script src="/public/website/js/lazy-load.js" defer></script>
+    <script src="/public/js/product-recommendation.js" defer></script>
+    <script src="/public/js/product-home-optimizer.js" defer></script>
+    <script src="/public/website/js/skeleton-optimizer.js" defer></script>
 
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @yield('header')
     <link rel="preload" href="/public/website/css/style.css" as="style">
     <link rel="stylesheet" href="/public/website/css/style.css">
+    <link rel="stylesheet" href="/public/website/css/product-home-optimized.css">
     <style>
         /* Danh mục nổi bật - Horizontal scroll trên mobile */
         .list-taxonomy-wrapper {
@@ -123,8 +127,7 @@
             }
         }
         .footer-blocks {
-            background-color: #f8f9fa;
-            border-top: 1px solid #e9ecef;
+            background-color: #e9ecef;
         }
         .footer-block-item {
             padding: 10px 15px;
@@ -636,6 +639,9 @@
                                     <img src="{{getImage($block4->logo ?? '')}}" alt="{{$block4->alt ?? ''}}" class="js-skeleton-img">
                                 </div>
                             </a>
+                            <div class="copyright-text mt-3 mb-3">
+                                <p class="mb-0">© 2009-{{date('Y')}} - All rights reserved</p>
+                            </div>
                             <ul class="list_social">
                                 <a href="{{$block4->facebook ?? '#'}}" target="_blank" rel="nofollow"><img src="/public/image/icon-facebook.webp" alt="Facebook" width="24" height="24"></a>
                                 <a href="{{$block4->instagram ?? '#'}}" target="_blank" rel="nofollow"><img src="/public/image/icon-instagram.webp" alt="Facebook" width="24" height="24"></a>
@@ -745,11 +751,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 @endif
-<div class="copyright">
-    <div class="container-lg text-center border-top pt-3 pb-1">
-        {!!$footer ? $footer->block_1 : ''!!}
-    </div>
-</div>
 @if(!isset($member) && empty($member))
 {{--
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -982,20 +983,6 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
   </div>
 </div>
-<div class="modal" tabindex="-1" id="myQuickview">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-body">
-        <button  data-bs-dismiss="modal" aria-label="Close" class="btn btnClose" type="button">
-            <span class="icon">
-                <svg width="1em" height="1em" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11.2453 9L17.5302 2.71516C17.8285 2.41741 17.9962 2.01336 17.9966 1.59191C17.997 1.17045 17.8299 0.76611 17.5322 0.467833C17.2344 0.169555 16.8304 0.00177586 16.4089 0.00140366C15.9875 0.00103146 15.5831 0.168097 15.2848 0.465848L9 6.75069L2.71516 0.465848C2.41688 0.167571 2.01233 0 1.5905 0C1.16868 0 0.764125 0.167571 0.465848 0.465848C0.167571 0.764125 0 1.16868 0 1.5905C0 2.01233 0.167571 2.41688 0.465848 2.71516L6.75069 9L0.465848 15.2848C0.167571 15.5831 0 15.9877 0 16.4095C0 16.8313 0.167571 17.2359 0.465848 17.5342C0.764125 17.8324 1.16868 18 1.5905 18C2.01233 18 2.41688 17.8324 2.71516 17.5342L9 11.2493L15.2848 17.5342C15.5831 17.8324 15.9877 18 16.4095 18C16.8313 18 17.2359 17.8324 17.5342 17.5342C17.8324 17.2359 18 16.8313 18 16.4095C18 15.9877 17.8324 15.5831 17.5342 15.2848L11.2453 9Z" fill="currentColor"></path></svg>
-            </span>
-        </button>
-        <div class="box-quick-view"></div>
-      </div>
-    </div>
-  </div>
-</div>
 <script>
     $('.show-menu-account').click(function(){
         $('.menu_account').toggle();
@@ -1085,32 +1072,6 @@ document.addEventListener('DOMContentLoaded', function() {
        $(window).resize(function() {
          updateUI();
        });
-     });
-    $('body').on('click','.btn-quickview',function(){
-        var id = $(this).attr('data-id');
-        $.ajax({
-            type: 'post',
-            url: '{{route("quickView")}}',
-            data: {id:id},
-            headers:
-            {
-                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-            },
-            success: function (res) {
-                if(res.status){
-                    var quickView = new bootstrap.Modal(document.getElementById('myQuickview'))
-                    quickView.show();
-                    $('#myQuickview .box-quick-view').html(res.view);
-                }else{
-                    alert('Có lỗi xảy ra, xin vui lòng thử lại');
-                    window.location = window.location.href;
-                }
-            },
-            error: function(xhr, status, error){
-                alert('Có lỗi xảy ra, xin vui lòng thử lại');
-               window.location = window.location.href;
-            }
-        })
     });
     $('.btn-wishlist').click(function(){
         $.ajax({
@@ -1440,7 +1401,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     $('body').on('click','.addCart',function(){
         var id = $('body #variant_id').val();
-        var qty = $('body #myQuickview input.quantity-input').val();
+        var qty = $('body input.quantity-input').val();
         $.ajax({
         type: 'post',
         url: '{{route("cart.add")}}',
@@ -1459,8 +1420,6 @@ document.addEventListener('DOMContentLoaded', function() {
           if(res.status == 'success'){
             $('body .count-cart').html(res.total);
             getCart();
-             var myQuick = bootstrap.Modal.getInstance(document.querySelector('#myQuickview'));
-             myQuick.hide();
           }else{
             alert("Có lỗi xảy ra trong quá trình xử lý, xin vui lòng thử lại");
           }
@@ -2192,9 +2151,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (!$wrap.length) return;
             
-            // Áp dụng kích thước phù hợp với thiết bị
-            applySkeletonSize($wrap, deviceInfo);
-            
             // Đảm bảo ảnh responsive
             $img.css({
                 'max-width': '100%',
@@ -2202,7 +2158,140 @@ document.addEventListener('DOMContentLoaded', function() {
                 'display': 'block'
             });
             
+            // 初始化 skeleton 尺寸的函数
+            var initSkeletonSize = function() {
+                // 优先检查图片是否有明确的 width/height 属性
+                var imgWidthAttr = $img.attr('width');
+                var imgHeightAttr = $img.attr('height');
+                
+                // 尝试获取实际渲染尺寸（如果图片已加载）
+                var actualWidth = img.offsetWidth || img.clientWidth || 0;
+                var actualHeight = img.offsetHeight || img.clientHeight || 0;
+                
+                var displayWidth, displayHeight;
+                
+                // 如果能够获取实际渲染尺寸，优先使用（考虑 CSS 的影响）
+                if (actualWidth > 0 && actualHeight > 0) {
+                    displayWidth = actualWidth;
+                    displayHeight = actualHeight;
+                } else if (imgWidthAttr && imgHeightAttr) {
+                    // 如果无法获取实际尺寸，使用 HTML 属性
+                    displayWidth = parseInt(imgWidthAttr);
+                    displayHeight = parseInt(imgHeightAttr);
+                    
+                    // 但需要考虑容器的宽度限制
+                    var containerWidth = $wrap.parent().width() || $wrap.closest('.item-product').width() || window.innerWidth;
+                    if (containerWidth > 0 && displayWidth > containerWidth) {
+                        // 如果容器宽度小于图片宽度，按比例缩放高度
+                        var ratio = containerWidth / displayWidth;
+                        displayWidth = containerWidth;
+                        displayHeight = Math.round(displayHeight * ratio);
+                    }
+                } else {
+                    // 如果没有明确尺寸，使用设备相关的默认尺寸
+                    applySkeletonSize($wrap, deviceInfo);
+                    return;
+                }
+                
+                // 设置 skeleton 容器大小
+                if (displayWidth > 0 && displayHeight > 0) {
+                    $wrap.css({
+                        'width': displayWidth + 'px',
+                        'height': displayHeight + 'px',
+                        'min-width': displayWidth + 'px',
+                        'max-width': displayWidth + 'px',
+                        'min-height': displayHeight + 'px',
+                        'max-height': displayHeight + 'px'
+                    });
+                }
+            };
+            
+            // 立即尝试初始化
+            initSkeletonSize();
+            
+            // 如果图片已加载，再次检查以确保尺寸准确
+            if (img.complete && img.naturalWidth > 0) {
+                // 等待一帧确保 DOM 已更新
+                requestAnimationFrame(function() {
+                    initSkeletonSize();
+                });
+            }
+            
             function hideSkeleton() {
+                // 获取图片的实际尺寸
+                var naturalWidth = img.naturalWidth;
+                var naturalHeight = img.naturalHeight;
+                
+                if (naturalWidth > 0 && naturalHeight > 0) {
+                    // 获取图片的实际渲染尺寸（考虑 CSS 的影响）
+                    var updateSize = function() {
+                        // 优先使用实际渲染尺寸
+                        var displayWidth = img.offsetWidth || img.clientWidth || 0;
+                        var displayHeight = img.offsetHeight || img.clientHeight || 0;
+                        
+                        // 如果无法获取渲染尺寸，尝试使用 HTML 属性
+                        if (displayWidth <= 0 || displayHeight <= 0) {
+                            var imgWidthAttr = $img.attr('width');
+                            var imgHeightAttr = $img.attr('height');
+                            
+                            if (imgWidthAttr && imgHeightAttr) {
+                                displayWidth = parseInt(imgWidthAttr);
+                                displayHeight = parseInt(imgHeightAttr);
+                                
+                                // 考虑容器的宽度限制
+                                var containerWidth = $wrap.parent().width() || $wrap.closest('.item-product').width() || 0;
+                                if (containerWidth > 0 && displayWidth > containerWidth) {
+                                    var ratio = containerWidth / displayWidth;
+                                    displayWidth = containerWidth;
+                                    displayHeight = Math.round(displayHeight * ratio);
+                                }
+                            } else {
+                                // 最后使用自然尺寸，但也要考虑容器限制
+                                displayWidth = naturalWidth;
+                                displayHeight = naturalHeight;
+                                var containerWidth = $wrap.parent().width() || $wrap.closest('.item-product').width() || 0;
+                                if (containerWidth > 0 && displayWidth > containerWidth) {
+                                    var ratio = containerWidth / displayWidth;
+                                    displayWidth = containerWidth;
+                                    displayHeight = Math.round(displayHeight * ratio);
+                                }
+                            }
+                        }
+                        
+                        // 确保尺寸有效且合理
+                        if (displayWidth > 0 && displayHeight > 0) {
+                            // 设置 skeleton 容器大小与图片完全匹配
+                            $wrap.css({
+                                'width': displayWidth + 'px',
+                                'height': displayHeight + 'px',
+                                'min-width': displayWidth + 'px',
+                                'max-width': displayWidth + 'px',
+                                'min-height': displayHeight + 'px',
+                                'max-height': displayHeight + 'px'
+                            });
+                        }
+                    };
+                    
+                    // 立即尝试获取尺寸
+                    updateSize();
+                    
+                    // 如果尺寸为0或无效，等待下一帧再试（确保图片已完全渲染）
+                    if (img.offsetWidth <= 0 || img.offsetHeight <= 0) {
+                        requestAnimationFrame(function() {
+                            updateSize();
+                            // 再等待一帧确保尺寸稳定
+                            requestAnimationFrame(function() {
+                                updateSize();
+                            });
+                        });
+                    } else {
+                        // 即使尺寸有效，也再检查一次确保准确
+                        requestAnimationFrame(function() {
+                            updateSize();
+                        });
+                    }
+                }
+                
                 $wrap.removeClass('skeleton skeleton-error');
                 $img.css({
                     'opacity': 1,

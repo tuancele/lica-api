@@ -18,11 +18,11 @@
         return;
     }
 
-    // 配置选项 - 使用更大的rootMargin提前加载
+    // 配置选项 - 优化性能
     const observerConfig = {
         root: null,
-        rootMargin: '1000px', // 提前1000px开始加载
-        threshold: [0, 0.01] // 多个阈值确保触发
+        rootMargin: '500px', // 提前500px开始加载（减少初始观察范围）
+        threshold: 0.01 // 单一阈值，减少计算
     };
 
     // 创建Intersection Observer实例
@@ -67,10 +67,12 @@
         // 显示隐藏的内容
         hiddenContent.style.display = '';
         
-        // 延迟初始化轮播图，确保DOM已更新
-        setTimeout(function() {
-            initCarousels(element);
-        }, 300);
+        // 使用 requestAnimationFrame 优化初始化时机
+        requestAnimationFrame(function() {
+            requestAnimationFrame(function() {
+                initCarousels(element);
+            });
+        });
     }
 
     /**
@@ -149,8 +151,25 @@
         if (typeof $ === 'undefined') return;
         
         $(container).find('.list-watch, .list-flash, .list-brand, .list-banner, .slider_home').each(function() {
+            const $this = $(this);
+            
+            // 跳过skeleton placeholder中的元素
+            if ($this.closest('.lazy-placeholder').length > 0) {
+                return;
+            }
+            
+            // 跳过标记为不初始化的元素
+            if ($this.attr('data-owl-carousel-disabled') === 'true') {
+                return;
+            }
+            
+            // 跳过不使用carousel的品牌网格、推荐产品和Top sản phẩm bán chạy
+            if ($this.hasClass('brand-grid-no-carousel') || $this.hasClass('recommendations-no-carousel') || $this.hasClass('deals-no-carousel')) {
+                return;
+            }
+            
             if (!$(this).data('owlCarousel')) {
-                const $this = $(this);
+                
                 let carouselType = 'default';
                 
                 if ($this.hasClass('slider_home')) {
@@ -208,57 +227,98 @@
     }
 
     /**
+     * 阻止skeleton placeholder中的元素被初始化carousel
+     */
+    function preventSkeletonCarouselInit() {
+        if (typeof $ === 'undefined') return;
+        
+        // 查找所有skeleton placeholder中的.list-flash元素
+        $('.lazy-placeholder .list-flash, .lazy-placeholder .list-watch').each(function() {
+            const $this = $(this);
+            // 如果已经有owlCarousel，销毁它
+            if ($this.data('owlCarousel')) {
+                $this.trigger('destroy.owl.carousel');
+                $this.removeClass('owl-carousel owl-loaded owl-hidden');
+                $this.find('.owl-stage-outer, .owl-stage, .owl-item, .owl-controls, .owl-nav, .owl-prev, .owl-next').remove();
+            }
+            // 标记为不初始化
+            $this.attr('data-owl-carousel-disabled', 'true');
+        });
+    }
+
+    /**
      * 初始化：观察所有需要延迟加载的元素
      */
     function init() {
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function() {
-                setTimeout(init, 100);
+                // 使用 requestIdleCallback 优化初始化时机
+                if ('requestIdleCallback' in window) {
+                    requestIdleCallback(init, { timeout: 2000 });
+                } else {
+                    setTimeout(init, 50);
+                }
             });
             return;
         }
 
+        // 立即阻止skeleton placeholder中的carousel初始化
+        preventSkeletonCarouselInit();
+
         const lazyElements = document.querySelectorAll('[data-lazy-load]');
-        console.log('Initializing lazy load, found', lazyElements.length, 'elements');
         
-        // 先检查首屏元素并立即加载
-        lazyElements.forEach(function(element, index) {
+        // 使用 requestIdleCallback 分批处理，避免阻塞主线程
+        const processElements = function(index) {
+            if (index >= lazyElements.length) {
+                // 绑定滚动事件
+                attachScrollListeners();
+                return;
+            }
+            
+            const element = lazyElements[index];
             if (element.dataset.loaded === 'true') {
+                processElements(index + 1);
                 return;
             }
             
             const rect = element.getBoundingClientRect();
             const windowHeight = window.innerHeight;
             const scrollY = window.scrollY || window.pageYOffset;
-            
-            // 计算元素距离顶部的绝对位置
             const elementTop = rect.top + scrollY;
             const viewportBottom = scrollY + windowHeight;
             
             // 检查是否在首屏或接近首屏（立即加载）
             const inViewport = (
-                elementTop < viewportBottom + 1000 && 
-                elementTop > scrollY - 500
+                elementTop < viewportBottom + 500 && 
+                elementTop > scrollY - 200
             );
             
             if (inViewport) {
                 // 首屏内容立即加载
-                console.log('Loading immediately (in viewport):', element.className, 'elementTop:', elementTop);
                 loadSection(element);
             } else {
                 // 其他内容使用Intersection Observer观察
-                console.log('Observing:', element.className, 'elementTop:', elementTop);
                 observer.observe(element);
             }
-        });
-
-        // 绑定滚动事件
-        attachScrollListeners();
+            
+            // 使用 requestIdleCallback 继续处理下一个元素
+            if ('requestIdleCallback' in window && index < lazyElements.length - 1) {
+                requestIdleCallback(function() {
+                    processElements(index + 1);
+                }, { timeout: 100 });
+            } else {
+                processElements(index + 1);
+            }
+        };
         
-        // 初始检查一次（延迟更久确保DOM完全渲染）
-        setTimeout(function() {
-            checkAndLoadVisible();
-        }, 800);
+        // 开始处理
+        if ('requestIdleCallback' in window) {
+            requestIdleCallback(function() {
+                processElements(0);
+            }, { timeout: 2000 });
+        } else {
+            processElements(0);
+        }
     }
 
     // 导出到全局
@@ -270,16 +330,20 @@
         init: init
     };
 
-    // 执行初始化
+    // 执行初始化 - 优化启动时机
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(init, 200);
+            if ('requestIdleCallback' in window) {
+                requestIdleCallback(init, { timeout: 1000 });
+            } else {
+                setTimeout(init, 50);
+            }
         });
     } else {
-        setTimeout(init, 200);
+        if ('requestIdleCallback' in window) {
+            requestIdleCallback(init, { timeout: 1000 });
+        } else {
+            setTimeout(init, 50);
+        }
     }
-
-    window.addEventListener('load', function() {
-        setTimeout(init, 100);
-    });
 })();

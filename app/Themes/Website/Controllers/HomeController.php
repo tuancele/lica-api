@@ -30,12 +30,15 @@ use App\Modules\Deal\Models\Deal;
 use App\Modules\Deal\Models\ProductDeal;
 use App\Modules\Deal\Models\SaleDeal;
 use App\Modules\Marketing\Models\MarketingCampaign;
+use App\Modules\Order\Models\Order;
+use App\Modules\Order\Models\OrderDetail;
 use Carbon\Carbon;
 use Session;
 use Validator;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class HomeController extends Controller
 {
@@ -142,13 +145,119 @@ class HomeController extends Controller
                     ->orderBy('posts.created_at', 'desc')->get();
             }
             
-            $data['deals'] = Cache::remember('home_top_deals_v1', 3600, function () {
-                return Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                    ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
-                    ->where([['status', '1'], ['type', 'product'], ['posts.best', '1']])
-                    ->groupBy('posts.id')
-                    ->limit(20)
-                    ->orderBy('posts.created_at', 'desc')->get();
+            $data['deals'] = Cache::remember('home_top_deals_v3', 3600, function () {
+                // Lấy sản phẩm bán chạy từ đơn hàng đã hoàn thành (ship = 2)
+                $topProducts = DB::table('orderdetail')
+                    ->join('orders', 'orderdetail.order_id', '=', 'orders.id')
+                    ->where('orders.ship', 2) // Đơn hàng đã hoàn thành (Đã nhận)
+                    ->where('orders.status', '!=', 2) // Loại trừ đơn hàng đã hủy
+                    ->whereNotNull('orderdetail.product_id') // Đảm bảo có product_id
+                    ->select('orderdetail.product_id', DB::raw('SUM(orderdetail.qty) as total_sold'))
+                    ->groupBy('orderdetail.product_id')
+                    ->orderBy('total_sold', 'desc')
+                    ->limit(50) // Lấy nhiều hơn để đảm bảo có đủ sau khi lọc
+                    ->get();
+                
+                $topProductIds = [];
+                $productsFromOrders = collect();
+                
+                if (!$topProducts->isEmpty()) {
+                    $topProductIds = $topProducts->pluck('product_id')->toArray();
+                    
+                    // Lấy thông tin sản phẩm từ danh sách ID đã sắp xếp theo số lượng bán
+                    // Chỉ lấy sản phẩm còn active và có variant
+                    $productsFromOrders = Product::join('variants', 'variants.product_id', '=', 'posts.id')
+                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
+                        ->where([['posts.status', '1'], ['posts.type', 'product']])
+                        ->whereIn('posts.id', $topProductIds)
+                        ->groupBy('posts.id')
+                        ->get();
+                    
+                    // Sắp xếp lại theo thứ tự số lượng bán (giữ nguyên thứ tự từ query)
+                    $productsFromOrders = $productsFromOrders->sortBy(function($product) use ($topProductIds) {
+                        $index = array_search($product->id, $topProductIds);
+                        return $index !== false ? $index : 999;
+                    })->values();
+                }
+                
+                // Nếu không đủ 10 sản phẩm, bổ sung từ sản phẩm best hoặc sản phẩm mới nhất
+                $neededCount = 10 - $productsFromOrders->count();
+                if ($neededCount > 0) {
+                    // Thử lấy từ sản phẩm best trước
+                    $bestProductsQuery = Product::join('variants', 'variants.product_id', '=', 'posts.id')
+                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
+                        ->where([['posts.status', '1'], ['posts.type', 'product'], ['posts.best', '1']]);
+                    
+                    // Loại trừ các sản phẩm đã có từ đơn hàng
+                    if (!empty($topProductIds)) {
+                        $bestProductsQuery->whereNotIn('posts.id', $topProductIds);
+                    }
+                    
+                    $bestProducts = $bestProductsQuery->groupBy('posts.id')
+                        ->limit($neededCount)
+                        ->orderBy('posts.created_at', 'desc')
+                        ->get();
+                    
+                    // Nếu vẫn chưa đủ, lấy thêm từ sản phẩm mới nhất (không nhất thiết phải best)
+                    $remainingCount = $neededCount - $bestProducts->count();
+                    if ($remainingCount > 0) {
+                        $additionalProductsQuery = Product::join('variants', 'variants.product_id', '=', 'posts.id')
+                            ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
+                            ->where([['posts.status', '1'], ['posts.type', 'product']]);
+                        
+                        // Loại trừ các sản phẩm đã có
+                        $excludedIds = array_merge($topProductIds, $bestProducts->pluck('id')->toArray());
+                        if (!empty($excludedIds)) {
+                            $additionalProductsQuery->whereNotIn('posts.id', $excludedIds);
+                        }
+                        
+                        $additionalProducts = $additionalProductsQuery->groupBy('posts.id')
+                            ->limit($remainingCount)
+                            ->orderBy('posts.created_at', 'desc')
+                            ->get();
+                        
+                        $bestProducts = $bestProducts->merge($additionalProducts);
+                    }
+                    
+                    // Kết hợp sản phẩm từ đơn hàng và sản phẩm bổ sung
+                    $productsFromOrders = $productsFromOrders->merge($bestProducts);
+                }
+                
+                // Nếu vẫn không có sản phẩm nào, fallback về sản phẩm best hoặc mới nhất
+                if ($productsFromOrders->isEmpty()) {
+                    $fallbackProducts = Product::join('variants', 'variants.product_id', '=', 'posts.id')
+                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
+                        ->where([['posts.status', '1'], ['posts.type', 'product']])
+                        ->groupBy('posts.id')
+                        ->limit(10)
+                        ->orderBy('posts.best', 'desc')
+                        ->orderBy('posts.created_at', 'desc')
+                        ->get();
+                    
+                    return $fallbackProducts;
+                }
+                
+                // Đảm bảo luôn trả về đúng 10 sản phẩm
+                $finalProducts = $productsFromOrders->take(10);
+                
+                // Nếu vẫn chưa đủ 10, lấy thêm từ bất kỳ sản phẩm nào còn thiếu
+                if ($finalProducts->count() < 10) {
+                    $currentIds = $finalProducts->pluck('id')->toArray();
+                    $moreNeeded = 10 - $finalProducts->count();
+                    
+                    $moreProducts = Product::join('variants', 'variants.product_id', '=', 'posts.id')
+                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
+                        ->where([['posts.status', '1'], ['posts.type', 'product']])
+                        ->whereNotIn('posts.id', $currentIds)
+                        ->groupBy('posts.id')
+                        ->limit($moreNeeded)
+                        ->orderBy('posts.created_at', 'desc')
+                        ->get();
+                    
+                    $finalProducts = $finalProducts->merge($moreProducts)->take(10);
+                }
+                
+                return $finalProducts;
             });
 
             return view('Website::' . $page->temp, $data);
@@ -680,22 +789,6 @@ class HomeController extends Controller
         ]);
     }
 
-    public function quickView(Request $request)
-    {
-        $detail = Post::find($request->id);
-        if ($detail) {
-            $data['detail'] = $detail;
-            $data['gallerys'] = json_decode($detail->gallery);
-            $data['first'] = Variant::where('product_id', $detail->id)->first();
-            $data['t_rates'] = Rate::select('id', 'rate')->where([['status', '1'], ['product_id', $detail->id]])->get();
-            $data['colors'] = Variant::select('color_id')->where('product_id', $detail->id)->distinct()->get();
-            return response()->json([
-                'view' => view('Website::product.quick', $data)->render(),
-                'status' => true
-            ]);
-        }
-        return response()->json(['status' => false]);
-    }
 
     public function getIngredient($slug)
     {

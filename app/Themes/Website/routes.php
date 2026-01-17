@@ -25,7 +25,6 @@
 			Route::get('xuat-xu/{url}', 'HomeController@origin');
 			Route::get('thuong-hieu/{url}', 'BrandController@index')->name('home.brand');
 			Route::get('tim-kiem', 'HomeController@search');
-			Route::post('product/quickview', 'HomeController@quickView')->name('quickView');
 			Route::get('ingredient/{slug}', 'HomeController@getIngredient');
 			Route::get('getPrice', 'HomeController@getPrice');
 			Route::get('getSize', 'HomeController@getSize');

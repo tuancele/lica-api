@@ -85,6 +85,82 @@ if (! function_exists('getPrice2')) {
 	}
 }
 
+if (! function_exists('getVariantFinalPrice')) {
+	/**
+	 * 计算变体的最终价格（按优先级：闪购价格 -> 促销价格 -> 原价）
+	 * @param int $variantId 变体ID
+	 * @param int $productId 产品ID（可选，用于闪购和促销查询）
+	 * @return array ['final_price' => 最终价格, 'original_price' => 原价, 'html' => HTML格式]
+	 */
+	function getVariantFinalPrice($variantId, $productId = null) {
+		$variant = App\Modules\Product\Models\Variant::select('id', 'product_id', 'price', 'sale')->where('id', $variantId)->first();
+		if(!$variant) {
+			return ['final_price' => 0, 'original_price' => 0, 'html' => '<p>Liên hệ</p>'];
+		}
+
+		$productId = $productId ?: $variant->product_id;
+		$originalPrice = $variant->price;
+		$finalPrice = $originalPrice;
+		$percent = 0;
+
+		// 1. 检查闪购价格（优先级最高）
+		$date = strtotime(date('Y-m-d H:i:s'));
+		$flash = App\Modules\FlashSale\Models\FlashSale::where([['status','1'],['start','<=',$date],['end','>=',$date]])->first();
+		if(isset($flash) && !empty($flash)){
+			$productSale = App\Modules\FlashSale\Models\ProductSale::select('product_id','price_sale','number','buy')
+				->where([['flashsale_id',$flash->id],['product_id',$productId]])->first();
+			if(isset($productSale) && !empty($productSale)){
+				if($productSale->buy < $productSale->number){
+					$finalPrice = $productSale->price_sale;
+					$percent = round(($originalPrice - $finalPrice)/($originalPrice/100));
+					return [
+						'final_price' => $finalPrice,
+						'original_price' => $originalPrice,
+						'html' => '<p>'.number_format($finalPrice).'đ</p><del>'.number_format($originalPrice).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>'
+					];
+				}
+			}
+		}
+
+		// 2. 检查营销活动价格
+		$nowDate = \Carbon\Carbon::now();
+		$campaignProduct = App\Modules\Marketing\Models\MarketingCampaignProduct::where('product_id', $productId)
+			->whereHas('campaign', function ($q) use ($nowDate) {
+				$q->where('status', 1)
+				  ->where('start_at', '<=', $nowDate)
+				  ->where('end_at', '>=', $nowDate);
+			})->first();
+
+		if ($campaignProduct) {
+			$finalPrice = $campaignProduct->price;
+			$percent = round(($originalPrice - $finalPrice)/($originalPrice/100));
+			return [
+				'final_price' => $finalPrice,
+				'original_price' => $originalPrice,
+				'html' => '<p>'.number_format($finalPrice).'đ</p><del>'.number_format($originalPrice).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>'
+			];
+		}
+
+		// 3. 使用原价或sale价格
+		if($variant->sale != 0 && $variant->sale < $originalPrice){
+			$finalPrice = $variant->sale;
+			$percent = round(($originalPrice - $finalPrice)/($originalPrice/100));
+			return [
+				'final_price' => $finalPrice,
+				'original_price' => $originalPrice,
+				'html' => '<p>'.number_format($finalPrice).'đ</p><del>'.number_format($originalPrice).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>'
+			];
+		}
+
+		// 4. 返回原价
+		return [
+			'final_price' => $originalPrice,
+			'original_price' => $originalPrice,
+			'html' => '<p>'.number_format($originalPrice).'đ</p>'
+		];
+	}
+}
+
 if (! function_exists('checkSale')) {
 	function checkSale($id){
         // 1. Check Flash Sale

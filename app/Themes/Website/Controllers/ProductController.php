@@ -32,6 +32,7 @@ class ProductController extends Controller
             }
             
             $data['detail'] = $post;
+            $data['product_id'] = $post->id;
             $data['gallerys'] = json_decode($post->gallery);
             $variants = Variant::where('product_id', $post->id)->orderBy('position', 'asc')->orderBy('id', 'asc')->get();
             $first = $variants->first();

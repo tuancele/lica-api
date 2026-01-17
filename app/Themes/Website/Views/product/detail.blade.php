@@ -6,9 +6,9 @@
 <script src="/public/website/owl-carousel/owl.carousel-2.0.0.min.js"></script>
 @endsection
 @section('content')
-<section class="mt-3" id="detailProduct">
+<section class="mt-3" id="detailProduct" data-product-id="{{$detail->id ?? ''}}">
     <div class="container-lg">
-        <div class="row">
+        <div class="row" style="background: #fff; border-radius: 5px; padding: 15px; margin-top: 1rem !important;">
             <div class="col-12 col-md-6">
                 <div class="position-relative pe-0 pe-md-5">
                     <style>
@@ -562,34 +562,43 @@
                     $rateCollection = isset($t_rates) && $t_rates ? $t_rates : collect();
                     $rateCount = $rateCollection->count();
                     $rateSum   = $rateCollection->sum('rate');
+                    $averageRate = $rateCount > 0 ? round($rateSum / $rateCount, 1) : 0;
+                    
+                    // 获取总销量
+                    $totalSold = \Illuminate\Support\Facades\DB::table('orderdetail')
+                        ->join('orders', 'orderdetail.order_id', '=', 'orders.id')
+                        ->where('orderdetail.product_id', $detail->id)
+                        ->where('orders.ship', 2)
+                        ->where('orders.status', '!=', 2)
+                        ->sum('orderdetail.qty') ?? 0;
                 @endphp
-                <div class="d-block overflow-hidden mb-2 list_attribute">
-                    <div class="item_1 rate-section w40 fs-12 pointer" onclick="window.location='{{getSlug($detail->slug)}}#ratingProduct'">
-                        <div class="rating mt-0 mb-0">
+                <div class="product-rating-sales">
+                    <div class="rating-display">
+                        <span class="rating-value">{{number_format($averageRate, 1)}}</span>
+                        <div class="rating-stars">
                             {!!getStar($rateSum,$rateCount)!!}
-                            <div class="count-rate">({{$rateCount}})</div>
                         </div>
                     </div>
-                    @php
-                        $wishlistCollection = method_exists($detail, 'wishlists') ? ($detail->wishlists ?? collect()) : collect();
-                        $wishlistCount = $wishlistCollection ? $wishlistCollection->count() : 0;
-                    @endphp
-                    <div class="item_2 fav-section w60 fs-12">
-                        <span role="img" class="icon"><svg width="12" height="12" viewBox="0 0 30 26" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21.001 0C18.445 0 16.1584 1.24169 14.6403 3.19326C13.1198 1.24169 10.8355 0 8.27952 0C3.70634 0 0 3.97108 0 8.86991C0 15.1815 9.88903 23.0112 13.4126 25.5976C14.1436 26.1341 15.1369 26.1341 15.8679 25.5976C19.3915 23.0088 29.2805 15.1815 29.2805 8.86991C29.2782 3.97108 25.5718 0 21.001 0Z" fill="#C73130"></path></svg></span> <span class="total-wishlist ms-1">{{$wishlistCount}}</span>
+                    <span class="separator">|</span>
+                    <div class="review-count">
+                        @if($rateCount >= 1000)
+                            <span class="review-number">{{number_format($rateCount / 1000, 1)}}k</span>
+                        @else
+                            <span class="review-number">{{number_format($rateCount)}}</span>
+                        @endif
+                        <span class="review-text"> Đánh Giá</span>
                     </div>
-                    @if($detail->origin)
-                    <div class="item_3 origin-section w40 fs-12"><b>Xuất xứ:</b> {{$detail->origin->name}}</div>
-                    @endif
-                    @if($detail->cbmp != "")
-                    <div class="item_4 origin-section w60 fs-12"><b>Số CBMP:</b> {{$detail->cbmp}}</div>
-                    @endif
-                    <div class="item_5 sku-section w40 fs-12"><b>SKU:</b> <span id="variant-sku-display">{{$first->sku}}</span></div>
-                    @if($detail->verified == 1)
-                    <div class="verified w60 fs-12 d-block d-md-none">
-                        <strong>Đã xác thực bởi:</strong> {{getConfig('verified')}} 
-                        <span class="show_verified"><svg viewBox="64 64 896 896" focusable="false" data-icon="question-circle" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 708c-22.1 0-40-17.9-40-40s17.9-40 40-40 40 17.9 40 40-17.9 40-40 40zm62.9-219.5a48.3 48.3 0 00-30.9 44.8V620c0 4.4-3.6 8-8 8h-48c-4.4 0-8-3.6-8-8v-21.5c0-23.1 6.7-45.9 19.9-64.9 12.9-18.6 30.9-32.8 52.1-40.9 34-13.1 56-41.6 56-72.7 0-44.1-43.1-80-96-80s-96 35.9-96 80v7.6c0 4.4-3.6 8-8 8h-48c-4.4 0-8-3.6-8-8V420c0-39.3 17.2-76 48.4-103.3C430.4 290.4 470 276 512 276s81.6 14.5 111.6 40.7C654.8 344 672 380.7 672 420c0 57.8-38.1 109.8-97.1 132.5z"></path></svg></span>
+                    <span class="separator">|</span>
+                    <div class="sales-count">
+                        <span class="sales-text">Đã Bán </span>
+                        @if($totalSold >= 1000000)
+                            <span class="sales-number">{{number_format($totalSold / 1000000, 1)}}tr+</span>
+                        @elseif($totalSold >= 1000)
+                            <span class="sales-number">{{number_format($totalSold / 1000, 1)}}k+</span>
+                        @else
+                            <span class="sales-number">{{number_format($totalSold)}}</span>
+                        @endif
                     </div>
-                    @endif
                 </div>
                 @php
                     // Shopee-style: mọi sản phẩm có biến thể đều dùng block phân loại mới
@@ -600,18 +609,208 @@
                 <div class="price-detail">
                     <!-- VARIANT_DEBUG_A11: isShopeeVariant={{ $isShopeeVariant ? '1' : '0' }}, variants_count={{ isset($variants) ? $variants->count() : 0 }} -->
                     @if($isShopeeVariant)
+                        @php
+                            $firstPriceInfo = getVariantFinalPrice($first->id ?? 0, $detail->id);
+                        @endphp
                         <div class="price" id="variant-price-display">
-                            <p>{{number_format($first->price ?? 0)}}đ</p>
+                            {!! $firstPriceInfo['html'] !!}
                         </div>
                     @else
                         <div class="price">{!!checkSale($detail->id)!!}</div>
                     @endif
-                     @if($detail->verified == 1)
-                    <div class="verified w60 fs-12 d-none d-md-block">
-                        <strong>Đã xác thực bởi:</strong> {{getConfig('verified')}} 
-                        <span class="show_verified"><svg viewBox="64 64 896 896" focusable="false" data-icon="question-circle" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 708c-22.1 0-40-17.9-40-40s17.9-40 40-40 40 17.9 40 40-17.9 40-40 40zm62.9-219.5a48.3 48.3 0 00-30.9 44.8V620c0 4.4-3.6 8-8 8h-48c-4.4 0-8-3.6-8-8v-21.5c0-23.1 6.7-45.9 19.9-64.9 12.9-18.6 30.9-32.8 52.1-40.9 34-13.1 56-41.6 56-72.7 0-44.1-43.1-80-96-80s-96 35.9-96 80v7.6c0 4.4-3.6 8-8 8h-48c-4.4 0-8-3.6-8-8V420c0-39.3 17.2-76 48.4-103.3C430.4 290.4 470 276 512 276s81.6 14.5 111.6 40.7C654.8 344 672 380.7 672 420c0 57.8-38.1 109.8-97.1 132.5z"></path></svg></span>
+                </div>
+                <div class="d-block overflow-hidden mb-2 list_attribute">
+                    {{-- 隐藏评分星星部分
+                    <div class="item_1 rate-section w40 fs-12 pointer" onclick="window.location='{{getSlug($detail->slug)}}#ratingProduct'">
+                        <div class="rating mt-0 mb-0">
+                            {!!getStar($rateSum,$rateCount)!!}
+                            <div class="count-rate">({{$rateCount}})</div>
+                        </div>
                     </div>
-                    @endif
+                    --}}
+                    {{-- 隐藏喜欢/收藏部分
+                    @php
+                        $wishlistCollection = method_exists($detail, 'wishlists') ? ($detail->wishlists ?? collect()) : collect();
+                        $wishlistCount = $wishlistCollection ? $wishlistCollection->count() : 0;
+                    @endphp
+                    <div class="item_2 fav-section w60 fs-12">
+                        <span role="img" class="icon"><svg width="12" height="12" viewBox="0 0 30 26" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21.001 0C18.445 0 16.1584 1.24169 14.6403 3.19326C13.1198 1.24169 10.8355 0 8.27952 0C3.70634 0 0 3.97108 0 8.86991C0 15.1815 9.88903 23.0112 13.4126 25.5976C14.1436 26.1341 15.1369 26.1341 15.8679 25.5976C19.3915 23.0088 29.2805 15.1815 29.2805 8.86991C29.2782 3.97108 25.5718 0 21.001 0Z" fill="#C73130"></path></svg></span> <span class="total-wishlist ms-1">{{$wishlistCount}}</span>
+                    </div>
+                    --}}
+                    <div class="item_origin_cbmp fs-12">
+                        @if($detail->cbmp != "")
+                        <span><b>Số CBMP:</b> {{$detail->cbmp}}</span>
+                        @endif
+                        @if($detail->origin)
+                        @if($detail->cbmp != "") <span class="separator">|</span> @endif
+                        <span><b>Xuất xứ:</b> {{$detail->origin->name}}</span>
+                        @endif
+                    </div>
+                @if(checkFlash($detail->id))
+                @php 
+                    $date = strtotime(date('Y-m-d H:i:s'));
+                    $flash = App\Modules\FlashSale\Models\FlashSale::where([['status','1'],['start','<=',$date],['end','>=',$date]])->first();
+                @endphp
+                <div class="div_flashsale">
+                    <div class="flash-sale-left">
+                        <span class="flash-text">FL<span class="lightning-icon">⚡</span>SH SALE</span>
+                    </div>
+                    <div class="flash-sale-right">
+                        <svg class="clock-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="10" stroke="white" stroke-width="2"/>
+                            <path d="M12 6v6l4 2" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        <span class="ends-text">KẾT THÚC TRONG</span>
+                        <div class="timer_flash">
+                            <div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div>
+                        </div>
+                    </div>
+                </div>
+                <script>
+                    function toUnit(time, a, b) {
+                        return String(Math.floor((time % a) / b)).padStart(2, '0');
+                    }
+                    function formatTimer(time) {
+                        if (Number.isNaN(parseInt(time, 10))) {
+                            return '';
+                        }
+                        const days = Math.floor(time / 86400);
+                        const hours = toUnit(time, 86400, 3600);
+                        const minutes = toUnit(time, 3600, 60);
+                        const seconds = toUnit(time, 60, 1);
+
+                        if (days > 0) {
+                            return `<div class="timer-box">${hours}</div><span class="timer-separator">:</span><div class="timer-box">${minutes}</div><span class="timer-separator">:</span><div class="timer-box">${seconds}</div>`;
+                        }
+                        if (hours > 0) {
+                            return `<div class="timer-box">${hours}</div><span class="timer-separator">:</span><div class="timer-box">${minutes}</div><span class="timer-separator">:</span><div class="timer-box">${seconds}</div>`;
+                        }
+                        if(days <= 0 && hours <= 0 && minutes <= 0 && seconds <= 0){
+                            window.location = window.location.href;
+                            return `<div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div>`;
+                        }
+                        return `<div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">${minutes}</div><span class="timer-separator">:</span><div class="timer-box">${seconds}</div>`;
+                    }
+                    const deadline = new Date('{{date("Y/m/d H:i:s",$flash->end)}}');
+                    let remainingTime = (deadline - new Date) / 1000;
+                    setInterval(function () {
+                        remainingTime--;
+                        $('.timer_flash').html(formatTimer(remainingTime));
+                    }, 1000);
+                </script>
+                @elseif(checkStartFlash($detail->id))
+                    @php 
+                        $date = strtotime(date('Y-m-d H:i:s'));
+                        $newdate = strtotime ('+24 hour' ,$date) ;
+                        $flash = App\Modules\FlashSale\Models\FlashSale::where([['status','1'],['start','<=',$newdate],['end','>=',$date]])->first();
+                    @endphp
+                    <div class="div_flashsale">
+                        <div class="flash-sale-left">
+                            <span class="flash-text">FL<span class="lightning-icon">⚡</span>SH SALE</span>
+                        </div>
+                        <div class="flash-sale-right">
+                            <svg class="clock-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="12" cy="12" r="10" stroke="white" stroke-width="2"/>
+                                <path d="M12 6v6l4 2" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                            <span class="ends-text">KẾT THÚC TRONG</span>
+                            <div class="timer_flash">
+                                <div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div>
+                            </div>
+                        </div>
+                    </div>
+                    <script>
+                        function toUnit(time, a, b) {
+                            return String(Math.floor((time % a) / b)).padStart(2, '0');
+                        }
+                        function formatTimer(time) {
+                            if (Number.isNaN(parseInt(time, 10))) {
+                                return '';
+                            }
+                            const days = Math.floor(time / 86400);
+                            const hours = toUnit(time, 86400, 3600);
+                            const minutes = toUnit(time, 3600, 60);
+                            const seconds = toUnit(time, 60, 1);
+
+                            if (days > 0) {
+                                return `<div class="timer-box">${hours}</div><span class="timer-separator">:</span><div class="timer-box">${minutes}</div><span class="timer-separator">:</span><div class="timer-box">${seconds}</div>`;
+                            }
+                            if (hours > 0) {
+                                return `<div class="timer-box">${hours}</div><span class="timer-separator">:</span><div class="timer-box">${minutes}</div><span class="timer-separator">:</span><div class="timer-box">${seconds}</div>`;
+                            }
+                            if(days <= 0 && hours <= 0 && minutes <= 0 && seconds <= 0){
+                                window.location = window.location.href;
+                                return `<div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div>`;
+                            }
+                            return `<div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">${minutes}</div><span class="timer-separator">:</span><div class="timer-box">${seconds}</div>`;
+                        }
+                        const deadline = new Date('{{date("Y/m/d H:i:s",$flash->start)}}');
+                        let remainingTime = (deadline - new Date) / 1000;
+                        setInterval(function () {
+                            remainingTime--;
+                            $('.timer_flash').html(formatTimer(remainingTime));
+                        }, 1000);
+                    </script>
+                @endif
+                @if($isShopeeVariant)
+                <div class="box-variant box-option1">
+                    <div class="label">
+                        <strong>{{ $detail->option1_name ?? 'Phân loại' }}:</strong>
+                        <span id="variant-option1-current">{{ $first->option1_value ?? '' }}</span>
+                    </div>
+                    <div class="list-variant" id="variant-option1-list">
+                        @foreach($variants as $k => $v)
+                        @php
+                            $optLabel = $v->option1_value;
+                            if(!$optLabel){
+                                $color = optional($v->color)->name;
+                                $size  = optional($v->size)->name;
+                                $optLabel = trim(($color ?: '') . (($color && $size) ? ' / ' : '') . ($size ?: ''));
+                            }
+                            if(!$optLabel) $optLabel = 'Mặc định';
+                            
+                            // 计算变体的最终价格（按优先级：闪购 -> 促销 -> 原价）
+                            $variantPriceInfo = getVariantFinalPrice($v->id, $detail->id);
+                        @endphp
+                        <div class="item-variant @if($k==0) active @endif"
+                             data-variant-id="{{$v->id}}"
+                             data-sku="{{$v->sku}}"
+                             data-price="{{$variantPriceInfo['final_price']}}"
+                             data-original-price="{{$variantPriceInfo['original_price']}}"
+                             data-price-html="{{base64_encode($variantPriceInfo['html'])}}"
+                             data-stock="{{(int)($v->stock ?? 0)}}"
+                             data-image="{{getImage($v->image ?: $detail->image)}}"
+                             data-option1="{{ $optLabel }}">
+                            <p class="mb-0">{{ $optLabel }}</p>
+                        </div>
+                        @endforeach
+                    </div>
+                </div>
+                @endif
+                <input type="hidden" name="variant_id"  value="{{$first->id}}">
+                <div class="group-cart product-action align-center mt-3 space-between">
+                    <div class="quantity align-center quantity-selector">
+                        <button class="btn_minus entry" type="button" @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif>
+                            <span role="img" class="icon"><svg width="14" height="2" viewBox="0 0 14 2" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 0C0.447715 0 0 0.447715 0 1C0 1.55228 0.447715 2 1 2L1 0ZM13 2C13.5523 2 14 1.55228 14 1C14 0.447715 13.5523 0 13 0V2ZM1 2L13 2V0L1 0L1 2Z" fill="black"></path></svg></span>
+                        </button>
+                        <input @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif type="text" class="form-quatity quantity-input" value="1" min="1">
+                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="btn_plus entry" type="button">
+                            <span role="img" class="icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 6C0.447715 6 0 6.44772 0 7C0 7.55228 0.447715 8 1 8L1 6ZM13 8C13.5523 8 14 7.55228 14 7C14 6.44772 13.5523 6 13 6V8ZM1 8L13 8V6L1 6L1 8Z" fill="black"></path><path d="M6 13C6 13.5523 6.44772 14 7 14C7.55228 14 8 13.5523 8 13L6 13ZM8 1C8 0.447715 7.55228 -2.41411e-08 7 0C6.44771 2.41411e-08 6 0.447715 6 1L8 1ZM8 13L8 1L6 1L6 13L8 13Z" fill="black"></path></svg></span>
+                        </button>
+                    </div>
+                    <div class="item-action">
+                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif type="button" class="addCartDetail">
+                            <span role="img" class="icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.5H14.5L10.5 0.5C10.3 0.2 10 0 9.7 0C9.4 0 9.1 0.2 8.9 0.5L4.9 6.5H0.5C0.2 6.5 0 6.7 0 7C0 7.1 0 7.2 0.1 7.3L2.3 16.3C2.5 17 3.1 17.5 3.8 17.5H16.2C16.9 17.5 17.5 17 17.7 16.3L19.9 7.3L20 7C20 6.7 19.8 6.5 19.5 6.5H19ZM9.7 2.5L12.5 6.5H6.9L9.7 2.5ZM16.2 16.5H3.8L1.8 8.5H18.2L16.2 16.5ZM9.7 10.5C8.9 10.5 8.2 11.2 8.2 12C8.2 12.8 8.9 13.5 9.7 13.5C10.5 13.5 11.2 12.8 11.2 12C11.2 11.2 10.5 10.5 9.7 10.5Z" stroke="#ee4d2d" stroke-width="1.5" fill="none"/><path d="M9.7 8.5V15.5M6.2 12H13.2" stroke="#ee4d2d" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+                            <span>Thêm Vào Giỏ Hàng</span>
+                        </button>
+                    </div>
+                    <div class="item-action">
+                        @if(isset($saledeals) && $saledeals->count() > 0)
+                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail btnBuyDealSốc" type="button">MUA DEAL SỐC</button>
+                        @else
+                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail" type="button">Mua ngay</button>
+                        @endif
+                    </div>
                 </div>
                 @if(isset($saledeals) && $saledeals->count() > 0)
                 <div class="sc-67558998-0 buy-x-get-y-wrapper mb-4">
@@ -655,6 +854,7 @@
                         border-radius: 10px;
                         padding: 15px;
                         background: rgba(104, 77, 152, 0.03);
+                        margin-top: 20px;
                     }
                     .buy-x-get-y-header .title {
                         font-size: 16px;
@@ -732,36 +932,28 @@
                     });
                 </script>
                 @endif
-                @if($isShopeeVariant)
-                <div class="box-variant box-option1">
-                    <div class="label">
-                        <strong>{{ $detail->option1_name ?? 'Phân loại' }}:</strong>
-                        <span id="variant-option1-current">{{ $first->option1_value ?? '' }}</span>
+                    {{-- 隐藏SKU
+                    <div class="item_5 sku-section w40 fs-12"><b>SKU:</b> <span id="variant-sku-display">{{$first->sku}}</span></div>
+                    --}}
+                    {{-- 隐藏已验证部分（移动端）
+                    @if($detail->verified == 1)
+                    <div class="verified w60 fs-12 d-block d-md-none">
+                        <strong>Đã xác thực bởi:</strong> {{getConfig('verified')}} 
+                        <span class="show_verified"><svg viewBox="64 64 896 896" focusable="false" data-icon="question-circle" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 708c-22.1 0-40-17.9-40-40s17.9-40 40-40 40 17.9 40 40-17.9 40-40 40zm62.9-219.5a48.3 48.3 0 00-30.9 44.8V620c0 4.4-3.6 8-8 8h-48c-4.4 0-8-3.6-8-8v-21.5c0-23.1 6.7-45.9 19.9-64.9 12.9-18.6 30.9-32.8 52.1-40.9 34-13.1 56-41.6 56-72.7 0-44.1-43.1-80-96-80s-96 35.9-96 80v7.6c0 4.4-3.6 8-8 8h-48c-4.4 0-8-3.6-8-8V420c0-39.3 17.2-76 48.4-103.3C430.4 290.4 470 276 512 276s81.6 14.5 111.6 40.7C654.8 344 672 380.7 672 420c0 57.8-38.1 109.8-97.1 132.5z"></path></svg></span>
                     </div>
-                    <div class="list-variant" id="variant-option1-list">
-                        @foreach($variants as $k => $v)
-                        @php
-                            $optLabel = $v->option1_value;
-                            if(!$optLabel){
-                                $color = optional($v->color)->name;
-                                $size  = optional($v->size)->name;
-                                $optLabel = trim(($color ?: '') . (($color && $size) ? ' / ' : '') . ($size ?: ''));
-                            }
-                            if(!$optLabel) $optLabel = 'Mặc định';
-                        @endphp
-                        <div class="item-variant @if($k==0) active @endif"
-                             data-variant-id="{{$v->id}}"
-                             data-sku="{{$v->sku}}"
-                             data-price="{{$v->price}}"
-                             data-stock="{{(int)($v->stock ?? 0)}}"
-                             data-image="{{getImage($v->image ?: $detail->image)}}"
-                             data-option1="{{ $optLabel }}">
-                            <p class="mb-0">{{ $optLabel }}</p>
-                        </div>
-                        @endforeach
-                    </div>
+                    @endif
+                    --}}
                 </div>
-                @elseif($colors->count() > 0 && $colors[0]->color_id != 0)
+                     {{-- 隐藏已验证部分（桌面端）
+                     @if($detail->verified == 1)
+                    <div class="verified w60 fs-12 d-none d-md-block">
+                        <strong>Đã xác thực bởi:</strong> {{getConfig('verified')}} 
+                        <span class="show_verified"><svg viewBox="64 64 896 896" focusable="false" data-icon="question-circle" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 708c-22.1 0-40-17.9-40-40s17.9-40 40-40 40 17.9 40 40-17.9 40-40 40zm62.9-219.5a48.3 48.3 0 00-30.9 44.8V620c0 4.4-3.6 8-8 8h-48c-4.4 0-8-3.6-8-8v-21.5c0-23.1 6.7-45.9 19.9-64.9 12.9-18.6 30.9-32.8 52.1-40.9 34-13.1 56-41.6 56-72.7 0-44.1-43.1-80-96-80s-96 35.9-96 80v7.6c0 4.4-3.6 8-8 8h-48c-4.4 0-8-3.6-8-8V420c0-39.3 17.2-76 48.4-103.3C430.4 290.4 470 276 512 276s81.6 14.5 111.6 40.7C654.8 344 672 380.7 672 420c0 57.8-38.1 109.8-97.1 132.5z"></path></svg></span>
+                    </div>
+                    @endif
+                    --}}
+                </div>
+                @if(!$isShopeeVariant && $colors->count() > 0 && $colors[0]->color_id != 0)
                 <div class="box-variant box-color" @if($colors[0]->color->id == '22') style="display:none" @endif>
                     <div class="label">
                         <strong>Màu sắc:</strong>
@@ -781,100 +973,6 @@
                 <div class="box-variant box-size">
                     {!!getSizes($detail->id,$colors[0]->color->id??'')!!}
                 </div>
-                @endif
-                @if(checkFlash($detail->id))
-                @php 
-                    $date = strtotime(date('Y-m-d H:i:s'));
-                    $flash = App\Modules\FlashSale\Models\FlashSale::where([['status','1'],['start','<=',$date],['end','>=',$date]])->first();
-                @endphp
-                <div class="div_flashsale d-flex">
-                    <div class="title_flash">
-                        <span role="img" class="anticon" style="font-size: 16px;"><svg width="16" height="26" viewBox="0 0 16 26" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.27059 0C7.54353 0 9.82118 0 12.0941 0C12.64 0.324982 12.7388 0.639809 12.48 1.26946C11.6141 3.39708 10.7435 5.51962 9.87765 7.64724C9.84471 7.72849 9.81647 7.80973 9.77882 7.91637C9.90118 7.91637 9.98588 7.91637 10.0706 7.91637C11.7412 7.91637 13.4118 7.92652 15.0824 7.91129C15.5153 7.90621 15.8259 8.04839 16 8.48508C16 8.62219 16 8.75421 16 8.89131C15.92 9.02334 15.8447 9.16044 15.7647 9.29246C12.7953 14.284 9.82118 19.2755 6.85177 24.267C6.57882 24.724 6.31529 25.181 6.03765 25.6279C5.75059 26.0849 5.20941 26.1255 4.89882 25.7244C4.71529 25.4857 4.71529 25.2166 4.78118 24.9322C5.45882 21.9922 6.13647 19.047 6.81412 16.1069C6.92235 15.6398 7.02588 15.1777 7.13412 14.6801C7.00706 14.6801 6.91294 14.6801 6.82353 14.6801C4.85647 14.6801 2.88941 14.6699 0.922353 14.6851C0.484706 14.6902 0.174118 14.5531 0 14.1164C0 13.9793 0 13.8473 0 13.7102C0.0329412 13.6391 0.0752941 13.568 0.103529 13.4918C1.63765 9.2163 3.17176 4.93567 4.70118 0.655042C4.81412 0.345294 4.97412 0.111713 5.27059 0Z" fill="white"></path></svg></span>
-                        SIÊU DEAL <strong class="d-none d-md-inline-block">CHỚP NHOÁNG</strong>
-                    </div>
-                    <div class="timer_flash">
-                        <div>00</div><span>:</span><div>00</div><span>:</span><div>00</div><span>:</span><div>00</div>
-                    </div>
-                </div>
-                <script>
-                    function toUnit(time, a, b) {
-                        return String(Math.floor((time % a) / b)).padStart(2, '0');
-                    }
-                    function formatTimer(time) {
-                        if (Number.isNaN(parseInt(time, 10))) {
-                            return '';
-                        }
-                        const days = Math.floor(time / 86400);
-                        const hours = toUnit(time, 86400, 3600);
-                        const minutes = toUnit(time, 3600, 60);
-                        const seconds = toUnit(time, 60, 1);
-
-                        if (days > 0) {
-                            return `<div>${days} ${days > 1 ? '' : ''}</div><span>:</span>`+'<div>'+`${hours}`+'</div><span>:</span><div>'+`${minutes} `+'</div><span>:</span><div>'+`${seconds}`+'</div>';
-                        }
-                        if (hours > 0) {
-                            return `<div>00</div><span>:</span><div>${hours}`+'</div><span>:</span><div>'+`${minutes}`+'</div><span>:</span><div>'+`${seconds}`+'</div>';
-                        }
-                        if(days <= 0 && hours <= 0 && minutes <= 0 && seconds <= 0){
-                            window.location = window.location.href;
-                            return `<div>00</div><span>:</span><div>00</div><span>:</span><div>00</div><span>:</span><div>00</div>`;
-                        }
-                        return `<div>00</div><span>:</span><div>00</div><span>:</span><div>${minutes}`+'</div><span>:</span><div>'+`${seconds}`+'</div>';
-                    }
-                    const deadline = new Date('{{date("Y/m/d H:i:s",$flash->end)}}');
-                    let remainingTime = (deadline - new Date) / 1000;
-                    setInterval(function () {
-                        remainingTime--;
-                        $('.timer_flash').html(formatTimer(remainingTime));
-                    }, 1000);
-                </script>
-                @elseif(checkStartFlash($detail->id))
-                    @php 
-                        $date = strtotime(date('Y-m-d H:i:s'));
-                        $newdate = strtotime ('+24 hour' ,$date) ;
-                        $flash = App\Modules\FlashSale\Models\FlashSale::where([['status','1'],['start','<=',$newdate],['end','>=',$date]])->first();
-                    @endphp
-                    <div class="div_flashsale">
-                        <div class="title_flash fs-12">
-                            <span role="img" class="anticon" style="font-size: 16px;"><svg width="16" height="26" viewBox="0 0 16 26" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.27059 0C7.54353 0 9.82118 0 12.0941 0C12.64 0.324982 12.7388 0.639809 12.48 1.26946C11.6141 3.39708 10.7435 5.51962 9.87765 7.64724C9.84471 7.72849 9.81647 7.80973 9.77882 7.91637C9.90118 7.91637 9.98588 7.91637 10.0706 7.91637C11.7412 7.91637 13.4118 7.92652 15.0824 7.91129C15.5153 7.90621 15.8259 8.04839 16 8.48508C16 8.62219 16 8.75421 16 8.89131C15.92 9.02334 15.8447 9.16044 15.7647 9.29246C12.7953 14.284 9.82118 19.2755 6.85177 24.267C6.57882 24.724 6.31529 25.181 6.03765 25.6279C5.75059 26.0849 5.20941 26.1255 4.89882 25.7244C4.71529 25.4857 4.71529 25.2166 4.78118 24.9322C5.45882 21.9922 6.13647 19.047 6.81412 16.1069C6.92235 15.6398 7.02588 15.1777 7.13412 14.6801C7.00706 14.6801 6.91294 14.6801 6.82353 14.6801C4.85647 14.6801 2.88941 14.6699 0.922353 14.6851C0.484706 14.6902 0.174118 14.5531 0 14.1164C0 13.9793 0 13.8473 0 13.7102C0.0329412 13.6391 0.0752941 13.568 0.103529 13.4918C1.63765 9.2163 3.17176 4.93567 4.70118 0.655042C4.81412 0.345294 4.97412 0.111713 5.27059 0Z" fill="white"></path></svg></span>
-                            SIÊU DEAL CHỚP NHOÁNG DIỄN RA VÀO
-                        </div>
-                        <div class="timer_flash">
-                            <div>00</div><span>:</span><div>00</div><span>:</span><div>00</div><span>:</span><div>00</div>
-                        </div>
-                    </div>
-                    <script>
-                        function toUnit(time, a, b) {
-                            return String(Math.floor((time % a) / b)).padStart(2, '0');
-                        }
-                        function formatTimer(time) {
-                            if (Number.isNaN(parseInt(time, 10))) {
-                                return '';
-                            }
-                            const days = Math.floor(time / 86400);
-                            const hours = toUnit(time, 86400, 3600);
-                            const minutes = toUnit(time, 3600, 60);
-                            const seconds = toUnit(time, 60, 1);
-
-                            if (days > 0) {
-                                return `<div>${days} ${days > 1 ? '' : ''}</div><span>:</span>`+'<div>'+`${hours}`+'</div><span>:</span><div>'+`${minutes} `+'</div><span>:</span><div>'+`${seconds}`+'</div>';
-                            }
-                            if (hours > 0) {
-                                return `<div>00</div><span>:</span><div>${hours}`+'</div><span>:</span><div>'+`${minutes}`+'</div><span>:</span><div>'+`${seconds}`+'</div>';
-                            }
-                            if(days <= 0 && hours <= 0 && minutes <= 0 && seconds <= 0){
-                                window.location = window.location.href;
-                                return `<div>00</div><span>:</span><div>00</div><span>:</span><div>00</div><span>:</span><div>00</div>`;
-                            }
-                            return `<div>00</div><span>:</span><div>00</div><span>:</span><div>${minutes}`+'</div><span>:</span><div>'+`${seconds}`+'</div>';
-                        }
-                        const deadline = new Date('{{date("Y/m/d H:i:s",$flash->start)}}');
-                        let remainingTime = (deadline - new Date) / 1000;
-                        setInterval(function () {
-                            remainingTime--;
-                            $('.timer_flash').html(formatTimer(remainingTime));
-                        }, 1000);
-                    </script>
                 @endif
                 <!--  So sánh cửa hàng -->
                 @if($compares->count() > 0)
@@ -910,102 +1008,56 @@
                     @media(max-width:468px){.item_compare .logo_compare{width: 40%;}}
                 </style>
                 @endif
-                <input type="hidden" name="variant_id"  value="{{$first->id}}">
-                <div class="group-cart product-action align-center mt-3 space-between">
-                    <div class="quantity align-center quantity-selector">
-                        <button class="btn_minus entry" type="button" @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif>
-                            <span role="img" class="icon"><svg width="14" height="2" viewBox="0 0 14 2" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 0C0.447715 0 0 0.447715 0 1C0 1.55228 0.447715 2 1 2L1 0ZM13 2C13.5523 2 14 1.55228 14 1C14 0.447715 13.5523 0 13 0V2ZM1 2L13 2V0L1 0L1 2Z" fill="black"></path></svg></span>
-                        </button>
-                        <input @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif type="text" class="form-quatity quantity-input" value="1" min="1">
-                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="btn_plus entry" type="button">
-                            <span role="img" class="icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 6C0.447715 6 0 6.44772 0 7C0 7.55228 0.447715 8 1 8L1 6ZM13 8C13.5523 8 14 7.55228 14 7C14 6.44772 13.5523 6 13 6V8ZM1 8L13 8V6L1 6L1 8Z" fill="black"></path><path d="M6 13C6 13.5523 6.44772 14 7 14C7.55228 14 8 13.5523 8 13L6 13ZM8 1C8 0.447715 7.55228 -2.41411e-08 7 0C6.44771 2.41411e-08 6 0.447715 6 1L8 1ZM8 13L8 1L6 1L6 13L8 13Z" fill="black"></path></svg></span>
-                        </button>
-                    </div>
-                    <div class="item-action">
-                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif type="button" class="addCartDetail">
-                            <span role="img" class="icon"><svg width="22" height="19" viewBox="0 0 22 19" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 6.99953H16.21L11.83 0.439531C11.64 0.159531 11.32 0.0195312 11 0.0195312C10.68 0.0195312 10.36 0.159531 10.17 0.449531L5.79 6.99953H1C0.45 6.99953 0 7.44953 0 7.99953C0 8.08953 0.00999996 8.17953 0.04 8.26953L2.58 17.5395C2.81 18.3795 3.58 18.9995 4.5 18.9995H17.5C18.42 18.9995 19.19 18.3795 19.43 17.5395L21.97 8.26953L22 7.99953C22 7.44953 21.55 6.99953 21 6.99953ZM11 2.79953L13.8 6.99953H8.2L11 2.79953ZM17.5 16.9995L4.51 17.0095L2.31 8.99953H19.7L17.5 16.9995ZM11 10.9995C9.9 10.9995 9 11.8995 9 12.9995C9 14.0995 9.9 14.9995 11 14.9995C12.1 14.9995 13 14.0995 13 12.9995C13 11.8995 12.1 10.9995 11 10.9995Z" fill="white"></path></svg></span>
-                            <span>Thêm vào giỏ hàng</span>
-                        </button>
-                    </div>
-                    <div class="item-action">
-                        @if(isset($saledeals) && $saledeals->count() > 0)
-                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail btnBuyDealSốc" style="background-color: #C73130; color: #fff; border-color: #C73130;" type="button">MUA DEAL SỐC</button>
-                        @else
-                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail" type="button">Mua ngay</button>
-                        @endif
-                    </div>
-                    <div class="item-action btnWishlist group-wishlist-{{$detail->id}}">
-                        {!!wishList($detail->id)!!}
-                    </div>
-                </div>
-                <div class="product-policys row mt-3">
-                    <div class="col-md-6 col-12">
-                        <div class="align-center delivery-section mt-2">
-                            <span role="img" aria-label="star" class="icon"><svg viewBox="64 64 896 896" focusable="false" data-icon="star" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M908.1 353.1l-253.9-36.9L540.7 86.1c-3.1-6.3-8.2-11.4-14.5-14.5-15.8-7.8-35-1.3-42.9 14.5L369.8 316.2l-253.9 36.9c-7 1-13.4 4.3-18.3 9.3a32.05 32.05 0 00.6 45.3l183.7 179.1-43.4 252.9a31.95 31.95 0 0046.4 33.7L512 754l227.1 119.4c6.2 3.3 13.4 4.4 20.3 3.2 17.4-3 29.1-19.5 26.1-36.9l-43.4-252.9 183.7-179.1c5-4.9 8.3-11.3 9.3-18.3 2.7-17.5-9.5-33.7-27-36.3zM664.8 561.6l36.1 210.3L512 672.7 323.1 772l36.1-210.3-152.8-149L417.6 382 512 190.7 606.4 382l211.2 30.7-152.8 148.9z"></path></svg></span>
-                            <div class="ms-1">Nhận <b>Wal Point</b> cho mỗi lần mua</div>
-                        </div>
-                        <div class="align-center delivery-section mt-2">
-                            <span role="img" aria-label="star" class="icon"><svg width="24" height="17" viewBox="0 0 24 17" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24 5.63536L18.3572 1.40884H14.0222V0H0V1.40884H12.5691V12.7735H10.2684C9.95358 11.2003 8.47629 9.97928 6.73259 9.97928C4.9889 9.97928 3.53582 11.2003 3.19677 12.797H0V14.2058H3.19677C3.53582 15.8025 4.9889 17 6.73259 17C8.47629 17 9.92937 15.8025 10.2684 14.2058H14.555C14.894 15.8025 16.3471 17 18.0908 17C19.8345 17 21.3118 15.8025 21.6509 14.2058H24V5.63536ZM6.73259 15.5912C5.54591 15.5912 4.57719 14.6519 4.57719 13.5014C4.57719 12.3508 5.54591 11.4116 6.73259 11.4116C7.91927 11.4116 8.88799 12.3508 8.88799 13.5014C8.88799 14.6519 7.91927 15.5912 6.73259 15.5912ZM18.115 15.5912C16.9284 15.5912 15.9596 14.6519 15.9596 13.5014C15.9596 12.3508 16.9284 11.4116 18.115 11.4116C19.3017 11.4116 20.2704 12.3508 20.2704 13.5014C20.2704 14.6519 19.3017 15.5912 18.115 15.5912ZM22.5469 12.797H21.6509C21.3118 11.2003 19.8587 9.97928 18.115 9.97928C16.3713 9.97928 14.894 11.2003 14.555 12.797H14.0222V2.81768H17.8486L22.5469 6.33978V12.797Z" fill="#060404"></path><path d="M3.0999 4.34392H0V5.75276H3.0999V4.34392Z" fill="#060404"></path><path d="M3.0999 8.45304H0V9.86188H3.0999V8.45304Z" fill="#060404"></path></svg></span>
-                            <div class="ms-1"><b>Miễn phí giao hàng</b>, tối đa 44k</div>
-                        </div>
-                    </div>
-                    <div class="col-md-6 col-12">
-                        <div class="align-center delivery-section mt-2">
-                            <span role="img" aria-label="star" class="icon"><svg width="24" height="17" viewBox="0 0 28 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M23.1742 6.23137H28V4.58431H23.1742V0H4.77419V4.58431H0V6.23137H4.77419V10.9255C4.77419 11.6118 4.85161 12.298 5.00645 12.9294H0V14.5765H5.57419C6.34839 16.3059 7.66451 17.7608 9.36774 18.6392L14.0129 21L18.6581 18.6392C20.3355 17.7882 21.6516 16.3333 22.4516 14.5765H28V12.9294H22.9419C23.0968 12.2706 23.1742 11.6118 23.1742 10.9255V6.23137ZM21.6258 10.898C21.6258 13.5333 20.1806 15.9765 17.9355 17.1294L13.9613 19.1608L9.9871 17.1294C7.74194 15.9765 6.29677 13.5333 6.29677 10.898V1.64706H21.6V10.898H21.6258Z" fill="black"></path><path d="M19.3548 6.61569L18.1677 5.5451L13.3935 11.4745L10.6581 8.75686L9.6 9.96471L13.5226 13.8627L19.3548 6.61569Z" fill="black"></path></svg></span>
-                            <div class="ms-1">Cam kết <b>hàng chính hãng</b></div>
-                        </div>
-                        <div class="align-center delivery-section mt-2">
-                            <span role="img" aria-label="star" class="icon"><svg width="24" height="17" viewBox="0 0 33 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M28.529 6.00281L27.4911 7.26508L29.5935 9.14446H24.404V18.317H8.59597V14.7546H6.99919V20H26.0008V10.8275H29.5935L27.4911 12.7349L28.529 13.9972L33 9.98597L28.529 6.00281Z" fill="black"></path><path d="M8.59597 10.8275V1.68303H12.8008V7.79804H20.1992V1.68303H24.404V5.4979H26.0008V0H6.99919V9.14446H3.40645L5.50887 7.26508L4.47096 5.97475L0 9.98597L4.47096 13.9972L5.50887 12.7069L3.40645 10.8275H8.59597ZM18.6024 1.68303V6.11501H14.3976V1.68303H18.6024Z" fill="black"></path></svg></span>
-                            <div class="ms-1">Đổi/trả hàng trong <b>7 ngày</b></div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
+    </div>
+    <div class="container-lg">
         @if($detail->content != "")
-        <div class="divider-horizontal mt-5"></div>
-        <div class="mt-5 row mb-5">
-            <div class="col-12 col-md-4">
-                <div class="fw-bold fs-24">Giới thiệu</div>
-            </div>
-            <div class="col-12 col-md-8">
-                <div class="product-content">
-                    <div class="content">
-                        {!!$detail->content!!}
-                    </div>
-                    <div class="bg-cover"></div>
+        <div class="row mt-5 mb-5" style="background: #fff; border-radius: 5px; padding: 15px; margin-top: 1rem !important; margin-bottom: 1rem !important;">
+            <div class="row g-0" style="margin-left: 0; margin-right: 0;">
+                <div class="col-12 col-md-4">
+                    <div class="fw-bold fs-24">Giới thiệu</div>
                 </div>
-                <div class="text-center">
-                    <button type="button" class="btn_viewmore" data-show="false">Xem thêm nội dung</button>
+                <div class="col-12 col-md-8">
+                    <div class="product-content">
+                        <div class="content">
+                            {!!$detail->content!!}
+                        </div>
+                        <div class="bg-cover"></div>
+                    </div>
+                    <div class="text-center">
+                        <button type="button" class="btn_viewmore" data-show="false">Xem thêm nội dung</button>
+                    </div>
                 </div>
             </div>
         </div>
         @endif
         @if($detail->ingredient != "")
-        <div class="mt-5 row mb-5">
-            <div class="col-12 col-md-4">
-                <div class="fw-bold fs-24">Thành phần</div>
-            </div>
-            <div class="col-12 col-md-8">
-                <div class="detail-content ingredient">
-                    @php 
-                        $str = $detail->ingredient;
-                        // Only apply dynamic linking if links are not already present (Legacy support)
-                        if (strpos($str, 'item_ingredient') === false) {
-                            $list =  App\Modules\Ingredient\Models\Ingredient::where('status','1')->get();
-                            if(isset($list) && !empty($list)){
-                                foreach($list as $value){
-                                    $str = str_replace($value->name,'<a href="javascript:;" class="item_ingredient" data-id="'.$value->slug.'">'.$value->name.'</a>',$str);
+        <div class="row mt-5 mb-5" style="background: #fff; border-radius: 5px; padding: 15px; margin-top: 1rem !important; margin-bottom: 1rem !important;">
+            <div class="row g-0" style="margin-left: 0; margin-right: 0;">
+                <div class="col-12 col-md-4">
+                    <div class="fw-bold fs-24">Thành phần</div>
+                </div>
+                <div class="col-12 col-md-8">
+                    <div class="detail-content ingredient">
+                        @php 
+                            $str = $detail->ingredient;
+                            // Only apply dynamic linking if links are not already present (Legacy support)
+                            if (strpos($str, 'item_ingredient') === false) {
+                                $list =  App\Modules\Ingredient\Models\Ingredient::where('status','1')->get();
+                                if(isset($list) && !empty($list)){
+                                    foreach($list as $value){
+                                        $str = str_replace($value->name,'<a href="javascript:;" class="item_ingredient" data-id="'.$value->slug.'">'.$value->name.'</a>',$str);
+                                    }
                                 }
                             }
-                        }
-                    @endphp
-                    {!!$str!!}
+                        @endphp
+                        {!!$str!!}
+                    </div>
                 </div>
             </div>
         </div>
         @endif
-        <div class="divider-horizontal"></div>
                 @php
                     // Chuẩn hoá lại $t_rates và $rates ở block đánh giá để tránh null
                     $tRateCol = isset($t_rates) && $t_rates ? $t_rates : collect();
@@ -1013,7 +1065,8 @@
                     $tRateSum   = $tRateCol->sum('rate');
                     $rateCol = isset($rates) && $rates ? $rates : collect();
                 @endphp
-                <div class="rating-product row mt-5 mb-5" id="ratingProduct">
+                <div class="row rating-product mt-5 mb-5" id="ratingProduct" style="background: #fff; border-radius: 5px; padding: 15px; margin-top: 1rem !important; margin-bottom: 1rem !important;">
+                    <div class="row g-0" style="margin-left: 0; margin-right: 0;">
             <div class="col-12 col-md-4 pe-3 pe-md-5">
                 <div class="align-center space-between">
                     <div class="fs-24 fw-bold">{{$tRateCount}} đánh giá</div>
@@ -1085,15 +1138,15 @@
                 </div>
             </div>
         </div>
-        <div class="divider-horizontal"></div>
-        <div class="product-related row mt-5 mb-5">
-            <div class="col-12 col-md-4 mb-3 mb-md-0">
-                <div class="fw-bold fs-24">Sản phẩm liên quan</div>
-            </div>
-            <div class="col-12 col-md-8">
+        <div class="row product-related mt-5 mb-5" style="background: #fff; border-radius: 5px; padding: 15px; margin-top: 1rem !important; margin-bottom: 1rem !important;">
+            <div class="row g-0" style="margin-left: 0; margin-right: 0;">
+                <div class="col-12 col-md-4 mb-3 mb-md-0">
+                    <div class="fw-bold fs-24">Sản phẩm liên quan</div>
+                </div>
+                <div class="col-12 col-md-8">
                 @if($products->count() > 0)
                 <div class="list-product">
-                    @foreach($products as $product)
+                    @foreach($products->take(6) as $product)
                     @php $trate = App\Modules\Rate\Models\Rate::select('id','rate')->where([['status','1'],['product_id',$product->id]])->get() @endphp
                     <div class="product-col">
                         <div class="item-product text-center">
@@ -1109,21 +1162,70 @@
                                 @if($product->stock == 0)
                                 <div class="out-stock">Hết hàng</div>
                                 @endif
-                                <button class="btn-quickview" data-id="{{$product->id}}" type="button">Xem nhanh</button>
                             </div>
                             <div class="card-content mt-2">
+                                <div class="price">
+                                    {!!checkSale($product->id)!!}
+                                </div>
                                 <div class="brand-btn">
                                     @if($product->brand)<a href="{{route('home.brand',['url' => $product->brand->slug])}}">{{$product->brand->name}}</a>@endif
                                 </div>
                                 <div class="product-name">
                                     <a href="{{getSlug($product->slug)}}">{{$product->name}}</a>
                                 </div>
-                                <div class="price">
-                                    {!!checkSale($product->id)!!}
+                                @php
+                                    // 检查产品是否参与 deal sốc
+                                    $activeDeal = null;
+                                    $dealDiscountPercent = 0;
+                                    try {
+                                        $now = strtotime(date('Y-m-d H:i:s'));
+                                        $deal_id = App\Modules\Deal\Models\ProductDeal::where('product_id', $product->id)->where('status', 1)->pluck('deal_id')->toArray();
+                                        if (!empty($deal_id)) {
+                                            $activeDeal = App\Modules\Deal\Models\Deal::whereIn('id', $deal_id)
+                                                ->where([['status', '1'], ['start', '<=', $now], ['end', '>=', $now]])
+                                                ->first();
+                                            
+                                            // 计算 deal 折扣百分比
+                                            $variant = App\Modules\Product\Models\Variant::select('price','sale')->where('product_id', $product->id)->first();
+                                            if ($activeDeal && $variant) {
+                                                $saleDeal = App\Modules\Deal\Models\SaleDeal::where([['deal_id', $activeDeal->id], ['product_id', $product->id], ['status', '1']])->first();
+                                                if ($saleDeal && isset($saleDeal->price) && isset($variant->price) && $variant->price > 0) {
+                                                    $dealDiscountPercent = round(($variant->price - $saleDeal->price) / ($variant->price / 100));
+                                                }
+                                            }
+                                        }
+                                    } catch (\Exception $e) {
+                                        // 静默处理错误，不显示 deal voucher
+                                        $activeDeal = null;
+                                    }
+                                @endphp
+                                @if($activeDeal)
+                                <div class="deal-voucher">
+                                    <div class="deal-discount-badge">{{$dealDiscountPercent > 0 ? $dealDiscountPercent . '%' : ''}}</div>
+                                    <span class="deal-name">{{$activeDeal->name ?? 'Deal sốc'}}</span>
                                 </div>
-                                <div class="rating">
-                                    {!!getStar($trate->sum('rate'),$trate->count())!!}
-                                    <div class="count-rate">({{$trate->count()??'0'}})</div>
+                                @endif
+                                <div class="rating-info">
+                                    @php
+                                        $rateCount = $trate->count() ?? 0;
+                                        $rateSum = $trate->sum('rate') ?? 0;
+                                        $averageRate = $rateCount > 0 ? round($rateSum / $rateCount, 1) : 0;
+                                        
+                                        // 获取购买数量
+                                        $totalSold = \Illuminate\Support\Facades\DB::table('orderdetail')
+                                            ->join('orders', 'orderdetail.order_id', '=', 'orders.id')
+                                            ->where('orderdetail.product_id', $product->id)
+                                            ->where('orders.ship', 2)
+                                            ->where('orders.status', '!=', 2)
+                                            ->sum('orderdetail.qty') ?? 0;
+                                    @endphp
+                                    <div class="rating-score">
+                                        <span class="rating-value">{{number_format($averageRate, 1)}}</span>
+                                        <span class="rating-count">({{$rateCount}})</span>
+                                    </div>
+                                    <div class="sales-count">
+                                        <span class="sales-label">Đã bán {{number_format($totalSold)}}/tháng</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1131,19 +1233,24 @@
                     @endforeach
                 </div>
                 @endif
+                </div>
             </div>
         </div>
-        @if(isset($watchs) && $watchs->count() > 0)
-        <div class="divider-horizontal"></div>
-        <div class="watched mt-5 mb-5">
-            <h3 class="text-center text-uppercase fw-bold fs-25">Các mẫu bạn đã xem</h3>
-            <div class="list-watch mt-3">
-                @foreach($watchs as $watch)
-                @include('Website::product.item',['product' => $watch])
-                @endforeach
+        
+        <!-- 智能推荐产品区域 -->
+        <div class="row recommendations-section mt-5 mb-5" style="background: #fff; border-radius: 5px; padding: 15px; margin-top: 1rem !important; margin-bottom: 1rem !important;">
+            <h3 class="fw-bold fs-25 mb-3" style="text-align: left;">Có thể bạn thích</h3>
+            <div class="list-flash mt-3 product-recommendations recommendations-grid-3x6 recommendations-no-carousel" 
+                 data-exclude="{{$detail->id ?? ''}}" 
+                 data-limit="12">
+                <div class="recommendations-loading text-center py-5" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Đang tải sản phẩm đề xuất...</span>
+                    </div>
+                </div>
             </div>
         </div>
-        @endif
+    </div>
     </div>
 </section>
 @endsection
@@ -1160,7 +1267,10 @@
                 <div class="description ms-2">
                     <div class="fs-16 fw-bold">{{$detail->name}}</div>
                     @if($isShopeeVariant)
-                        <div class="price-fix" id="variant-price-fix"><p>{{number_format($first->price ?? 0)}}đ</p></div>
+                        @php
+                            $firstPriceInfoFix = getVariantFinalPrice($first->id ?? 0, $detail->id);
+                        @endphp
+                        <div class="price-fix" id="variant-price-fix">{!! $firstPriceInfoFix['html'] !!}</div>
                     @else
                         <div class="price-fix">{!!checkSale($detail->id)!!}</div>
                     @endif
@@ -1175,13 +1285,10 @@
                 </div>
                 <div class="item-action">
                     @if(isset($saledeals) && $saledeals->count() > 0)
-                    <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail btnBuyDealSốc" style="background-color: #C73130; color: #fff; border-color: #C73130;" type="button">MUA DEAL SỐC</button>
+                    <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail btnBuyDealSốc" type="button">MUA DEAL SỐC</button>
                     @else
                     <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail" type="button">Mua ngay</button>
                     @endif
-                </div>
-                <div class="item-action btnWishlist group-wishlist-{{$detail->id}}">
-                    {!!wishList($detail->id)!!}
                 </div>
             </div>
         </div>
@@ -1237,8 +1344,7 @@
                     <div id="rating"></div>
                 </div>
             </div>
-            <div class="divider-horizontal"></div>
-            <div class="row mb-3">
+            <div class="row mb-3" style="margin-top: 1rem !important;">
                 <div class="col-6">
                     <label>Biệt danh <span>*</span></label>
                     <input type="text" require class="form-control" name="name" value="@if(isset($member)){{$member['first_name']}} {{$member['last_name']}}@endif" placeholder="Nguyễn Văn An" autocomplete="false">
@@ -1248,8 +1354,7 @@
                     <input type="email" require class="form-control" name="email" value="@if(isset($member)){{$member['email']}}@endif" placeholder="admin@gmail.com" autocomplete="false">
                 </div>
             </div>
-            <div class="divider-horizontal mt-2"></div>
-            <div class="row mb-3">
+            <div class="row mb-3" style="margin-top: 1rem !important;">
                 <div class="col-12">
                     <label>Tóm tắt đánh giá <span>*</span></label>
                     <input type="text" class="form-control" require name="title" placeholder="Tóm tắt đánh giá của bạn" autocomplete="false">
@@ -1543,6 +1648,31 @@
             var variantId = $it.data('variant-id');
             var sku = $it.data('sku') || '';
             var price = parseFloat($it.data('price') || 0);
+            // 获取 base64 编码的 HTML 字符串
+            var priceHtmlRaw = $it.attr('data-price-html') || '';
+            // 解码 base64 编码的 HTML（正确处理 UTF-8）
+            var priceHtml = '';
+            if (priceHtmlRaw) {
+                try {
+                    // 解码 base64 字符串并正确处理 UTF-8 编码
+                    var binaryString = atob(priceHtmlRaw);
+                    var bytes = new Uint8Array(binaryString.length);
+                    for (var i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+                    priceHtml = new TextDecoder('utf-8').decode(bytes);
+                } catch(e) {
+                    // 如果解码失败，尝试使用传统方法
+                    try {
+                        priceHtml = decodeURIComponent(escape(atob(priceHtmlRaw)));
+                    } catch(e2) {
+                        // 如果还是失败，使用默认价格
+                        priceHtml = '<p>'+ (price || 0).toLocaleString('vi-VN') +'đ</p>';
+                    }
+                }
+            } else {
+                priceHtml = '<p>'+ (price || 0).toLocaleString('vi-VN') +'đ</p>';
+            }
             var stock = parseInt($it.data('stock') || 0, 10);
             var img = $it.data('image') || '';
             var optionText = $it.data('option1') || '';
@@ -1550,8 +1680,9 @@
             $('#detailProduct input[name="variant_id"]').val(variantId);
             $('#variant-sku-display').text(sku);
             $('#variant-option1-current').text(optionText);
-            $('#variant-price-display').html('<p>'+ (price || 0).toLocaleString('vi-VN') +'đ</p>');
-            $('#variant-price-fix').html('<p>'+ (price || 0).toLocaleString('vi-VN') +'đ</p>');
+            // 使用预计算的HTML价格（包含闪购/促销/原价的完整显示）
+            $('#variant-price-display').html(priceHtml);
+            $('#variant-price-fix').html(priceHtml);
 
             // Update main slider first image (best-effort)
             if(img){
@@ -1762,7 +1893,6 @@
     .box-variant.box-option1{
         margin-top: 16px;
         padding-top: 12px;
-        border-top: 1px solid #f1f1f1;
     }
     .box-variant.box-option1 .label{
         font-size: 13px;
@@ -1788,7 +1918,8 @@
         gap: 8px;
     }
     .box-variant.box-option1 .list-variant .item-variant{
-        min-width: 56px;
+        min-width: auto;
+        width: auto;
         padding: 6px 14px;
         border-radius: 6px;
         border: 1px solid #ddd;
@@ -1803,6 +1934,8 @@
         justify-content: center;
         user-select: none;
         line-height: 1.2;
+        white-space: nowrap;
+        flex-shrink: 0;
     }
     .box-variant.box-option1 .list-variant .item-variant:hover{
         border-color: #ee4d2d;
@@ -1817,11 +1950,485 @@
     }
     .box-variant.box-option1 .list-variant .item-variant p{
         margin-bottom: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
     }
     @media(max-width: 568px){
         .w-25p{
             width: 50%;
         }
+    }
+    
+    /* 产品评分和销量显示样式 */
+    .product-rating-sales {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+    
+    .product-rating-sales .rating-display {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    
+    .product-rating-sales .rating-value {
+        color: #ee4d2d;
+        font-weight: 700;
+        font-size: 18px;
+        line-height: 1;
+        margin-right: 2px;
+    }
+    
+    .product-rating-sales .rating-stars {
+        display: inline-flex;
+        align-items: center;
+        line-height: 1;
+    }
+    
+    .product-rating-sales .rating-stars .list-rate {
+        display: inline-flex;
+        align-items: center;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        gap: 2px;
+    }
+    
+    .product-rating-sales .rating-stars .list-rate li {
+        display: inline-flex;
+        align-items: center;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .product-rating-sales .rating-stars .list-rate li.icon-star {
+        color: #d5d5d5;
+    }
+    
+    .product-rating-sales .rating-stars .list-rate li.icon-star.active {
+        color: #ffc120;
+    }
+    
+    .product-rating-sales .rating-stars .list-rate li svg {
+        width: 14px;
+        height: 14px;
+        display: block;
+    }
+    
+    .product-rating-sales .review-count {
+        color: #767676;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+    }
+    
+    .product-rating-sales .review-count .review-number {
+        font-weight: 500;
+    }
+    
+    .product-rating-sales .sales-count {
+        color: #767676;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+    }
+    
+    .product-rating-sales .sales-count .sales-number {
+        font-weight: 600;
+        color: #767676;
+    }
+    
+    .product-rating-sales .separator {
+        color: #d5d5d5;
+        font-size: 14px;
+        margin: 0 4px;
+        user-select: none;
+    }
+    
+    @media (max-width: 768px) {
+        .product-rating-sales {
+            gap: 12px;
+            font-size: 13px;
+        }
+        
+        .product-rating-sales .rating-value {
+            font-size: 16px;
+        }
+        
+        .product-rating-sales .rating-stars .list-rate li svg {
+            width: 12px;
+            height: 12px;
+        }
+    }
+    
+    /* Số CBMP和Xuất xứ合并显示样式 */
+    .item_origin_cbmp {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    
+    .item_origin_cbmp .separator {
+        color: #d5d5d5;
+        margin: 0 4px;
+    }
+    
+    /* 价格显示样式优化 */
+    .price-detail {
+        margin: 16px 0;
+    }
+    
+    .price-detail .price {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    
+    .price-detail .price p {
+        color: #ee4d2d;
+        font-size: 30px;
+        font-weight: 700;
+        margin: 0;
+        line-height: 1.2;
+    }
+    
+    .price-detail .price del {
+        color: #999;
+        font-size: 16px;
+        text-decoration: line-through;
+        margin: 0;
+        font-weight: 400;
+    }
+    
+    .price-detail .price .tag {
+        display: inline-flex;
+        align-items: center;
+        background: rgba(238, 77, 45, 0.1);
+        border-radius: 2px;
+        padding: 2px 6px;
+        margin-left: 4px;
+    }
+    
+    .price-detail .price .tag span {
+        color: #ee4d2d;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1;
+    }
+    
+    @media (max-width: 768px) {
+        .price-detail .price p {
+            font-size: 24px;
+        }
+        
+        .price-detail .price del {
+            font-size: 14px;
+        }
+        
+        .price-detail .price .tag {
+            padding: 1px 4px;
+        }
+        
+        .price-detail .price .tag span {
+            font-size: 12px;
+        }
+    }
+    
+    /* Flash Sale 横幅样式 */
+    .div_flashsale {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+        padding: 0px 20px;
+        border-radius: 0px;
+        margin: 12px 0;
+    }
+    
+    .flash-sale-left {
+        display: flex;
+        align-items: center;
+    }
+    
+    .flash-text {
+        color: white;
+        font-size: 20px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    .lightning-icon {
+        color: #ffd700;
+        font-size: 24px;
+        display: inline-block;
+        transform: rotate(-15deg);
+        margin: 0 2px;
+    }
+    
+    .flash-sale-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .clock-icon {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+    }
+    
+    .ends-text {
+        color: white;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+    }
+    
+    .timer_flash {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    
+    .timer-box {
+        background: #000;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 700;
+        min-width: 28px;
+        text-align: center;
+        font-family: 'Courier New', monospace;
+    }
+    
+    .timer-separator {
+        color: white;
+        font-size: 16px;
+        font-weight: 700;
+        margin: 0 2px;
+    }
+    
+    @media (max-width: 768px) {
+        .div_flashsale {
+            padding: 10px 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .flash-text {
+            font-size: 16px;
+        }
+        
+        .lightning-icon {
+            font-size: 20px;
+        }
+        
+        .ends-text {
+            font-size: 11px;
+        }
+        
+        .timer-box {
+            font-size: 12px;
+            padding: 3px 6px;
+            min-width: 24px;
+        }
+        
+        .clock-icon {
+            width: 16px;
+            height: 16px;
+        }
+    }
+    
+    /* 购物车操作按钮组样式优化 */
+    .group-cart.product-action {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 16px;
+        flex-wrap: wrap;
+    }
+    
+    .group-cart.product-action .quantity-selector {
+        display: flex;
+        align-items: center;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        overflow: hidden;
+        background: #fff;
+    }
+    
+    .group-cart.product-action .btn_minus,
+    .group-cart.product-action .btn_plus {
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+        border: none;
+        cursor: pointer;
+        padding: 0;
+        transition: background-color 0.2s;
+    }
+    
+    .group-cart.product-action .btn_minus:hover,
+    .group-cart.product-action .btn_plus:hover {
+        background: #f5f5f5;
+    }
+    
+    .group-cart.product-action .btn_minus:disabled,
+    .group-cart.product-action .btn_plus:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    
+    .group-cart.product-action .quantity-input {
+        width: 50px;
+        height: 36px;
+        border: none;
+        border-left: 1px solid #e0e0e0;
+        border-right: 1px solid #e0e0e0;
+        text-align: center;
+        font-size: 14px;
+        padding: 0;
+        outline: none;
+    }
+    
+    .group-cart.product-action .item-action {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .group-cart.product-action .addCartDetail,
+    .group-cart.product-action .buyNowDetail {
+        width: 100%;
+        height: 44px;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+        padding: 0 12px;
+    }
+    
+    .group-cart.product-action .addCartDetail {
+        background: #fff5f0;
+        color: #ee4d2d;
+        border: 1px solid #ee4d2d;
+    }
+    
+    .group-cart.product-action .addCartDetail span {
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    
+    .group-cart.product-action .addCartDetail .icon svg path {
+        fill: #ee4d2d;
+        stroke: #ee4d2d;
+    }
+    
+    .group-cart.product-action .addCartDetail:hover {
+        background: #ffe8e0;
+    }
+    
+    .group-cart.product-action .addCartDetail:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    
+    .group-cart.product-action .buyNowDetail {
+        background: #ee4d2d;
+        color: #fff;
+        border: 1px solid #ee4d2d;
+    }
+    
+    .group-cart.product-action .buyNowDetail:hover {
+        background: #d7321f;
+        border-color: #d7321f;
+    }
+    
+    .group-cart.product-action .buyNowDetail:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    
+    @media (max-width: 768px) {
+        .group-cart.product-action {
+            gap: 8px;
+        }
+        
+        .group-cart.product-action .quantity-selector {
+            order: 1;
+            width: 100%;
+            justify-content: center;
+        }
+        
+        .group-cart.product-action .item-action {
+            order: 2;
+            flex: 1;
+            min-width: calc(50% - 4px);
+        }
+        
+        .group-cart.product-action .addCartDetail,
+        .group-cart.product-action .buyNowDetail {
+            height: 40px;
+            font-size: 13px;
+        }
+    }
+    
+    /* 确保所有内容区块宽度一致 - 现在这些区块都在container-lg内部，会自动限制宽度 */
+    /* 移除row类的负margin，确保宽度正确 */
+    section#detailProduct .container-lg:last-of-type .row.mt-5.mb-5,
+    section#detailProduct .container-lg:last-of-type .row.rating-product,
+    section#detailProduct .container-lg:last-of-type .row.product-related,
+    section#detailProduct .container-lg:last-of-type .row.recommendations-section {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
+    }
+    
+    section#detailProduct .product-related .list-product {
+        width: calc(100% + 15px);
+        max-width: calc(100% + 15px);
+        margin-left: -15px;
+        padding-left: 15px;
+        padding-right: 15px;
+        box-sizing: border-box;
+    }
+    
+    section#detailProduct .product-related .col-12.col-md-8 {
+        overflow: hidden;
+    }
+    
+    /* 确保内部 row 不会再次应用负 margin */
+    section#detailProduct .container-lg > .mt-5.mb-5 .row,
+    section#detailProduct .container-lg > .mt-5 .row,
+    section#detailProduct .container-lg > .mb-5 .row,
+    section#detailProduct .container-lg > .product-related .row,
+    section#detailProduct .container-lg > .rating-product .row {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
     }
 </style>
 @endsection
