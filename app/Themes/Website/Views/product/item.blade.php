@@ -76,21 +76,80 @@
         </div>
         @php
             // 检查产品是否参与 deal sốc
+            // 排除 Flash Sale 产品 - 如果产品正在 Flash Sale 中，不显示 Deal voucher
             $activeDeal = null;
             $dealDiscountPercent = 0;
+            $isInFlashSale = false;
+            
             try {
-                $now = strtotime(date('Y-m-d H:i:s'));
-                $deal_id = App\Modules\Deal\Models\ProductDeal::where('product_id', $product->id)->where('status', 1)->pluck('deal_id')->toArray();
-                if (!empty($deal_id)) {
-                    $activeDeal = App\Modules\Deal\Models\Deal::whereIn('id', $deal_id)
-                        ->where([['status', '1'], ['start', '<=', $now], ['end', '>=', $now]])
-                        ->first();
+                // 检查是否在 Flash Sale 中
+                if(isset($flash) && !empty($flash)){
+                    $productSale = App\Modules\FlashSale\Models\ProductSale::select('product_id','price_sale','number','buy')->where([['flashsale_id',$flash->id],['product_id',$product->id]])->first();
+                    if(isset($productSale) && !empty($productSale) && $productSale->buy < $productSale->number){
+                        $isInFlashSale = true;
+                    }
+                }
+                
+                // 如果不在 Flash Sale 中，检查 Deal
+                if (!$isInFlashSale) {
+                    $now = strtotime(date('Y-m-d H:i:s'));
                     
-                    // 计算 deal 折扣百分比
-                    if ($activeDeal && isset($variant) && $variant) {
-                        $saleDeal = App\Modules\Deal\Models\SaleDeal::where([['deal_id', $activeDeal->id], ['product_id', $product->id], ['status', '1']])->first();
-                        if ($saleDeal && isset($saleDeal->price) && isset($variant->price) && $variant->price > 0) {
-                            $dealDiscountPercent = round(($variant->price - $saleDeal->price) / ($variant->price / 100));
+                    // 获取产品的默认 variant (第一个 variant 或 null)
+                    $defaultVariant = null;
+                    if ($product->has_variants) {
+                        $defaultVariant = App\Modules\Product\Models\Variant::where('product_id', $product->id)
+                            ->orderBy('position', 'asc')
+                            ->orderBy('id', 'asc')
+                            ->first();
+                    }
+                    
+                    // 查询 ProductDeal - 支持 variant_id
+                    $productDealQuery = App\Modules\Deal\Models\ProductDeal::where('product_id', $product->id)
+                        ->where('status', 1);
+                    
+                    // 如果有 variant，优先查询匹配 variant_id 的，否则查询 variant_id 为 null 的
+                    if ($defaultVariant) {
+                        $productDealQuery->where(function($q) use ($defaultVariant) {
+                            $q->where('variant_id', $defaultVariant->id)
+                              ->orWhereNull('variant_id');
+                        });
+                    } else {
+                        $productDealQuery->whereNull('variant_id');
+                    }
+                    
+                    $deal_id = $productDealQuery->pluck('deal_id')->toArray();
+                    
+                    if (!empty($deal_id)) {
+                        $activeDeal = App\Modules\Deal\Models\Deal::whereIn('id', $deal_id)
+                            ->where([['status', '1'], ['start', '<=', $now], ['end', '>=', $now]])
+                            ->first();
+                        
+                        // 计算 deal 折扣百分比
+                        if ($activeDeal) {
+                            $variantToUse = $defaultVariant ?? $variant;
+                            
+                            if ($variantToUse) {
+                                // 查询 SaleDeal - 支持 variant_id
+                                $saleDealQuery = App\Modules\Deal\Models\SaleDeal::where('deal_id', $activeDeal->id)
+                                    ->where('product_id', $product->id)
+                                    ->where('status', '1');
+                                
+                                if ($defaultVariant) {
+                                    $saleDealQuery->where(function($q) use ($defaultVariant) {
+                                        $q->where('variant_id', $defaultVariant->id)
+                                          ->orWhereNull('variant_id');
+                                    });
+                                } else {
+                                    $saleDealQuery->whereNull('variant_id');
+                                }
+                                
+                                $saleDeal = $saleDealQuery->orderByRaw('CASE WHEN variant_id IS NOT NULL THEN 0 ELSE 1 END')
+                                    ->first();
+                                
+                                if ($saleDeal && isset($saleDeal->price) && isset($variantToUse->price) && $variantToUse->price > 0) {
+                                    $dealDiscountPercent = round(($variantToUse->price - $saleDeal->price) / ($variantToUse->price / 100));
+                                }
+                            }
                         }
                     }
                 }
@@ -99,7 +158,7 @@
                 $activeDeal = null;
             }
         @endphp
-        @if($activeDeal)
+        @if($activeDeal && !$isInFlashSale)
         <div class="deal-voucher">
             <div class="deal-discount-badge">{{$dealDiscountPercent > 0 ? $dealDiscountPercent . '%' : ''}}</div>
             <span class="deal-name">{{$activeDeal->name ?? 'Deal sốc'}}</span>

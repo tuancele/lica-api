@@ -4525,9 +4525,8 @@ textarea.form-control{
     color: #fff;
     position: relative;
     overflow: hidden;
+    margin-top: 10px;
     margin-bottom: 15px;
-    margin-left: 15px;
-    margin-right: 15px;
 }
 .process-status{
     left: 0;
@@ -5586,6 +5585,9 @@ img[data-src].error {
 .js-skeleton {
     /* 初始尺寸 - 由 JavaScript 动态调整为实际图片尺寸 */
     box-sizing: border-box;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    position: relative;
 }
 
 /* 确保所有类型的 skeleton 图片容器都能自适应 */
@@ -5597,6 +5599,47 @@ img[data-src].error {
     width: auto;
     height: auto;
     flex-shrink: 0;
+}
+
+/* 移动端响应式处理 */
+@media (max-width: 768px) {
+    .js-skeleton {
+        max-width: 100% !important;
+        overflow: hidden !important;
+    }
+    
+    .js-skeleton.skeleton--img-sm {
+        max-width: 60px !important;
+        max-height: 60px !important;
+    }
+    
+    .js-skeleton.skeleton--img-md {
+        width: 100% !important;
+        aspect-ratio: 1 / 1 !important;
+    }
+    
+    .js-skeleton.skeleton--img-lg {
+        width: 100% !important;
+        min-height: 200px !important;
+    }
+    
+    .js-skeleton.skeleton--img-square {
+        width: 100% !important;
+        aspect-ratio: 1 / 1 !important;
+    }
+}
+
+/* 确保 skeleton 图片不会溢出 */
+.js-skeleton img.js-skeleton-img {
+    max-width: 100% !important;
+    height: auto !important;
+    object-fit: contain !important;
+    display: block;
+}
+
+/* 防止布局偏移 */
+.js-skeleton {
+    contain: layout style paint;
 }
 
 /* 骨架屏基础类 - 优化性能 */

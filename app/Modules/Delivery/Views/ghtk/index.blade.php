@@ -85,7 +85,7 @@
                               {{$status}}
                             </td>
                             <td>
-                                <a type="button" class="btn btn-primary btn-xs" style="margin-bottom:3px;" href="{{route('ghtk.print',['id' =>$ship->label_id])}}" target="_blank">In hóa đơn GHTK</a>
+                                <a type="button" class="btn btn-primary btn-xs" style="margin-bottom:3px;" href="{{route('ghtk.print',['label' =>$ship->label_id])}}" target="_blank">In hóa đơn GHTK</a>
                                 <a class="btn_delete btn btn-danger btn-xs" data-page="{{ app('request')->input('page') }}" data-id="{{$ship->label_id}}"> Hủy đơn</a>
                             </td>
                         </tr>

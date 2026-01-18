@@ -47,12 +47,33 @@ class DealController extends Controller
             return redirect()->route('deal');
         }
         $data['detail'] = $detail;
-        $productdeals = ProductDeal::where('deal_id',$detail->id)->get();
+        $productdeals = ProductDeal::with(['product', 'variant'])->where('deal_id',$detail->id)->get();
         $data['productdeals'] = $productdeals;
-        Session::put('ss_product_deal',$productdeals->pluck('product_id')->toArray());
-        $saledeals = SaleDeal::where('deal_id',$detail->id)->get();
+        
+        // Build session array with variant_id format: "product_id" or "product_id_vvariant_id"
+        $productDealSession = [];
+        foreach($productdeals as $pd) {
+            if($pd->variant_id) {
+                $productDealSession[] = $pd->product_id . '_v' . $pd->variant_id;
+            } else {
+                $productDealSession[] = $pd->product_id;
+            }
+        }
+        Session::put('ss_product_deal', $productDealSession);
+        
+        $saledeals = SaleDeal::with(['product', 'variant'])->where('deal_id',$detail->id)->get();
         $data['saledeals'] = $saledeals;
-        Session::put('ss_sale_product',$saledeals->pluck('product_id')->toArray());
+        
+        // Build session array with variant_id format: "product_id" or "product_id_vvariant_id"
+        $saleDealSession = [];
+        foreach($saledeals as $sd) {
+            if($sd->variant_id) {
+                $saleDealSession[] = $sd->product_id . '_v' . $sd->variant_id;
+            } else {
+                $saleDealSession[] = $sd->product_id;
+            }
+        }
+        Session::put('ss_sale_product', $saleDealSession);
         return view($this->view.'::edit',$data);
     }
 
@@ -99,28 +120,63 @@ class DealController extends Controller
             SaleDeal::where('deal_id',$request->id)->delete();
             if(isset($pricesale) && !empty($pricesale)){
                 foreach ($pricesale as $key => $value) {
-                    SaleDeal::insertGetId(
-                        [
-                            'deal_id' => $request->id,
-                            'product_id' => $key,
-                            'price' => ($value != "")?str_replace(',','', $value):0,
-                            'qty' => (isset($numbersale) && !empty($numbersale))?$numbersale[$key]:'0',
-                            'status' => (isset($status2) && isset($status2[$key]))?$status2[$key]:'0',
-                            'created_at' => date('Y-m-d H:i:s')
-                        ]
-                    );
+                    // Parse product_id and variant_id from key format: "product_id" or "product_id[variant_id]"
+                    $productId = $key;
+                    $variantId = null;
+                    
+                    // Check if value is array format: product_id[variant_id]
+                    if (is_array($value)) {
+                        // This is nested array format
+                        foreach ($value as $vId => $price) {
+                            SaleDeal::insertGetId(
+                                [
+                                    'deal_id' => $request->id,
+                                    'product_id' => $key,
+                                    'variant_id' => $vId,
+                                    'price' => ($price != "")?str_replace(',','', $price):0,
+                                    'qty' => (isset($numbersale[$key][$vId]) && !empty($numbersale[$key][$vId]))?$numbersale[$key][$vId]:'0',
+                                    'status' => (isset($status2[$key][$vId]) && isset($status2[$key][$vId]))?$status2[$key][$vId]:'0',
+                                    'created_at' => date('Y-m-d H:i:s')
+                                ]
+                            );
+                        }
+                    } else {
+                        // Old format: single product without variant
+                        SaleDeal::insertGetId(
+                            [
+                                'deal_id' => $request->id,
+                                'product_id' => $key,
+                                'variant_id' => null,
+                                'price' => ($value != "")?str_replace(',','', $value):0,
+                                'qty' => (isset($numbersale) && !empty($numbersale))?$numbersale[$key]:'0',
+                                'status' => (isset($status2) && isset($status2[$key]))?$status2[$key]:'0',
+                                'created_at' => date('Y-m-d H:i:s')
+                            ]
+                        );
+                    }
                 }
             }
             $productid = $request->productid;
             $statusdeal = $request->statusdeal;
             ProductDeal::where('deal_id',$request->id)->delete();
             if(isset($productid) && !empty($productid)){
-                foreach ($productid as $key => $value) {
+                foreach ($productid as $key => $productValue) {
+                    // Parse product_id and variant_id from format: "product_id" or "product_id_vvariant_id"
+                    $productId = $productValue;
+                    $variantId = null;
+                    
+                    if (strpos($productValue, '_v') !== false) {
+                        $parts = explode('_v', $productValue);
+                        $productId = $parts[0];
+                        $variantId = $parts[1];
+                    }
+                    
                    ProductDeal::insertGetId(
                         [
                             'deal_id' => $request->id,
-                            'product_id' => $value,
-                            'status' => (isset($statusdeal) && isset($statusdeal[$value]))?$statusdeal[$value]:'0',
+                            'product_id' => $productId,
+                            'variant_id' => $variantId,
+                            'status' => (isset($statusdeal) && isset($statusdeal[$productId]))?$statusdeal[$productId]:'0',
                             'created_at' => date('Y-m-d H:i:s')
                         ]
                     );
@@ -171,27 +227,62 @@ class DealController extends Controller
             $status2 = $request->status2;
             if(isset($pricesale) && !empty($pricesale)){
                 foreach ($pricesale as $key => $value) {
-                    SaleDeal::insertGetId(
-                        [
-                            'deal_id' => $id,
-                            'product_id' => $key,
-                            'price' => ($value != "")?str_replace(',','', $value):0,
-                            'qty' => (isset($numbersale) && !empty($numbersale))?$numbersale[$key]:'0',
-                            'status' => (isset($status2) && isset($status2[$key]))?$status2[$key]:'0',
-                            'created_at' => date('Y-m-d H:i:s')
-                        ]
-                    );
+                    // Parse product_id and variant_id from key format: "product_id" or "product_id[variant_id]"
+                    $productId = $key;
+                    $variantId = null;
+                    
+                    // Check if key is array format: product_id[variant_id]
+                    if (is_array($value)) {
+                        // This is nested array format
+                        foreach ($value as $vId => $price) {
+                            SaleDeal::insertGetId(
+                                [
+                                    'deal_id' => $id,
+                                    'product_id' => $key,
+                                    'variant_id' => $vId,
+                                    'price' => ($price != "")?str_replace(',','', $price):0,
+                                    'qty' => (isset($numbersale[$key][$vId]) && !empty($numbersale[$key][$vId]))?$numbersale[$key][$vId]:'0',
+                                    'status' => (isset($status2[$key][$vId]) && isset($status2[$key][$vId]))?$status2[$key][$vId]:'0',
+                                    'created_at' => date('Y-m-d H:i:s')
+                                ]
+                            );
+                        }
+                    } else {
+                        // Old format: single product without variant
+                        SaleDeal::insertGetId(
+                            [
+                                'deal_id' => $id,
+                                'product_id' => $key,
+                                'variant_id' => null,
+                                'price' => ($value != "")?str_replace(',','', $value):0,
+                                'qty' => (isset($numbersale) && !empty($numbersale))?$numbersale[$key]:'0',
+                                'status' => (isset($status2) && isset($status2[$key]))?$status2[$key]:'0',
+                                'created_at' => date('Y-m-d H:i:s')
+                            ]
+                        );
+                    }
                 }
             }
             $productid = $request->productid;
             $statusdeal = $request->statusdeal;
             if(isset($productid) && !empty($productid)){
-                foreach ($productid as $k => $product) {
+                foreach ($productid as $k => $productValue) {
+                    // Parse product_id and variant_id from format: "product_id" or "product_id_vvariant_id"
+                    $productId = $productValue;
+                    $variantId = null;
+                    
+                    if (strpos($productValue, '_v') !== false) {
+                        $parts = explode('_v', $productValue);
+                        $productId = $parts[0];
+                        $variantId = $parts[1];
+                    }
+                    
                     ProductDeal::insertGetId(
                         [
                             'deal_id' => $id,
-                            'product_id' => $product,
-                            'status' => (isset($statusdeal) && isset($statusdeal[$product]))?$statusdeal[$product]:'0',
+                            'product_id' => $productId,
+                            'variant_id' => $variantId,
+                            'status' => (isset($statusdeal) && isset($statusdeal[$productId]))?$statusdeal[$productId]:'0',
                             'created_at' => date('Y-m-d H:i:s')
                         ]
                     );
@@ -299,7 +390,7 @@ class DealController extends Controller
         $limit = $this->limit;
         $offset = ($page-1)*$limit;
         $mang = $this->showProduct($request->deal_id);
-        $products = Product::select('id','name','image','stock')->where([['status','1'],['type','product'],['stock','1']])->whereNotIn('id',$mang)->where(function ($query) use ($search,$brand) {
+        $products = Product::select('id','name','image','stock','has_variants')->where([['status','1'],['type','product'],['stock','1']])->whereNotIn('id',$mang)->where(function ($query) use ($search,$brand) {
             if(isset($search) && $search != "") {
                 $query->where('name','like','%'.$search.'%');
             }
@@ -307,6 +398,13 @@ class DealController extends Controller
                 $query->where('brand_id',$brand);
             }
         })->limit($limit)->offset($offset)->get();
+        
+        // Load variants for products that have variants
+        foreach ($products as $product) {
+            if ($product->has_variants == 1) {
+                $product->load('variants');
+            }
+        }
         $html = "";
         $total = Product::select('id')->where([['status','1'],['type','product'],['stock','1']])->whereNotIn('id',$mang)->where(function ($query) use ($search,$brand) {
             if(isset($search) && $search != "") {
@@ -346,7 +444,34 @@ class DealController extends Controller
         //     Session::put('ss_product_deal',$request->productid);
         // }
         $mang = Session::get('ss_product_deal');
-        $data['products'] =  Product::select('id','name','image')->where('type','product')->whereIn('id',$mang)->get();
+        if(empty($mang)) {
+            $mang = [];
+        }
+        
+        // Parse product IDs and variant IDs from session
+        $productIds = [];
+        foreach($mang as $item) {
+            if(strpos($item, '_v') !== false) {
+                $parts = explode('_v', $item);
+                $productIds[] = $parts[0];
+            } else {
+                $productIds[] = $item;
+            }
+        }
+        
+        $products = Product::select('id','name','image','has_variants')
+            ->where('type','product')
+            ->whereIn('id', $productIds)
+            ->get();
+        
+        // Load variants for products that have variants
+        foreach ($products as $product) {
+            if ($product->has_variants == 1) {
+                $product->load('variants');
+            }
+        }
+        
+        $data['products'] = $products;
         return view($this->view.'::loadproduct',$data);
     }
 
@@ -371,7 +496,7 @@ class DealController extends Controller
         $page = $request->page;
         $limit = $this->limit;
         $offset = ($page-1)*$limit;
-        $products = Product::select('id','name','image','stock')->where([['status','1'],['type','product'],['stock','1']])->where(function ($query) use ($search,$brand) {
+        $products = Product::select('id','name','image','stock','has_variants')->where([['status','1'],['type','product'],['stock','1']])->where(function ($query) use ($search,$brand) {
             if(isset($search) && $search != "") {
                 $query->where('name','like','%'.$search.'%');
             }
@@ -379,6 +504,13 @@ class DealController extends Controller
                 $query->where('brand_id',$brand);
             }
         })->limit($limit)->offset($offset)->get();
+        
+        // Load variants for products that have variants
+        foreach ($products as $product) {
+            if ($product->has_variants == 1) {
+                $product->load('variants');
+            }
+        }
         $html = "";
         $mang = array();
         $total = Product::select('id')->where([['status','1'],['type','product'],['stock','1']])->where(function ($query) use ($search,$brand) {
@@ -419,7 +551,34 @@ class DealController extends Controller
         //     Session::put('ss_sale_product',$request->productid);
         // }
         $mang = Session::get('ss_sale_product');
-        $data['products'] =  Product::select('id','name','image')->where('type','product')->whereIn('id',$mang)->get();
+        if(empty($mang)) {
+            $mang = [];
+        }
+        
+        // Parse product IDs and variant IDs from session
+        $productIds = [];
+        foreach($mang as $item) {
+            if(strpos($item, '_v') !== false) {
+                $parts = explode('_v', $item);
+                $productIds[] = $parts[0];
+            } else {
+                $productIds[] = $item;
+            }
+        }
+        
+        $products = Product::select('id','name','image','has_variants')
+            ->where('type','product')
+            ->whereIn('id', $productIds)
+            ->get();
+        
+        // Load variants for products that have variants
+        foreach ($products as $product) {
+            if ($product->has_variants == 1) {
+                $product->load('variants');
+            }
+        }
+        
+        $data['products'] = $products;
         return view($this->view.'::load_product',$data);
     }
 

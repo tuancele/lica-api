@@ -71,6 +71,15 @@
         requestAnimationFrame(function() {
             requestAnimationFrame(function() {
                 initCarousels(element);
+                
+                // 初始化新显示内容的 skeleton 优化器
+                if (window.initSmartSkeleton) {
+                    // 查找新显示内容中的所有 skeleton 元素
+                    const newSkeletons = element.querySelectorAll('.js-skeleton:not([data-skeleton-processed])');
+                    if (newSkeletons.length > 0) {
+                        window.initSmartSkeleton();
+                    }
+                }
             });
         });
     }
@@ -265,7 +274,22 @@
         // 立即阻止skeleton placeholder中的carousel初始化
         preventSkeletonCarouselInit();
 
+        // 确保首屏的 skeleton 立即可见
         const lazyElements = document.querySelectorAll('[data-lazy-load]');
+        
+        // 先确保所有 lazy-placeholder 可见（如果它们的父 section 被隐藏）
+        lazyElements.forEach(function(element) {
+            // 如果 section 被隐藏，显示它以便 skeleton 可见
+            if (element.style.display === 'none') {
+                element.style.display = '';
+            }
+            
+            // 确保 placeholder 可见
+            const placeholder = element.querySelector('.lazy-placeholder');
+            if (placeholder && placeholder.style.display === 'none') {
+                placeholder.style.display = '';
+            }
+        });
         
         // 使用 requestIdleCallback 分批处理，避免阻塞主线程
         const processElements = function(index) {

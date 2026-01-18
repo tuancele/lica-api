@@ -19,6 +19,8 @@ class VerifyCsrfToken extends Middleware
      * @var array
      */
     protected $except = [
-        //
+        // Cart API V1 routes - excluded from CSRF verification
+        // These routes use X-CSRF-TOKEN header but we exclude them for compatibility
+        'api/v1/cart/*',
     ];
 }

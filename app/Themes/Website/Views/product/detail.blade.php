@@ -545,18 +545,26 @@
                 </div>
             </div>
             <div class="col-12 col-md-6">
-                <div class="breadcrumb">
-                    <ol>
-                        <li><a href="/">Trang chủ</a></li>
-                        @if(isset($category) && !empty($category))
-                        <li><a href="{{getSlug($category->slug)}}">{{$category->name}}</a></li>
-                        @endif
-                    </ol>
+                <!-- Product Detail Info - Loaded via API -->
+                <div id="product-detail-info" data-product-slug="{{$detail->slug ?? ''}}">
+                    <!-- Skeleton Placeholder -->
+                    <div class="product-detail-skeleton">
+                        <div class="breadcrumb">
+                            <ol>
+                                <li><a href="/">Trang chủ</a></li>
+                                <li><span style="opacity: 0.5;">...</span></li>
+                            </ol>
+                        </div>
+                        <div style="height: 20px; background: #f0f0f0; border-radius: 4px; margin: 10px 0; width: 150px;"></div>
+                        <div style="height: 32px; background: #f0f0f0; border-radius: 4px; margin: 10px 0; width: 80%;"></div>
+                        <div style="height: 24px; background: #f0f0f0; border-radius: 4px; margin: 10px 0; width: 200px;"></div>
+                        <div style="height: 40px; background: #f0f0f0; border-radius: 4px; margin: 20px 0; width: 60%;"></div>
+                    </div>
+                    <!-- Content will be loaded here -->
+                    <div class="product-detail-content" style="display: none;"></div>
                 </div>
-                @if($detail->brand)
-                <a href="/thuong-hieu/{{$detail->brand->slug}}" class="text-uppercase pointer brand-name">{{$detail->brand->name}}</a>
-                @endif
-                <h1 class="title-product">{{$detail->name}}</h1>
+                <!-- Blade Template Fallback (hidden when API loads successfully) -->
+                <div class="product-detail-blade-fallback">
                 @php
                     // Bảo vệ trong trường hợp $t_rates null hoặc không được truyền
                     $rateCollection = isset($t_rates) && $t_rates ? $t_rates : collect();
@@ -932,6 +940,8 @@
                     });
                 </script>
                 @endif
+                </div>
+                <!-- End Blade Template Fallback -->
                     {{-- 隐藏SKU
                     <div class="item_5 sku-section w40 fs-12"><b>SKU:</b> <span id="variant-sku-display">{{$first->sku}}</span></div>
                     --}}
@@ -1175,22 +1185,83 @@
                                 </div>
                                 @php
                                     // 检查产品是否参与 deal sốc
+                                    // 排除 Flash Sale 产品 - 如果产品正在 Flash Sale 中，不显示 Deal voucher
                                     $activeDeal = null;
                                     $dealDiscountPercent = 0;
+                                    $isInFlashSale = false;
+                                    
                                     try {
-                                        $now = strtotime(date('Y-m-d H:i:s'));
-                                        $deal_id = App\Modules\Deal\Models\ProductDeal::where('product_id', $product->id)->where('status', 1)->pluck('deal_id')->toArray();
-                                        if (!empty($deal_id)) {
-                                            $activeDeal = App\Modules\Deal\Models\Deal::whereIn('id', $deal_id)
-                                                ->where([['status', '1'], ['start', '<=', $now], ['end', '>=', $now]])
-                                                ->first();
+                                        // 检查是否在 Flash Sale 中
+                                        $date = strtotime(date('Y-m-d H:i:s'));
+                                        $flash = App\Modules\FlashSale\Models\FlashSale::where([['status','1'],['start','<=',$date],['end','>=',$date]])->first();
+                                        if(isset($flash) && !empty($flash)){
+                                            $productSale = App\Modules\FlashSale\Models\ProductSale::select('product_id','price_sale','number','buy')->where([['flashsale_id',$flash->id],['product_id',$product->id]])->first();
+                                            if(isset($productSale) && !empty($productSale) && $productSale->buy < $productSale->number){
+                                                $isInFlashSale = true;
+                                            }
+                                        }
+                                        
+                                        // 如果不在 Flash Sale 中，检查 Deal
+                                        if (!$isInFlashSale) {
+                                            $now = strtotime(date('Y-m-d H:i:s'));
                                             
-                                            // 计算 deal 折扣百分比
-                                            $variant = App\Modules\Product\Models\Variant::select('price','sale')->where('product_id', $product->id)->first();
-                                            if ($activeDeal && $variant) {
-                                                $saleDeal = App\Modules\Deal\Models\SaleDeal::where([['deal_id', $activeDeal->id], ['product_id', $product->id], ['status', '1']])->first();
-                                                if ($saleDeal && isset($saleDeal->price) && isset($variant->price) && $variant->price > 0) {
-                                                    $dealDiscountPercent = round(($variant->price - $saleDeal->price) / ($variant->price / 100));
+                                            // 获取产品的默认 variant (第一个 variant 或 null)
+                                            $defaultVariant = null;
+                                            if ($product->has_variants) {
+                                                $defaultVariant = App\Modules\Product\Models\Variant::where('product_id', $product->id)
+                                                    ->orderBy('position', 'asc')
+                                                    ->orderBy('id', 'asc')
+                                                    ->first();
+                                            }
+                                            
+                                            // 查询 ProductDeal - 支持 variant_id
+                                            $productDealQuery = App\Modules\Deal\Models\ProductDeal::where('product_id', $product->id)
+                                                ->where('status', 1);
+                                            
+                                            // 如果有 variant，优先查询匹配 variant_id 的，否则查询 variant_id 为 null 的
+                                            if ($defaultVariant) {
+                                                $productDealQuery->where(function($q) use ($defaultVariant) {
+                                                    $q->where('variant_id', $defaultVariant->id)
+                                                      ->orWhereNull('variant_id');
+                                                });
+                                            } else {
+                                                $productDealQuery->whereNull('variant_id');
+                                            }
+                                            
+                                            $deal_id = $productDealQuery->pluck('deal_id')->toArray();
+                                            
+                                            if (!empty($deal_id)) {
+                                                $activeDeal = App\Modules\Deal\Models\Deal::whereIn('id', $deal_id)
+                                                    ->where([['status', '1'], ['start', '<=', $now], ['end', '>=', $now]])
+                                                    ->first();
+                                                
+                                                // 计算 deal 折扣百分比
+                                                if ($activeDeal) {
+                                                    $variant = App\Modules\Product\Models\Variant::select('price','sale')->where('product_id', $product->id)->first();
+                                                    $variantToUse = $defaultVariant ?? $variant;
+                                                    
+                                                    if ($variantToUse) {
+                                                        // 查询 SaleDeal - 支持 variant_id
+                                                        $saleDealQuery = App\Modules\Deal\Models\SaleDeal::where('deal_id', $activeDeal->id)
+                                                            ->where('product_id', $product->id)
+                                                            ->where('status', '1');
+                                                        
+                                                        if ($defaultVariant) {
+                                                            $saleDealQuery->where(function($q) use ($defaultVariant) {
+                                                                $q->where('variant_id', $defaultVariant->id)
+                                                                  ->orWhereNull('variant_id');
+                                                            });
+                                                        } else {
+                                                            $saleDealQuery->whereNull('variant_id');
+                                                        }
+                                                        
+                                                        $saleDeal = $saleDealQuery->orderByRaw('CASE WHEN variant_id IS NOT NULL THEN 0 ELSE 1 END')
+                                                            ->first();
+                                                        
+                                                        if ($saleDeal && isset($saleDeal->price) && isset($variantToUse->price) && $variantToUse->price > 0) {
+                                                            $dealDiscountPercent = round(($variantToUse->price - $saleDeal->price) / ($variantToUse->price / 100));
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -1199,7 +1270,7 @@
                                         $activeDeal = null;
                                     }
                                 @endphp
-                                @if($activeDeal)
+                                @if($activeDeal && !$isInFlashSale)
                                 <div class="deal-voucher">
                                     <div class="deal-discount-badge">{{$dealDiscountPercent > 0 ? $dealDiscountPercent . '%' : ''}}</div>
                                     <span class="deal-name">{{$activeDeal->name ?? 'Deal sốc'}}</span>
@@ -1542,7 +1613,7 @@
             $('.addCartDetail .icon').html('<svg width="22" height="19" viewBox="0 0 22 19" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 6.99953H16.21L11.83 0.439531C11.64 0.159531 11.32 0.0195312 11 0.0195312C10.68 0.0195312 10.36 0.159531 10.17 0.449531L5.79 6.99953H1C0.45 6.99953 0 7.44953 0 7.99953C0 8.08953 0.00999996 8.17953 0.04 8.26953L2.58 17.5395C2.81 18.3795 3.58 18.9995 4.5 18.9995H17.5C18.42 18.9995 19.19 18.3795 19.43 17.5395L21.97 8.26953L22 7.99953C22 7.44953 21.55 6.99953 21 6.99953ZM11 2.79953L13.8 6.99953H8.2L11 2.79953ZM17.5 16.9995L4.51 17.0095L2.31 8.99953H19.7L17.5 16.9995ZM11 10.9995C9.9 10.9995 9 11.8995 9 12.9995C9 14.0995 9.9 14.9995 11 14.9995C12.1 14.9995 13 14.0995 13 12.9995C13 11.8995 12.1 10.9995 11 10.9995Z" fill="white"></path></svg>');
           if(res.status == 'success'){
             $('.count-cart').html(res.total);
-            getCart();
+            // Removed getCart() - sidebar cart is disabled, redirect to cart page instead
             alert("Đã thêm vào giỏ hàng");
           }else{
             alert("Có lỗi xảy ra trong quá trình xử lý, xin vui lòng thử lại");
@@ -1639,8 +1710,19 @@
     });
     var isShopeeVariant = @json($isShopeeVariant);
 
+    // Only bind jQuery handler if content is NOT loaded from API
+    // API-loaded content uses vanilla JS handlers in initializeVariantSelection
     if(isShopeeVariant){
-        $('#detailProduct').on('click','#variant-option1-list .item-variant',function(){
+        // Use event delegation but check if content is API-loaded
+        // Note: API-loaded content uses vanilla JS handlers, so we skip jQuery handler for those
+        $(document).on('click','#variant-option1-list .item-variant',function(e){
+            // Check if this is API-loaded content (has data-variant-id attribute with proper format)
+            const isApiLoaded = $(this).attr('data-variant-id') && $(this).attr('data-price-html');
+            if (isApiLoaded) {
+                // Let vanilla JS handler handle it (it's already bound in initializeVariantSelection)
+                // Don't prevent default, just return early
+                return true;
+            }
             var $it = $(this);
             $('#variant-option1-list .item-variant').removeClass('active');
             $it.addClass('active');
@@ -1650,23 +1732,27 @@
             var price = parseFloat($it.data('price') || 0);
             // 获取 base64 编码的 HTML 字符串
             var priceHtmlRaw = $it.attr('data-price-html') || '';
-            // 解码 base64 编码的 HTML（正确处理 UTF-8）
             var priceHtml = '';
             if (priceHtmlRaw) {
                 try {
-                    // 解码 base64 字符串并正确处理 UTF-8 编码
-                    var binaryString = atob(priceHtmlRaw);
-                    var bytes = new Uint8Array(binaryString.length);
-                    for (var i = 0; i < binaryString.length; i++) {
-                        bytes[i] = binaryString.charCodeAt(i);
+                    // Use decodeUnicodeBase64 if available (for API-loaded content), otherwise use fallback
+                    if (typeof decodeUnicodeBase64 === 'function') {
+                        priceHtml = decodeUnicodeBase64(priceHtmlRaw);
+                    } else {
+                        // Fallback for server-rendered content: decode base64 with UTF-8 support
+                        var binaryString = atob(priceHtmlRaw);
+                        var bytes = new Uint8Array(binaryString.length);
+                        for (var i = 0; i < binaryString.length; i++) {
+                            bytes[i] = binaryString.charCodeAt(i);
+                        }
+                        priceHtml = new TextDecoder('utf-8').decode(bytes);
                     }
-                    priceHtml = new TextDecoder('utf-8').decode(bytes);
                 } catch(e) {
-                    // 如果解码失败，尝试使用传统方法
+                    // If decoding fails, try traditional method
                     try {
                         priceHtml = decodeURIComponent(escape(atob(priceHtmlRaw)));
                     } catch(e2) {
-                        // 如果还是失败，使用默认价格
+                        // If still fails, use default price
                         priceHtml = '<p>'+ (price || 0).toLocaleString('vi-VN') +'đ</p>';
                     }
                 }
@@ -2431,4 +2517,742 @@
         margin-right: 0 !important;
     }
 </style>
+<script>
+    // Load product detail via API
+    (function() {
+        function loadProductDetail() {
+            const productDetailContainer = document.getElementById('product-detail-info');
+            if (!productDetailContainer) {
+                console.error('[API] Product detail container not found');
+                return;
+            }
+            
+            const productSlug = productDetailContainer.getAttribute('data-product-slug');
+            if (!productSlug) {
+                console.error('[API] Product slug not found');
+                return;
+            }
+            
+            console.log('[API] Loading product detail for slug:', productSlug);
+            
+            // Load product detail from API V1
+            fetch(`/api/v1/products/${productSlug}`)
+                .then(response => {
+                    console.log('[API] Response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('[API] Response data:', data);
+                    if (data.success && data.data) {
+                        // Update cart count from API response if available
+                        if (data.data.cart && typeof data.data.cart.total_qty !== 'undefined') {
+                            const cartCount = data.data.cart.total_qty || 0;
+                            $('.count-cart').text(cartCount);
+                            console.log('[API] Updated cart count from product detail API:', cartCount);
+                        }
+                        renderProductDetail(data.data);
+                    } else {
+                        console.error('[API] Failed to load product detail:', data.message);
+                        // Show Blade template fallback if API fails
+                        const bladeFallback = document.querySelector('.product-detail-blade-fallback');
+                        if (bladeFallback) {
+                            bladeFallback.style.display = 'block';
+                        }
+                        const skeleton = productDetailContainer.querySelector('.product-detail-skeleton');
+                        if (skeleton) {
+                            skeleton.style.display = 'none';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('[API] Error loading product detail:', error);
+                    // Show Blade template fallback if API fails
+                    const bladeFallback = document.querySelector('.product-detail-blade-fallback');
+                    if (bladeFallback) {
+                        bladeFallback.style.display = 'block';
+                    }
+                    const skeleton = productDetailContainer.querySelector('.product-detail-skeleton');
+                    if (skeleton) {
+                        skeleton.style.display = 'none';
+                    }
+                });
+        }
+        
+        // Wait for DOM to be ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadProductDetail);
+        } else {
+            // DOM is already ready
+            loadProductDetail();
+        }
+        
+        // Helper functions (must be defined before renderProductDetail)
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        /**
+         * Encode Unicode string to base64 (supports UTF-8)
+         */
+        function encodeUnicodeBase64(str) {
+            try {
+                // First, convert to UTF-8 bytes
+                const utf8Bytes = new TextEncoder().encode(str);
+                // Convert bytes to binary string
+                let binary = '';
+                for (let i = 0; i < utf8Bytes.length; i++) {
+                    binary += String.fromCharCode(utf8Bytes[i]);
+                }
+                // Encode to base64
+                return btoa(binary);
+            } catch (e) {
+                console.error('[API] Error encoding to base64:', e);
+                // Fallback: use encodeURIComponent
+                return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => {
+                    return String.fromCharCode('0x' + p1);
+                }));
+            }
+        }
+        
+        /**
+         * Decode base64 to Unicode string (supports UTF-8)
+         */
+        function decodeUnicodeBase64(str) {
+            try {
+                // Decode base64 to binary string
+                const binary = atob(str);
+                // Convert binary string to bytes
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+                // Decode UTF-8 bytes to string
+                return new TextDecoder('utf-8').decode(bytes);
+            } catch (e) {
+                console.error('[API] Error decoding from base64:', e);
+                // Fallback: try traditional method
+                try {
+                    return decodeURIComponent(escape(atob(str)));
+                } catch (e2) {
+                    console.error('[API] Fallback decode also failed:', e2);
+                    return '';
+                }
+            }
+        }
+        
+        function formatNumber(num) {
+            if (num >= 1000) {
+                return (num / 1000).toFixed(1) + 'k';
+            }
+            return num.toString();
+        }
+        
+        function formatSales(num) {
+            if (num >= 1000000) {
+                return (num / 1000000).toFixed(1) + 'tr+';
+            } else if (num >= 1000) {
+                return (num / 1000).toFixed(1) + 'k+';
+            }
+            return num.toString();
+        }
+        
+        function formatPrice(price) {
+            return price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        }
+        
+        function generateStars(sum, count) {
+            // Simple star generation - you may need to adjust based on your getStar() function
+            const average = count > 0 ? sum / count : 0;
+            const fullStars = Math.floor(average);
+            const hasHalfStar = (average - fullStars) >= 0.5;
+            let html = '';
+            for (let i = 0; i < 5; i++) {
+                if (i < fullStars) {
+                    html += '<span class="star full">★</span>';
+                } else if (i === fullStars && hasHalfStar) {
+                    html += '<span class="star half">★</span>';
+                } else {
+                    html += '<span class="star empty">★</span>';
+                }
+            }
+            return html;
+        }
+        
+        function renderProductDetail(product) {
+            const productDetailContainer = document.getElementById('product-detail-info');
+            if (!productDetailContainer) {
+                console.error('[API] Product detail container not found in renderProductDetail');
+                return;
+            }
+            
+            const container = productDetailContainer.querySelector('.product-detail-content');
+            const skeleton = productDetailContainer.querySelector('.product-detail-skeleton');
+            
+            if (!container) {
+                console.error('[API] Product detail content container not found');
+                return;
+            }
+            
+            console.log('[API] Rendering product detail:', {
+                hasCategory: !!product.category,
+                hasBrand: !!product.brand,
+                hasName: !!product.name,
+                productName: product.name,
+                category: product.category,
+                brand: product.brand
+            });
+            
+            // Build breadcrumb - ALWAYS show at least "Trang chủ"
+            let breadcrumbHtml = '<div class="breadcrumb"><ol><li><a href="/">Trang chủ</a></li>';
+            if (product.category && product.category.slug) {
+                breadcrumbHtml += `<li><a href="/${product.category.slug}">${escapeHtml(product.category.name)}</a></li>`;
+            }
+            breadcrumbHtml += '</ol></div>';
+            
+            // Build brand - ALWAYS show if brand exists
+            let brandHtml = '';
+            if (product.brand && product.brand.slug && product.brand.name) {
+                brandHtml = `<a href="/thuong-hieu/${product.brand.slug}" class="text-uppercase pointer brand-name">${escapeHtml(product.brand.name)}</a>`;
+            }
+            
+            // Build title - ALWAYS show product name
+            const titleHtml = product.name ? `<h1 class="title-product">${escapeHtml(product.name)}</h1>` : '';
+            
+            // Build rating and sales
+            const ratingHtml = `
+                <div class="product-rating-sales">
+                    <div class="rating-display">
+                        <span class="rating-value">${product.rating.average.toFixed(1)}</span>
+                        <div class="rating-stars">
+                            ${generateStars(product.rating.sum, product.rating.count)}
+                        </div>
+                    </div>
+                    <span class="separator">|</span>
+                    <div class="review-count">
+                        <span class="review-number">${formatNumber(product.rating.count)}</span>
+                        <span class="review-text"> Đánh Giá</span>
+                    </div>
+                    <span class="separator">|</span>
+                    <div class="sales-count">
+                        <span class="sales-text">Đã Bán </span>
+                        <span class="sales-number">${formatSales(product.total_sold)}</span>
+                    </div>
+                </div>
+            `;
+            
+            // Build price
+            let priceHtml = '';
+            if (product.has_variants && product.variants_count > 0 && product.first_variant) {
+                const firstVariant = product.variants.find(v => v.id === product.first_variant.id) || product.variants[0];
+                if (firstVariant && firstVariant.price_info) {
+                    priceHtml = `<div class="price-detail"><div class="price" id="variant-price-display">${firstVariant.price_info.html}</div></div>`;
+                }
+            } else {
+                // Simple product - use first variant price
+                if (product.first_variant) {
+                    const price = product.first_variant.price;
+                    const sale = product.first_variant.sale;
+                    if (sale > 0 && sale < price) {
+                        const percent = Math.round(((price - sale) / price) * 100);
+                        priceHtml = `<div class="price-detail"><div class="price"><p>${formatPrice(sale)}đ</p><del>${formatPrice(price)}đ</del><div class="tag"><span>-${percent}%</span></div></div></div>`;
+                    } else {
+                        priceHtml = `<div class="price-detail"><div class="price"><p>${formatPrice(price)}đ</p></div></div>`;
+                    }
+                }
+            }
+            
+            // Build attributes
+            let attributesHtml = '<div class="d-block overflow-hidden mb-2 list_attribute">';
+            if (product.cbmp) {
+                attributesHtml += `<span><b>Số CBMP:</b> ${product.cbmp}</span>`;
+            }
+            if (product.origin) {
+                if (product.cbmp) attributesHtml += '<span class="separator">|</span>';
+                attributesHtml += `<span><b>Xuất xứ:</b> ${product.origin.name}</span>`;
+            }
+            attributesHtml += '</div>';
+            
+            // Build Flash Sale
+            let flashSaleHtml = '';
+            if (product.flash_sale) {
+                const endDate = new Date(product.flash_sale.end_date);
+                flashSaleHtml = `
+                    <div class="div_flashsale">
+                        <div class="flash-sale-left">
+                            <span class="flash-text">FL<span class="lightning-icon">⚡</span>SH SALE</span>
+                        </div>
+                        <div class="flash-sale-right">
+                            <svg class="clock-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="12" cy="12" r="10" stroke="white" stroke-width="2"/>
+                                <path d="M12 6v6l4 2" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                            <span class="ends-text">KẾT THÚC TRONG</span>
+                            <div class="timer_flash" data-end="${endDate.getTime()}">
+                                <div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Build variants
+            let variantsHtml = '';
+            if (product.has_variants && product.variants_count > 0) {
+                const firstVariant = product.variants[0];
+                variantsHtml = `
+                    <div class="box-variant box-option1">
+                        <div class="label">
+                            <strong>${product.option1_name || 'Phân loại'}:</strong>
+                            <span id="variant-option1-current">${firstVariant.option_label || ''}</span>
+                        </div>
+                        <div class="list-variant" id="variant-option1-list">
+                            ${product.variants.map((v, index) => `
+                                <div class="item-variant ${index === 0 ? 'active' : ''}"
+                                     data-variant-id="${v.id}"
+                                     data-sku="${v.sku}"
+                                     data-price="${v.price_info.final_price}"
+                                     data-original-price="${v.price_info.original_price}"
+                                     data-price-html="${encodeUnicodeBase64(v.price_info.html || '')}"
+                                     data-stock="${v.stock}"
+                                     data-image="${v.image}"
+                                     data-option1="${v.option_label}">
+                                    <p class="mb-0">${v.option_label}</p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Build action buttons
+            const hasStock = product.has_variants 
+                ? (product.first_variant && product.first_variant.stock > 0)
+                : (product.stock > 0);
+            
+            const actionHtml = `
+                <input type="hidden" name="variant_id" value="${product.first_variant ? product.first_variant.id : ''}">
+                <div class="group-cart product-action align-center mt-3 space-between">
+                    <div class="quantity align-center quantity-selector">
+                        <button class="btn_minus entry" type="button" ${!hasStock ? 'disabled' : ''}>
+                            <span role="img" class="icon"><svg width="14" height="2" viewBox="0 0 14 2" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 0C0.447715 0 0 0.447715 0 1C0 1.55228 0.447715 2 1 2L1 0ZM13 2C13.5523 2 14 1.55228 14 1C14 0.447715 13.5523 0 13 0V2ZM1 2L13 2V0L1 0L1 2Z" fill="black"></path></svg></span>
+                        </button>
+                        <input ${!hasStock ? 'disabled' : ''} type="text" class="form-quatity quantity-input" value="1" min="1">
+                        <button ${!hasStock ? 'disabled' : ''} class="btn_plus entry" type="button">
+                            <span role="img" class="icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 6C0.447715 6 0 6.44772 0 7C0 7.55228 0.447715 8 1 8L1 6ZM13 8C13.5523 8 14 7.55228 14 7C14 6.44772 13.5523 6 13 6V8ZM1 8L13 8V6L1 6L1 8Z" fill="black"></path><path d="M6 13C6 13.5523 6.44772 14 7 14C7.55228 14 8 13.5523 8 13L6 13ZM8 1C8 0.447715 7.55228 -2.41411e-08 7 0C6.44771 2.41411e-08 6 0.447715 6 1L8 1ZM8 13L8 1L6 1L6 13L8 13Z" fill="black"></path></svg></span>
+                        </button>
+                    </div>
+                    <div class="item-action">
+                        <button ${!hasStock ? 'disabled' : ''} type="button" class="addCartDetail">
+                            <span role="img" class="icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.5H14.5L10.5 0.5C10.3 0.2 10 0 9.7 0C9.4 0 9.1 0.2 8.9 0.5L4.9 6.5H0.5C0.2 6.5 0 6.7 0 7C0 7.1 0 7.2 0.1 7.3L2.3 16.3C2.5 17 3.1 17.5 3.8 17.5H16.2C16.9 17.5 17.5 17 17.7 16.3L19.9 7.3L20 7C20 6.7 19.8 6.5 19.5 6.5H19ZM9.7 2.5L12.5 6.5H6.9L9.7 2.5ZM16.2 16.5H3.8L1.8 8.5H18.2L16.2 16.5ZM9.7 10.5C8.9 10.5 8.2 11.2 8.2 12C8.2 12.8 8.9 13.5 9.7 13.5C10.5 13.5 11.2 12.8 11.2 12C11.2 11.2 10.5 10.5 9.7 10.5Z" stroke="#ee4d2d" stroke-width="1.5" fill="none"/><path d="M9.7 8.5V15.5M6.2 12H13.2" stroke="#ee4d2d" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+                            <span>Thêm Vào Giỏ Hàng</span>
+                        </button>
+                    </div>
+                    <div class="item-action">
+                        ${product.deal && product.deal.sale_deals && product.deal.sale_deals.length > 0
+                            ? `<button ${!hasStock ? 'disabled' : ''} class="buyNowDetail btnBuyDealSốc" type="button">MUA DEAL SỐC</button>`
+                            : `<button ${!hasStock ? 'disabled' : ''} class="buyNowDetail" type="button">Mua ngay</button>`
+                        }
+                    </div>
+                </div>
+            `;
+            
+            // Build Deal section
+            let dealHtml = '';
+            if (product.deal && product.deal.sale_deals && product.deal.sale_deals.length > 0) {
+                dealHtml = `
+                    <div class="sc-67558998-0 buy-x-get-y-wrapper mb-4">
+                        <div class="buy-x-get-y-header">
+                            <div class="title">Mua kèm deal sốc</div>
+                            <div class="sub-title">Mua để nhận ưu đãi (Tối đa ${product.deal.limited})</div>
+                        </div>
+                        <div class="buy-x-get-y-body">
+                            ${product.deal.sale_deals.map(sd => `
+                                <div class="item_deal_row">
+                                    <div class="item_deal_action me-3">
+                                        ${product.deal.limited === 1 
+                                            ? `<input type="radio" name="deal_item" class="deal-checkbox-custom" id="deal_${sd.id}" value="${sd.variant_id || ''}">`
+                                            : `<input type="checkbox" name="deal_item[]" class="deal-checkbox-custom" id="deal_${sd.id}" value="${sd.variant_id || ''}">`
+                                        }
+                                        <label for="deal_${sd.id}" class="deal-checkmark"></label>
+                                    </div>
+                                    <div class="item_deal_info">
+                                        <div class="thumb_deal">
+                                            <div class="skeleton--img-sm js-skeleton">
+                                                <img src="${sd.product_image}" alt="${sd.product_name}" class="js-skeleton-img">
+                                            </div>
+                                        </div>
+                                        <div class="info_deal">
+                                            <h5 class="deal-product-name">${sd.product_name}</h5>
+                                            <div class="price_deal">
+                                                <span class="curr-price">${formatPrice(sd.price)}đ</span>
+                                                <del class="old-price">${formatPrice(sd.original_price)}đ</del>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Combine all HTML - Ensure breadcrumb, brand, and title are always shown first
+            const finalHtml = breadcrumbHtml + 
+                (brandHtml ? brandHtml : '') + 
+                titleHtml + 
+                ratingHtml + 
+                priceHtml + 
+                attributesHtml + 
+                flashSaleHtml + 
+                variantsHtml + 
+                actionHtml + 
+                dealHtml;
+            
+            // Set innerHTML
+            container.innerHTML = finalHtml;
+            
+            console.log('[API] Final HTML length:', finalHtml.length);
+            console.log('[API] Breadcrumb HTML:', breadcrumbHtml);
+            console.log('[API] Brand HTML:', brandHtml);
+            console.log('[API] Title HTML:', titleHtml);
+            
+            // Hide skeleton and show content
+            if (skeleton) {
+                skeleton.style.display = 'none';
+                console.log('[API] Skeleton hidden');
+            }
+            container.style.display = 'block';
+            console.log('[API] Content container displayed');
+            
+            // Hide Blade template fallback content
+            const bladeFallback = document.querySelector('.product-detail-blade-fallback');
+            if (bladeFallback) {
+                bladeFallback.style.display = 'none';
+                console.log('[API] Blade template fallback hidden');
+            }
+            
+            // Verify elements are in DOM
+            setTimeout(() => {
+                const breadcrumbEl = container.querySelector('.breadcrumb');
+                const brandEl = container.querySelector('.brand-name');
+                const titleEl = container.querySelector('.title-product');
+                console.log('[API] Elements in DOM:', {
+                    breadcrumb: !!breadcrumbEl,
+                    brand: !!brandEl,
+                    title: !!titleEl,
+                    containerVisible: container.style.display,
+                    containerHTML: container.innerHTML.substring(0, 300)
+                });
+            }, 100);
+            
+            // Debug: Log to console to verify data is loaded correctly
+            console.log('Product detail loaded:', {
+                hasBreadcrumb: breadcrumbHtml.length > 0,
+                hasBrand: brandHtml.length > 0,
+                hasTitle: titleHtml.length > 0,
+                category: product.category,
+                brand: product.brand,
+                name: product.name,
+                breadcrumbHtml: breadcrumbHtml,
+                brandHtml: brandHtml,
+                titleHtml: titleHtml
+            });
+            
+            // Debug: Log to console to verify data is loaded correctly
+            console.log('Product detail loaded:', {
+                hasBreadcrumb: breadcrumbHtml.length > 0,
+                hasBrand: brandHtml.length > 0,
+                hasTitle: titleHtml.length > 0,
+                category: product.category,
+                brand: product.brand,
+                name: product.name
+            });
+            
+            // Initialize flash sale timer if exists
+            if (product.flash_sale) {
+                initializeFlashSaleTimer();
+            }
+            
+            // Initialize variant selection if exists
+            if (product.has_variants && product.variants_count > 0) {
+                // Use setTimeout to ensure DOM is fully rendered
+                setTimeout(() => {
+                    try {
+                        initializeVariantSelection(product);
+                    } catch (e) {
+                        console.error('[API] Error initializing variant selection:', e);
+                    }
+                }, 200);
+            }
+            
+            // Initialize quantity controls
+            setTimeout(() => {
+                try {
+                    initializeQuantityControls();
+                } catch (e) {
+                    console.error('[API] Error initializing quantity controls:', e);
+                }
+            }, 200);
+            
+            // Initialize deal controls if exists
+            if (product.deal && product.deal.sale_deals && product.deal.sale_deals.length > 0) {
+                setTimeout(() => {
+                    try {
+                        initializeDealControls(product.deal);
+                    } catch (e) {
+                        console.error('[API] Error initializing deal controls:', e);
+                    }
+                }, 300);
+            }
+        }
+        
+        function initializeQuantityControls() {
+            // Quantity increase/decrease buttons
+            const btnPlus = document.querySelector('.btn_plus.entry');
+            const btnMinus = document.querySelector('.btn_minus.entry');
+            const quantityInput = document.querySelector('.quantity-input');
+            
+            if (btnPlus) {
+                btnPlus.addEventListener('click', function() {
+                    if (quantityInput && !quantityInput.disabled) {
+                        const current = parseInt(quantityInput.value) || 1;
+                        quantityInput.value = current + 1;
+                    }
+                });
+            }
+            
+            if (btnMinus) {
+                btnMinus.addEventListener('click', function() {
+                    if (quantityInput && !quantityInput.disabled) {
+                        const current = parseInt(quantityInput.value) || 1;
+                        if (current > 1) {
+                            quantityInput.value = current - 1;
+                        }
+                    }
+                });
+            }
+        }
+        
+        function initializeFlashSaleTimer() {
+            const timerElements = document.querySelectorAll('.timer_flash[data-end]');
+            timerElements.forEach(timerEl => {
+                const endTime = parseInt(timerEl.getAttribute('data-end'));
+                if (!endTime) return;
+                
+                function updateTimer() {
+                    const now = new Date().getTime();
+                    const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+                    
+                    if (remaining <= 0) {
+                        timerEl.innerHTML = '<div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div>';
+                        return;
+                    }
+                    
+                    const days = Math.floor(remaining / 86400);
+                    const hours = Math.floor((remaining % 86400) / 3600);
+                    const minutes = Math.floor((remaining % 3600) / 60);
+                    const seconds = remaining % 60;
+                    
+                    timerEl.innerHTML = `
+                        <div class="timer-box">${String(hours).padStart(2, '0')}</div>
+                        <span class="timer-separator">:</span>
+                        <div class="timer-box">${String(minutes).padStart(2, '0')}</div>
+                        <span class="timer-separator">:</span>
+                        <div class="timer-box">${String(seconds).padStart(2, '0')}</div>
+                    `;
+                }
+                
+                updateTimer();
+                setInterval(updateTimer, 1000);
+            });
+        }
+        
+        function initializeVariantSelection(product) {
+            console.log('[API] Initializing variant selection');
+            
+            const variantList = document.getElementById('variant-option1-list');
+            if (!variantList) {
+                console.error('[API] Variant list not found');
+                return;
+            }
+            
+            const variantItems = variantList.querySelectorAll('.item-variant');
+            console.log('[API] Found variant items:', variantItems.length);
+            
+            if (variantItems.length === 0) {
+                console.warn('[API] No variant items found');
+                return;
+            }
+            
+            // Add click event listeners directly (jQuery handler will skip API-loaded content)
+            variantItems.forEach((item) => {
+                // Add click event listener with stopPropagation to prevent jQuery handler
+                item.addEventListener('click', function(e) {
+                    // Stop jQuery handler from processing
+                    e.stopImmediatePropagation();
+                    
+                    console.log('[API] Variant clicked:', {
+                        id: this.getAttribute('data-variant-id'),
+                        sku: this.getAttribute('data-sku'),
+                        price: this.getAttribute('data-price')
+                    });
+                    
+                    // Remove active class from all items
+                    const allItems = document.querySelectorAll('#variant-option1-list .item-variant');
+                    allItems.forEach(v => v.classList.remove('active'));
+                    
+                    // Add active class to clicked item
+                    this.classList.add('active');
+                    
+                    // Update current variant display
+                    const currentSpan = document.getElementById('variant-option1-current');
+                    if (currentSpan) {
+                        currentSpan.textContent = this.getAttribute('data-option1') || '';
+                    }
+                    
+                    // Update price display
+                    const priceDisplay = document.getElementById('variant-price-display');
+                    if (priceDisplay) {
+                        try {
+                            const priceHtmlRaw = this.getAttribute('data-price-html');
+                            if (priceHtmlRaw) {
+                                // Decode base64 HTML (supports Unicode)
+                                const priceHtml = decodeUnicodeBase64(priceHtmlRaw);
+                                priceDisplay.innerHTML = priceHtml;
+                            } else {
+                                // Fallback: show price as number
+                                const price = this.getAttribute('data-price') || '0';
+                                priceDisplay.innerHTML = `<p>${parseInt(price).toLocaleString('vi-VN')}đ</p>`;
+                            }
+                        } catch (e) {
+                            console.error('[API] Error decoding price HTML:', e);
+                            const price = this.getAttribute('data-price') || '0';
+                            priceDisplay.innerHTML = `<p>${parseInt(price).toLocaleString('vi-VN')}đ</p>`;
+                        }
+                    }
+                    
+                    // Update variant_id hidden input
+                    const variantInput = document.querySelector('input[name="variant_id"]');
+                    if (variantInput) {
+                        variantInput.value = this.getAttribute('data-variant-id') || '';
+                    }
+                    
+                    // Update SKU display if exists
+                    const skuDisplay = document.getElementById('variant-sku-display');
+                    if (skuDisplay) {
+                        skuDisplay.textContent = this.getAttribute('data-sku') || '';
+                    }
+                    
+                    // Update stock status
+                    const stock = parseInt(this.getAttribute('data-stock') || '0');
+                    const buttons = document.querySelectorAll('.addCartDetail, .buyNowDetail, .btn_minus.entry, .btn_plus.entry');
+                    const quantityInput = document.querySelector('.quantity-input');
+                    
+                    if (stock <= 0) {
+                        buttons.forEach(btn => btn.disabled = true);
+                        if (quantityInput) quantityInput.disabled = true;
+                    } else {
+                        buttons.forEach(btn => btn.disabled = false);
+                        if (quantityInput) quantityInput.disabled = false;
+                    }
+                    
+                    // Update image in slider if needed
+                    const variantImage = this.getAttribute('data-image');
+                    if (variantImage) {
+                        const firstImg = document.querySelector('#slidesWrapper .slide img');
+                        if (firstImg) {
+                            firstImg.src = variantImage;
+                            firstImg.onerror = function() {
+                                console.warn('[API] Failed to load variant image:', variantImage);
+                            };
+                        }
+                    }
+                    
+                    console.log('[API] Variant selection updated');
+                });
+            });
+            
+            console.log('[API] Variant selection initialized for', variantItems.length, 'items');
+        }
+        
+        function initializeDealControls(deal) {
+            console.log('[API] Initializing deal controls, limited:', deal.limited);
+            
+            const dealRows = document.querySelectorAll('.item_deal_row');
+            const dealCheckboxes = document.querySelectorAll('.deal-checkbox-custom');
+            const buyDealButton = document.querySelector('.btnBuyDealSốc');
+            
+            if (dealRows.length === 0) {
+                console.warn('[API] No deal rows found');
+                return;
+            }
+            
+            // Click on row to toggle checkbox
+            dealRows.forEach(row => {
+                row.addEventListener('click', function(e) {
+                    // Don't trigger if clicking directly on checkbox or label
+                    if (e.target.type === 'checkbox' || e.target.type === 'radio' || e.target.tagName === 'LABEL') {
+                        return;
+                    }
+                    
+                    const checkbox = this.querySelector('.deal-checkbox-custom');
+                    if (checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                        checkbox.dispatchEvent(new Event('change'));
+                    }
+                });
+            });
+            
+            // Handle checkbox/radio change
+            dealCheckboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    const checkedCount = document.querySelectorAll('.deal-checkbox-custom:checked').length;
+                    const limited = deal.limited || 1;
+                    
+                    // If limited = 1 (radio), uncheck others when one is checked
+                    if (limited === 1 && this.checked && this.type === 'radio') {
+                        dealCheckboxes.forEach(cb => {
+                            if (cb !== this && cb.type === 'radio') {
+                                cb.checked = false;
+                            }
+                        });
+                    }
+                    
+                    // Enforce limit
+                    if (checkedCount > limited) {
+                        this.checked = false;
+                        alert(`Bạn chỉ được chọn tối đa ${limited} sản phẩm mua kèm`);
+                        return;
+                    }
+                    
+                    // Update button state
+                    updateBuyDealButton();
+                });
+            });
+            
+            // Update button state function
+            function updateBuyDealButton() {
+                const checkedCount = document.querySelectorAll('.deal-checkbox-custom:checked').length;
+                if (buyDealButton) {
+                    if (checkedCount === 0) {
+                        buyDealButton.disabled = true;
+                    } else {
+                        buyDealButton.disabled = false;
+                    }
+                }
+            }
+            
+            // Initial button state
+            updateBuyDealButton();
+            
+            console.log('[API] Deal controls initialized');
+        }
+    })();
+</script>
 @endsection

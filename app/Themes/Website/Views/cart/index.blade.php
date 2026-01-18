@@ -38,10 +38,24 @@
 
                                                     <td class="product-thumbnail">
                                                         <a href="{{getSlug($product->slug)}}">
-                                                            <div class="skeleton--img-sm js-skeleton">
+                                                            <div class="skeleton--img-sm js-skeleton cart-product-image">
+                                                                @php
+                                                                    // Get variant image if available, otherwise use product image
+                                                                    $variantImage = null;
+                                                                    if (isset($variant['item'])) {
+                                                                        // Handle both object and array (after session serialization)
+                                                                        if (is_object($variant['item'])) {
+                                                                            $variantImage = $variant['item']->image ?? null;
+                                                                        } elseif (is_array($variant['item'])) {
+                                                                            $variantImage = $variant['item']['image'] ?? null;
+                                                                        }
+                                                                    }
+                                                                    // Use variant image if exists and not empty, otherwise use product image
+                                                                    $displayImage = !empty($variantImage) ? $variantImage : $product->image;
+                                                                @endphp
                                                                 <img
-                                                                    src="{{getImage($product->image)}}"
-                                                                    data-src="{{getImage($product->image)}}"
+                                                                    src="{{getImage($displayImage)}}"
+                                                                    data-src="{{getImage($displayImage)}}"
                                                                     class="attachment-commerce_thumbnail size-commerce_thumbnail lazy-load-active js-skeleton-img"
                                                                     alt="{{$product->name}}"
                                                                 />
@@ -188,6 +202,7 @@
 </section>
 @endsection
 @section('footer')
+<script src="{{asset('js/cart-api-v1.js')}}"></script>
 <script>
     window.dealCounts = @json($deal_counts ?? []);
 </script>
@@ -195,114 +210,554 @@
     .is-deal-row { background-color: #fff9f9; }
     .is-deal-row .product-thumbnail { padding-left: 20px; }
     .is-deal-row .product-name::before { content: "↳ "; color: #dc3545; font-weight: bold; }
+    .cart-loading { opacity: 0.6; pointer-events: none; }
+    .btn-loading { position: relative; }
+    .btn-loading::after {
+        content: '';
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        top: 50%;
+        left: 50%;
+        margin-left: -8px;
+        margin-top: -8px;
+        border: 2px solid #fff;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    
+    /* Cart Product Image Styles */
+    .cart-product-image {
+        width: 60px !important;
+        height: 60px !important;
+        min-width: 60px !important;
+        max-width: 60px !important;
+        min-height: 60px !important;
+        max-height: 60px !important;
+        flex: 0 0 60px !important;
+        overflow: hidden;
+        border-radius: 4px;
+        background-color: #f5f5f5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .cart-product-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+        display: block;
+    }
+    
+    .product-thumbnail {
+        width: 60px;
+        padding: 8px;
+    }
+    
+    .product-thumbnail a {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+    
+    /* Ensure consistent sizing on mobile */
+    @media (max-width: 768px) {
+        .cart-product-image {
+            width: 50px !important;
+            height: 50px !important;
+            min-width: 50px !important;
+            max-width: 50px !important;
+            min-height: 50px !important;
+            max-height: 50px !important;
+            flex: 0 0 50px !important;
+        }
+        
+        .product-thumbnail {
+            width: 50px;
+            padding: 4px;
+        }
+    }
 </style>
 <script>
-    $('body').on('click','.remove-item-cart',function(){
-      var id = $(this).data('id');
-      $.ajax({
-          type: 'post',
-          url: '{{route("cart.del")}}',
-          data: {id:id},
-          headers:
-          {
-              'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-          },
-          success: function (res) {
-            window.location.reload();
-          },
-          error: function(xhr, status, error){
-            alert('Có lỗi xảy ra, xin vui lòng thử lại');
-            window.location = window.location.href;
-            }
-      })
-    });
-    $('body').on('click','.btn-plus',function(e){
-    e.preventDefault();
-    var id = $(this).attr('data-id');
-    var input = $('#quantity-cart-'+id+'');
-    var currentVal = parseInt(input.val());
-    var qty = 1;
-    if (!isNaN(currentVal)) {
-      qty = currentVal + 1;
-    }
-    input.val(qty);
-    $.ajax({
-      type: "post",
-      url: "{{route('cart.update')}}",
-      data: { id: id, qty: qty },
-      headers:
-      {
-          'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-      },
-      success: function (res) {
-        $('.item-total-'+id+'').html(res.subtotal+'₫');
-        $(".total-price").html(res.price+'₫');
-        $('.count-cart').html(res.total);
-      },
-      error: function(xhr, status, error){
-            alert('Có lỗi xảy ra, xin vui lòng thử lại');
-            window.location = window.location.href;
-        }
-  });
-});
-    $('body').on('click','.addDealCart',function(){
-        var id = $(this).attr('data-id');
-        var dealId = $(this).attr('data-deal-id');
-        var limited = parseInt($(this).attr('data-limited'));
-        var currentCount = window.dealCounts[dealId] || 0;
-
-        if(currentCount >= limited) {
-            alert('Bạn đã đạt giới hạn tối đa ' + limited + ' sản phẩm cho chương trình Deal này.');
+    // Wait for CartAPI to be loaded
+    $(document).ready(function() {
+        // Check if CartAPI is available
+        if (typeof CartAPI === 'undefined') {
+            console.error('CartAPI is not loaded. Please ensure cart-api-v1.js is included.');
             return;
         }
-
-        var qty = 1;
-        var btn = $(this);
-        $.ajax({
-            type: 'post',
-            url: '{{route("cart.add")}}',
-            data: {id:id,qty:qty,is_deal:1},
-            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-            beforeSend: function () {
-                btn.prop('disabled',true).html('<span class="spinner-border spinner-border-sm"></span>');
-            },
-            success: function (res) {
-                if(res.status == 'success'){
-                    window.location.reload();
-                }
+        
+        // Global error handler for AJAX timeouts
+        $(document).ajaxError(function(event, xhr, settings, thrownError) {
+            if (xhr.status === 0) {
+                CartAPI.showError('Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.');
+            } else if (xhr.status === 408 || thrownError === 'timeout') {
+                CartAPI.showError('Request timeout. Vui lòng thử lại.');
+            } else if (xhr.status === 500) {
+                CartAPI.showError('Lỗi server. Vui lòng thử lại sau.');
+            } else if (xhr.status === 503) {
+                CartAPI.showError('Service unavailable. Vui lòng thử lại sau.');
             }
         });
-    });
+        // Remove item from cart
+        $('body').on('click', '.remove-item-cart', function(e) {
+            e.preventDefault();
+            var variantId = $(this).data('id');
+            var $row = $(this).closest('tr');
+            var $btn = $(this);
+            var isDeal = $row.hasClass('is-deal-row');
+            var mainProductId = $row.data('main-id');
+            
+            // Validate variantId
+            if (!variantId || variantId <= 0) {
+                CartAPI.showError('Variant ID không hợp lệ');
+                return;
+            }
+            
+            // Determine message based on item type
+            var confirmMsg = isDeal 
+                ? 'Bạn có chắc chắn muốn xóa sản phẩm deal này khỏi giỏ hàng?'
+                : 'Bạn có chắc chắn muốn xóa sản phẩm này? Các sản phẩm deal sốc liên quan cũng sẽ bị xóa.';
+            
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+            
+            // DEBUG: Log remove attempt
+            console.log('[CART DEBUG] Remove item attempt:', {
+                variantId: variantId,
+                isDeal: isDeal,
+                mainProductId: mainProductId,
+                timestamp: new Date().toISOString()
+            });
+            
+            $btn.prop('disabled', true).text('Đang xóa...');
+            $('.cart-wrapper').addClass('cart-loading');
+            
+            CartAPI.removeItem(variantId)
+                .done(function(response) {
+                    if (response.success) {
+                        // Get removed variant IDs from response
+                        var removedVariantIds = response.data && response.data.removed_variant_ids 
+                            ? response.data.removed_variant_ids 
+                            : [variantId];
+                        
+                        // DEBUG: Log response data
+                        console.log('[CART DEBUG] Response data:', {
+                            response: response,
+                            removedVariantIds: removedVariantIds,
+                            variantId: variantId
+                        });
+                        
+                        // Remove all rows for removed variant IDs
+                        var removedCount = 0;
+                        var $rowsToRemove = [];
+                        
+                        // DEBUG: Log all rows before filtering
+                        var allRows = [];
+                        $('tr[class*="item-cart-"]').each(function() {
+                            var $tr = $(this);
+                            var trVariantId = $tr.find('.remove-item-cart').data('id');
+                            allRows.push({
+                                variantId: trVariantId,
+                                class: $tr.attr('class'),
+                                row: $tr[0]
+                            });
+                            
+                            if (trVariantId && removedVariantIds.includes(parseInt(trVariantId))) {
+                                $rowsToRemove.push($tr);
+                            }
+                        });
+                        
+                        console.log('[CART DEBUG] All rows found:', allRows);
+                        console.log('[CART DEBUG] Rows to remove:', $rowsToRemove.length);
+                        
+                        // Update cart summary first (before removing rows)
+                        if (response.data && response.data.summary) {
+                            var summary = response.data.summary;
+                            // Update all total-price elements (table and sidebar)
+                            $('.total-price').text(CartAPI.formatCurrency(summary.subtotal));
+                            $('.count-cart').text(summary.total_qty || 0);
+                            
+                            // Also update checkout button state
+                            if (summary.total_qty === 0) {
+                                $('.checkout-button').prop('disabled', true).addClass('disabled');
+                            } else {
+                                $('.checkout-button').prop('disabled', false).removeClass('disabled');
+                            }
+                        }
+                        
+                        // Remove rows with animation
+                        var totalRowsToRemove = $rowsToRemove.length;
+                        var rowsRemoved = 0;
+                        
+                        if ($rowsToRemove.length > 0) {
+                            $rowsToRemove.forEach(function($tr) {
+                                $tr.fadeOut(300, function() {
+                                    $(this).remove();
+                                    removedCount++;
+                                    rowsRemoved++;
+                                    
+                                    // After all animations complete, re-enable interactions
+                                    if (rowsRemoved >= totalRowsToRemove) {
+                                        // Remove loading state
+                                        $('.cart-wrapper').removeClass('cart-loading');
+                                        $btn.prop('disabled', false).text('×');
+                                        
+                                        // Re-enable all buttons and inputs in remaining rows
+                                        $('tr[class*="item-cart-"]').each(function() {
+                                            var $tr = $(this);
+                                            $tr.find('.btn-plus, .btn-minus').prop('disabled', false).removeClass('btn-loading');
+                                            $tr.find('.form-quatity').prop('disabled', false);
+                                            $tr.find('.remove-item-cart').prop('disabled', false);
+                                        });
+                                    }
+                                });
+                            });
+                        } else {
+                            // Fallback: just remove the clicked row
+                            $row.fadeOut(300, function() {
+                                $(this).remove();
+                                
+                                // Remove loading state
+                                $('.cart-wrapper').removeClass('cart-loading');
+                                $btn.prop('disabled', false).text('×');
+                                
+                                // Re-enable all buttons and inputs in remaining rows
+                                $('tr[class*="item-cart-"]').each(function() {
+                                    var $tr = $(this);
+                                    $tr.find('.btn-plus, .btn-minus').prop('disabled', false).removeClass('btn-loading');
+                                    $tr.find('.form-quatity').prop('disabled', false);
+                                    $tr.find('.remove-item-cart').prop('disabled', false);
+                                });
+                            });
+                        }
+                        
+                        // Show success message
+                        var successMsg = removedCount > 1 
+                            ? 'Đã xóa ' + removedCount + ' sản phẩm khỏi giỏ hàng'
+                            : 'Đã xóa sản phẩm khỏi giỏ hàng';
+                        CartAPI.showSuccess(successMsg);
+                        
+                        // DEBUG: Log success
+                        console.log('[CART DEBUG] Remove item success:', {
+                            variantId: variantId,
+                            removedVariantIds: removedVariantIds,
+                            summary: summary,
+                            removedCount: removedCount
+                        });
+                        
+                        // Check if cart is empty, reload only if empty
+                        if (summary.total_qty === 0) {
+                            console.log('[CART DEBUG] Cart is empty, reloading...');
+                            setTimeout(function() {
+                                window.location.reload();
+                            }, 500);
+                        }
+                    } else {
+                        CartAPI.showError(response.message || 'Xóa sản phẩm thất bại');
+                        $btn.prop('disabled', false).text('×');
+                        $('.cart-wrapper').removeClass('cart-loading');
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    // DEBUG: Log error details
+                    console.error('[CART DEBUG] Remove item failed:', {
+                        variantId: variantId,
+                        status: status,
+                        error: error,
+                        xhrStatus: xhr.status,
+                        xhrStatusText: xhr.statusText,
+                        responseText: xhr.responseText,
+                        responseJSON: xhr.responseJSON,
+                        headers: xhr.getAllResponseHeaders(),
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    var errorMsg = 'Có lỗi xảy ra, vui lòng thử lại';
+                    
+                    // Handle different error types
+                    if (status === 'timeout') {
+                        errorMsg = 'Request timeout. Vui lòng thử lại.';
+                    } else if (xhr.status === 0) {
+                        errorMsg = 'Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.';
+                    } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    } else if (xhr.status === 500) {
+                        errorMsg = 'Lỗi server. Vui lòng thử lại sau.';
+                    } else if (xhr.status === 503) {
+                        errorMsg = 'Service unavailable. Vui lòng thử lại sau.';
+                    } else if (xhr.status === 419) {
+                        errorMsg = 'Phiên đăng nhập đã hết hạn. Vui lòng tải lại trang.';
+                        console.error('[CART DEBUG] CSRF token expired, reloading in 2 seconds...');
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 2000);
+                    } else if (xhr.status === 404) {
+                        errorMsg = 'API endpoint không tìm thấy. Vui lòng kiểm tra lại.';
+                    } else if (xhr.status === 405) {
+                        errorMsg = 'Phương thức HTTP không được phép.';
+                    }
+                    
+                    CartAPI.showError(errorMsg);
+                    $btn.prop('disabled', false).text('×');
+                    $('.cart-wrapper').removeClass('cart-loading');
+                    
+                    // DEBUG: Show detailed error in console
+                    console.error('[CART DEBUG] Error message shown to user:', errorMsg);
+                });
+        });
 
-    $('body').on('click','.btn-minus',function(e){
-    e.preventDefault();
-    var id = $(this).attr('data-id');
-    var input = $('#quantity-cart-'+id+'');
-    var currentVal = parseInt(input.val());
-    var qty = 1;
-    if (!isNaN(currentVal) && currentVal > 1) {
-        input.val(currentVal - 1);
-        qty = currentVal - 1;
-    }
-    input.val(qty);
-    $.ajax({
-      type: "post",
-      url: "{{route('cart.update')}}",
-      data: { id: id, qty: qty },
-      headers:
-      {
-          'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-      },
-      success: function (res) {
-        $('.item-total-'+id+'').html(res.subtotal+'<span class="commerce-Price-currencySymbol">₫</span>');
-        $(".total-price").html(res.price+'<span class="commerce-Price-currencySymbol">₫</span>');
-        $('.count-cart').html(res.total);
-      },
-      error: function(xhr, status, error){
-            alert('Có lỗi xảy ra, xin vui lòng thử lại');
-            window.location = window.location.href;
-        }
+        // Increase quantity
+        $('body').on('click', '.btn-plus', function(e) {
+            e.preventDefault();
+            var variantId = $(this).attr('data-id');
+            var $input = $('#quantity-cart-' + variantId);
+            var $btn = $(this);
+            
+            // Validate variantId
+            if (!variantId || variantId <= 0) {
+                CartAPI.showError('Variant ID không hợp lệ');
+                return;
+            }
+            
+            var currentVal = parseInt($input.val()) || 0;
+            var newQty = currentVal + 1;
+            
+            $input.val(newQty);
+            $btn.prop('disabled', true).addClass('btn-loading');
+            $('.cart-wrapper').addClass('cart-loading');
+            
+            CartAPI.updateItem(variantId, newQty)
+                .done(function(response) {
+                    if (response.success && response.data) {
+                        var data = response.data;
+                        
+                        // Update item subtotal
+                        $('.item-total-' + variantId).text(CartAPI.formatCurrency(data.subtotal));
+                        
+                        // Update cart summary
+                        if (data.summary) {
+                            $('.total-price').text(CartAPI.formatCurrency(data.summary.subtotal));
+                            $('.count-cart').text(data.summary.total_qty || 0);
+                        }
+                    } else {
+                        // Revert quantity on error
+                        $input.val(currentVal);
+                        CartAPI.showError(response.message || 'Cập nhật số lượng thất bại');
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    // Revert quantity on error
+                    $input.val(currentVal);
+                    var errorMsg = 'Có lỗi xảy ra, vui lòng thử lại';
+                    
+                    if (status === 'timeout') {
+                        errorMsg = 'Request timeout. Vui lòng thử lại.';
+                    } else if (xhr.status === 0) {
+                        errorMsg = 'Không thể kết nối đến server.';
+                    } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    } else if (xhr.status === 500) {
+                        errorMsg = 'Lỗi server. Vui lòng thử lại sau.';
+                    }
+                    
+                    CartAPI.showError(errorMsg);
+                })
+                .always(function() {
+                    $btn.prop('disabled', false).removeClass('btn-loading');
+                    $('.cart-wrapper').removeClass('cart-loading');
+                });
+        });
+
+        // Decrease quantity
+        $('body').on('click', '.btn-minus', function(e) {
+            e.preventDefault();
+            var variantId = $(this).attr('data-id');
+            var $input = $('#quantity-cart-' + variantId);
+            var $btn = $(this);
+            
+            // Validate variantId
+            if (!variantId || variantId <= 0) {
+                CartAPI.showError('Variant ID không hợp lệ');
+                return;
+            }
+            
+            var currentVal = parseInt($input.val()) || 1;
+            
+            if (currentVal <= 1) {
+                return;
+            }
+            
+            var newQty = currentVal - 1;
+            $input.val(newQty);
+            $btn.prop('disabled', true).addClass('btn-loading');
+            $('.cart-wrapper').addClass('cart-loading');
+            
+            CartAPI.updateItem(variantId, newQty)
+                .done(function(response) {
+                    if (response.success && response.data) {
+                        var data = response.data;
+                        
+                        // Update item subtotal
+                        $('.item-total-' + variantId).text(CartAPI.formatCurrency(data.subtotal));
+                        
+                        // Update cart summary
+                        if (data.summary) {
+                            $('.total-price').text(CartAPI.formatCurrency(data.summary.subtotal));
+                            $('.count-cart').text(data.summary.total_qty || 0);
+                        }
+                    } else {
+                        // Revert quantity on error
+                        $input.val(currentVal);
+                        CartAPI.showError(response.message || 'Cập nhật số lượng thất bại');
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    // Revert quantity on error
+                    $input.val(currentVal);
+                    var errorMsg = 'Có lỗi xảy ra, vui lòng thử lại';
+                    
+                    if (status === 'timeout') {
+                        errorMsg = 'Request timeout. Vui lòng thử lại.';
+                    } else if (xhr.status === 0) {
+                        errorMsg = 'Không thể kết nối đến server.';
+                    } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    } else if (xhr.status === 500) {
+                        errorMsg = 'Lỗi server. Vui lòng thử lại sau.';
+                    }
+                    
+                    CartAPI.showError(errorMsg);
+                })
+                .always(function() {
+                    $btn.prop('disabled', false).removeClass('btn-loading');
+                    $('.cart-wrapper').removeClass('cart-loading');
+                });
+        });
+
+        // Manual quantity input change
+        $('body').on('blur', '.form-quatity', function() {
+            var variantId = $(this).closest('tr').find('.btn-plus').attr('data-id');
+            var $input = $(this);
+            
+            // Validate variantId
+            if (!variantId || variantId <= 0) {
+                CartAPI.showError('Variant ID không hợp lệ');
+                return;
+            }
+            
+            var newQty = parseInt($input.val()) || 1;
+            
+            if (newQty < 1) {
+                newQty = 1;
+                $input.val(1);
+            }
+            
+            $input.prop('disabled', true);
+            $('.cart-wrapper').addClass('cart-loading');
+            
+            CartAPI.updateItem(variantId, newQty)
+                .done(function(response) {
+                    if (response.success && response.data) {
+                        var data = response.data;
+                        
+                        // Update item subtotal
+                        $('.item-total-' + variantId).text(CartAPI.formatCurrency(data.subtotal));
+                        
+                        // Update cart summary
+                        if (data.summary) {
+                            $('.total-price').text(CartAPI.formatCurrency(data.summary.subtotal));
+                            $('.count-cart').text(data.summary.total_qty || 0);
+                        }
+                    } else {
+                        CartAPI.showError(response.message || 'Cập nhật số lượng thất bại');
+                        // Reload to get correct value
+                        window.location.reload();
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    var errorMsg = 'Có lỗi xảy ra, vui lòng thử lại';
+                    
+                    if (status === 'timeout') {
+                        errorMsg = 'Request timeout. Vui lòng thử lại.';
+                    } else if (xhr.status === 0) {
+                        errorMsg = 'Không thể kết nối đến server.';
+                    } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    } else if (xhr.status === 500) {
+                        errorMsg = 'Lỗi server. Vui lòng thử lại sau.';
+                    }
+                    
+                    CartAPI.showError(errorMsg);
+                    // Reload after a delay to show error message
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 1500);
+                })
+                .always(function() {
+                    $input.prop('disabled', false);
+                    $('.cart-wrapper').removeClass('cart-loading');
+                });
+        });
+
+        // Add deal to cart
+        $('body').on('click', '.addDealCart', function() {
+            var variantId = $(this).attr('data-id');
+            var dealId = $(this).attr('data-deal-id');
+            var limited = parseInt($(this).attr('data-limited'));
+            var currentCount = window.dealCounts && window.dealCounts[dealId] ? window.dealCounts[dealId] : 0;
+            var $btn = $(this);
+
+            // Validate variantId
+            if (!variantId || variantId <= 0) {
+                CartAPI.showError('Variant ID không hợp lệ');
+                return;
+            }
+
+            if (currentCount >= limited) {
+                CartAPI.showError('Bạn đã đạt giới hạn tối đa ' + limited + ' sản phẩm cho chương trình Deal này.');
+                return;
+            }
+
+            $btn.prop('disabled', true).addClass('btn-loading').html('<span class="spinner-border spinner-border-sm"></span>');
+            
+            CartAPI.addItem(variantId, 1, true)
+                .done(function(response) {
+                    if (response.success) {
+                        CartAPI.showSuccess('Đã thêm sản phẩm deal vào giỏ hàng');
+                        // Reload to update deal counts and cart
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 500);
+                    } else {
+                        CartAPI.showError(response.message || 'Thêm sản phẩm thất bại');
+                        $btn.prop('disabled', false).removeClass('btn-loading').text('THÊM NGAY');
+                    }
+                })
+                .fail(function(xhr, status, error) {
+                    var errorMsg = 'Có lỗi xảy ra, vui lòng thử lại';
+                    
+                    if (status === 'timeout') {
+                        errorMsg = 'Request timeout. Vui lòng thử lại.';
+                    } else if (xhr.status === 0) {
+                        errorMsg = 'Không thể kết nối đến server.';
+                    } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    } else if (xhr.status === 500) {
+                        errorMsg = 'Lỗi server. Vui lòng thử lại sau.';
+                    }
+                    
+                    CartAPI.showError(errorMsg);
+                    $btn.prop('disabled', false).removeClass('btn-loading').text('THÊM NGAY');
+                });
+        });
     });
-});
 </script>
 @endsection

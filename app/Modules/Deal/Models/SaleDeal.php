@@ -7,6 +7,21 @@ use Illuminate\Database\Eloquent\Model;
 class SaleDeal extends Model
 {
     protected $table = "deal_sales";
+    
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array
+     */
+    protected $fillable = [
+        'deal_id',
+        'product_id',
+        'variant_id',
+        'price',
+        'qty',
+        'status',
+    ];
+    
     public function user(){
     	return $this->belongsTo('App\User','user_id','id');
     }
@@ -17,5 +32,12 @@ class SaleDeal extends Model
 
     public function product(){
     	return $this->belongsTo('App\Modules\Product\Models\Product','product_id','id');
+    }
+
+    /**
+     * Relationship with Variant
+     */
+    public function variant(){
+        return $this->belongsTo('App\Modules\Product\Models\Variant','variant_id','id');
     }
 }

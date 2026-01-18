@@ -201,7 +201,7 @@
                             <td>{{$status->deliver_date}}</td>
                         </tr>
                     </table>
-                    <a type="button" class="btn btn-primary mb-5" href="{{route('ghtk.print',['id' =>$status->label_id])}}" target="_blank">In hóa đơn GHTK</a>
+                    <a type="button" class="btn btn-primary mb-5" href="{{route('ghtk.print',['label' =>$status->label_id])}}" target="_blank">In hóa đơn GHTK</a>
                     <button type="button" class="btn btn-danger mb-5 btnCancel" data-label="{{$status->label_id}}">Hủy đơn</button>
                     @endif
                     @else

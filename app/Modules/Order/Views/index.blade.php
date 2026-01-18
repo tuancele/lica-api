@@ -220,7 +220,7 @@
                                 @if(getConfig('ghtk_status'))
                                     @php $delivery = \App\Modules\Delivery\Models\Delivery::where('code', $order->code)->first(); @endphp
                                     @if($delivery)
-                                        <a href="{{route('ghtk.print',['id' => $delivery->label_id])}}" target="_blank" class="btn btn-shopee">In vận đơn</a>
+                                        <a href="{{route('ghtk.print',['label' => $delivery->label_id])}}" target="_blank" class="btn btn-shopee">In vận đơn</a>
                                     @else
                                         <button class="btn btn-shopee quick-ghtk" data-id="{{$order->code}}">Đăng đơn GHTK</button>
                                     @endif

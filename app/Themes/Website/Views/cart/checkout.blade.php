@@ -18,7 +18,7 @@
         @csrf
         <input type="hidden" name="token" value="{{$token}}">
         <div class="row mt-3">
-            <div class="col-12 col-md-8">
+            <div class="col-12 col-md-8" style="background-color: #fff; padding: 20px; border-radius: 8px;">
                 <div class="align-center space-between mb-2 mt-3">
                     <span class="fs-18 fw-bold">Thông tin người mua hàng</span>
                     @if(!isset($member) && empty($member))
@@ -69,7 +69,7 @@
                     </div>
                     <div class="mb-2 position-relative">
                         <label>Địa chỉ: <span>*</span></label>
-                        <input type="text" class="form-control" id="search_location_input" autocomplete="off" placeholder="Nhập Xã, Huyện, Tỉnh...">
+                        <input type="text" class="form-control" id="search_location_input" autocomplete="off" placeholder="Nhập Xã, Huyện, Tỉnh để gợi ý địa chỉ">
                         <div id="search_location_results" class="autocomplete-results"></div>
                         <input type="hidden" name="province" id="province_id">
                         <input type="hidden" name="district" id="district_id">
@@ -103,7 +103,7 @@
                 </div>
                     <div class="mb-2 position-relative">
                         <label>Địa chỉ: <span>*</span></label>
-                        <input type="text" class="form-control" id="search_location_input" autocomplete="off" placeholder="Nhập Xã, Huyện, Tỉnh...">
+                        <input type="text" class="form-control" id="search_location_input" autocomplete="off" placeholder="Nhập Xã, Huyện, Tỉnh để gợi ý địa chỉ">
                         <div id="search_location_results" class="autocomplete-results"></div>
                         <input type="hidden" name="province" id="province_id">
                         <input type="hidden" name="district" id="district_id">
@@ -164,7 +164,21 @@
                         <div class="item-cart d-flex mt-3 mb-3 item-cart-{{$variant['item']['id']}}">
                             <div class="img-thumb">
                                 <div class="skeleton--img-sm js-skeleton">
-                                    <img src="{{getImage($product->image)}}" width="60" height="60" alt="{{$product->name}}" class="js-skeleton-img">
+                                    @php
+                                        // Get variant image if available, otherwise use product image
+                                        $variantImage = null;
+                                        if (isset($variant['item'])) {
+                                            // Handle both object and array (after session serialization)
+                                            if (is_object($variant['item'])) {
+                                                $variantImage = $variant['item']->image ?? null;
+                                            } elseif (is_array($variant['item'])) {
+                                                $variantImage = $variant['item']['image'] ?? null;
+                                            }
+                                        }
+                                        // Use variant image if exists and not empty, otherwise use product image
+                                        $displayImage = !empty($variantImage) ? $variantImage : $product->image;
+                                    @endphp
+                                    <img src="{{getImage($displayImage)}}" width="60" height="60" alt="{{$product->name}}" class="js-skeleton-img">
                                 </div>
                             </div>
                             <div class="des-cart ms-2">
@@ -747,6 +761,9 @@ $('body').on('click','.btn_cancel_promotion',function(){
     #search_location_input {
         height: 45px;
     }
+    #search_location_input::placeholder {
+        font-size: 12px;
+    }
 
     /* ========== Hiệu ứng nhập liệu (đen trắng, tinh gọn) cho trang checkout ========== */
     #page_checkout label {
@@ -767,6 +784,7 @@ $('body').on('click','.btn_cancel_promotion',function(){
     #page_checkout textarea.form-control::placeholder {
         color: #9a9a9a;
         opacity: 1;
+        font-size: 12px;
     }
     #page_checkout .form-control:focus,
     #page_checkout textarea.form-control:focus {

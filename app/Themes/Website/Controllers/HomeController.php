@@ -89,22 +89,28 @@ class HomeController extends Controller
         if ($page) {
             $data['detail'] = $page;
             
-            // Cache static contents
-            $data['sliders'] = Cache::remember('home_sliders_v1', 3600, function () {
-                return Slider::select('name', 'link', 'image')->where([['status', '1'], ['type', 'slider'], ['display', 'desktop']])->orderBy('created_at', 'desc')->get();
-            });
-            $data['sliderms'] = Cache::remember('home_sliderms_v1', 3600, function () {
-                return Slider::select('name', 'link', 'image')->where([['status', '1'], ['type', 'slider'], ['display', 'mobile']])->orderBy('created_at', 'desc')->get();
-            });
+            // Sliders are now loaded via API V1 (/api/v1/sliders)
+            // Removed server-side rendering to use RESTful API
+            // $data['sliders'] = Cache::remember('home_sliders_v1', 3600, function () {
+            //     return Slider::select('name', 'link', 'image')->where([['status', '1'], ['type', 'slider'], ['display', 'desktop']])->orderBy('created_at', 'desc')->get();
+            // });
+            // $data['sliderms'] = Cache::remember('home_sliderms_v1', 3600, function () {
+            //     return Slider::select('name', 'link', 'image')->where([['status', '1'], ['type', 'slider'], ['display', 'mobile']])->orderBy('created_at', 'desc')->get();
+            // });
+            // Initialize empty arrays for backward compatibility
+            $data['sliders'] = collect([]);
+            $data['sliderms'] = collect([]);
             $data['categories'] = Cache::remember('home_categories_v1', 3600, function () {
                 return Product::select('id', 'name', 'slug', 'image')->where([['status', '1'], ['type', 'taxonomy'], ['feature', '1']])->orderBy('sort', 'asc')->get();
             });
             $data['blogs'] = Cache::remember('home_blog_categories_v1', 3600, function () {
                 return Post::select('id', 'name', 'slug')->where([['status', '1'], ['type', 'category'], ['feature', '1']])->orderBy('sort', 'asc')->get();
             });
-            $data['brands'] = Cache::remember('home_brands_v1', 3600, function () {
-                return Brand::select('name', 'slug', 'image')->where('status', '1')->orderBy('sort', 'asc')->get();
-            });
+            // Brands are now loaded via API V1 (/api/v1/brands/featured)
+            // Removed server-side rendering to use RESTful API
+            // $data['brands'] = Cache::remember('home_brands_v1', 3600, function () {
+            //     return Brand::select('name', 'slug', 'image')->where('status', '1')->orderBy('sort', 'asc')->get();
+            // });
             $data['banners'] = Cache::remember('home_banners_v1', 3600, function () {
                 return Slider::select('name', 'link', 'image')->where([['status', '1'], ['type', 'banner'], ['cat_id', '1']])->get();
             });

@@ -179,8 +179,9 @@
                 <li @if(Session::get('sidebar_sub_active')=='origin') class="active" @endif><a href="{{route('origin')}}"><i class="fa fa-circle-o"></i> Xuất xứ</a></li>
                 <li @if(Session::get('sidebar_sub_active')=='brand') class="active" @endif><a href="{{route('brand')}}"><i class="fa fa-circle-o"></i> Thương hiệu</a></li>
                 <li @if(Session::get('sidebar_sub_active')=='ingredient') class="active" @endif><a href="{{route('ingredient')}}"><i class="fa fa-circle-o"></i> Thành phần</a></li>
-                <li @if(Session::get('sidebar_sub_active')=='color') class="active" @endif><a href="{{route('color')}}"><i class="fa fa-circle-o"></i> Màu sắc</a></li>
-                <li @if(Session::get('sidebar_sub_active')=='size') class="active" @endif><a href="{{route('size')}}"><i class="fa fa-circle-o"></i> Kích thước</a></li>
+                {{-- Removed color and size menu items - routes have been removed --}}
+                {{-- <li @if(Session::get('sidebar_sub_active')=='color') class="active" @endif><a href="{{route('color')}}"><i class="fa fa-circle-o"></i> Màu sắc</a></li> --}}
+                {{-- <li @if(Session::get('sidebar_sub_active')=='size') class="active" @endif><a href="{{route('size')}}"><i class="fa fa-circle-o"></i> Kích thước</a></li> --}}
                 <li @if(Session::get('sidebar_sub_active')=='rate') class="active" @endif><a href="/admin/rate"><i class="fa fa-circle-o"></i> Đánh giá sản phẩm</a></li>
                 <li @if(Session::get('sidebar_sub_active')=='promotion') class="active" @endif><a href="/admin/promotion"><i class="fa fa-circle-o"></i> Mã giảm giá</a></li>
                 <li @if(Session::get('sidebar_sub_active')=='search') class="active" @endif><a href="/admin/search"><i class="fa fa-circle-o"></i> Từ khóa tìm kiếm</a></li>

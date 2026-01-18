@@ -44,30 +44,82 @@
     <tbody>
         @if($products->count() > 0)
         @foreach($products as $product)
-        @php $variant = $product->variant($product->id) @endphp
-        <tr class="item-{{$product->id}}">
-            <input type="hidden" name="productsale[]" value="{{$product->id}}">
-            <td style="text-align: center;"><input type="checkbox" name="checklist2[]" class="checkbox3 wgr-checkbox" value="{{$product->id}}"></td>
-            <td>
-                <img src="{{$product->image}}" style="width:50px;height: 50px;float: left;margin-right: 5px;">
-                <p>{{$product->name}}</p>
-            </td>
-            <td>@if(!empty($variant)){{number_format($variant->price)}}đ 
-                <input type="hidden" name="price_product" value="{{$variant->price}}">
-            @endif</td>
-            <td>
-                <input type="text" name="pricesale[{{$product->id}}]" class="form-control pricesale price">
-                
-            </td>
-            <td><input type="number" name="numbersale[{{$product->id}}]" class="form-control"></td>
-             <td>@php 
-                $total3 = countProductWarehouse($product->id,'import');
-                $total4 = countProductWarehouse($product->id,'export'); @endphp
-                {{$total3-$total4}}
-            </td>
-            <td><input type="checkbox" name="status2[{{$product->id}}]" class="wgr-checkbox" value="1" checked=""></td>
-            <td><a class="btn btn-danger btn-xs delete_item" data-id="{{$product->id}}"><i class="fa fa-trash-o" aria-hidden="true"></i></a></td>
-        </tr>
+        @php 
+            $hasVariants = $product->has_variants == 1 && isset($product->variants) && $product->variants->count() > 0;
+            // Get variant from session if exists
+            $sessionKey = null;
+            if(Session::has('ss_sale_product')){
+                $mang = Session::get('ss_sale_product');
+                foreach($mang as $item) {
+                    if(strpos($item, $product->id.'_v') === 0 || $item == $product->id) {
+                        $sessionKey = $item;
+                        break;
+                    }
+                }
+            }
+        @endphp
+        
+        @if($hasVariants && $sessionKey && strpos($sessionKey, '_v') !== false)
+            {{-- Sản phẩm có variants và đã chọn variant --}}
+            @php 
+                $parts = explode('_v', $sessionKey);
+                $selectedVariantId = $parts[1];
+                $selectedVariant = $product->variants->where('id', $selectedVariantId)->first();
+            @endphp
+            @if($selectedVariant)
+            <tr class="item-{{$product->id}}-variant-{{$selectedVariant->id}}">
+                <input type="hidden" name="productsale[]" value="{{$product->id}}_v{{$selectedVariant->id}}">
+                <td style="text-align: center;"><input type="checkbox" name="checklist2[]" class="checkbox3 wgr-checkbox" value="{{$product->id}}"></td>
+                <td>
+                    <img src="{{$product->image}}" style="width:50px;height: 50px;float: left;margin-right: 5px;">
+                    <p><strong>{{$product->name}}</strong></p>
+                    <small class="text-muted">
+                        Phân loại: {{$selectedVariant->option1_value ?? 'N/A'}}
+                        @if($selectedVariant->sku) <br>SKU: {{$selectedVariant->sku}} @endif
+                    </small>
+                </td>
+                <td>{{number_format($selectedVariant->price)}}đ 
+                    <input type="hidden" name="price_product[{{$product->id}}][{{$selectedVariant->id}}]" value="{{$selectedVariant->price}}">
+                </td>
+                <td>
+                    <input type="text" name="pricesale[{{$product->id}}][{{$selectedVariant->id}}]" class="form-control pricesale price">
+                </td>
+                <td><input type="number" name="numbersale[{{$product->id}}][{{$selectedVariant->id}}]" class="form-control"></td>
+                <td>@php 
+                    $total3 = countProductWarehouse($product->id,'import');
+                    $total4 = countProductWarehouse($product->id,'export'); @endphp
+                    {{$total3-$total4}}
+                </td>
+                <td><input type="checkbox" name="status2[{{$product->id}}][{{$selectedVariant->id}}]" class="wgr-checkbox" value="1" checked=""></td>
+                <td><a class="btn btn-danger btn-xs delete_item" data-id="{{$product->id}}_v{{$selectedVariant->id}}"><i class="fa fa-trash-o" aria-hidden="true"></i></a></td>
+            </tr>
+            @endif
+        @else
+            {{-- Sản phẩm không có variants hoặc chưa chọn variant --}}
+            @php $variant = $product->variant($product->id) @endphp
+            <tr class="item-{{$product->id}}">
+                <input type="hidden" name="productsale[]" value="{{$product->id}}">
+                <td style="text-align: center;"><input type="checkbox" name="checklist2[]" class="checkbox3 wgr-checkbox" value="{{$product->id}}"></td>
+                <td>
+                    <img src="{{$product->image}}" style="width:50px;height: 50px;float: left;margin-right: 5px;">
+                    <p>{{$product->name}}</p>
+                </td>
+                <td>@if(!empty($variant)){{number_format($variant->price)}}đ 
+                    <input type="hidden" name="price_product[{{$product->id}}]" value="{{$variant->price}}">
+                @endif</td>
+                <td>
+                    <input type="text" name="pricesale[{{$product->id}}]" class="form-control pricesale price">
+                </td>
+                <td><input type="number" name="numbersale[{{$product->id}}]" class="form-control"></td>
+                <td>@php 
+                    $total3 = countProductWarehouse($product->id,'import');
+                    $total4 = countProductWarehouse($product->id,'export'); @endphp
+                    {{$total3-$total4}}
+                </td>
+                <td><input type="checkbox" name="status2[{{$product->id}}]" class="wgr-checkbox" value="1" checked=""></td>
+                <td><a class="btn btn-danger btn-xs delete_item" data-id="{{$product->id}}"><i class="fa fa-trash-o" aria-hidden="true"></i></a></td>
+            </tr>
+        @endif
         @endforeach
         @endif
     </tbody>
@@ -112,8 +164,11 @@
         var mang =[];
         $(".updateSale2 tr td").each(function () {
             if($(this).find("input").is(':checked')){
-                $('.updateSale2 tr.item-'+$(this).find("input").val()+'').remove();
-                mang.push($(this).find("input").val());
+                var dataId = $(this).closest('tr').find('.delete_item').attr('data-id');
+                if(dataId) {
+                    $('.updateSale2 tr.item-'+dataId.replace('_', '-').replace('_v', '-variant-')+'').remove();
+                    mang.push(dataId);
+                }
             }
         })
         $.ajax({
@@ -129,19 +184,21 @@
                 alert('Có lỗi xảy ra, xin vui lòng thử lại');
             }
          })
-        $('.count_choose').html('0');
+        $('.count_choose2').html('0');
     });
     $('#updateAll').click(function(){
         var number = $('input[name="number"]').val();
         var percent = $('input[name="sale"]').val(); 
         $(".updateSale2 tr td").each(function () {
             if($(this).find("input").is(':checked')){
-                var id = $(this).find("input").val();
-                $('.updateSale2 tr.item-'+id+' input[type="number"]').val(number);
-                var price = $('.updateSale2 tr.item-'+id+' input[name="price_product"]').val();
-                var sale =  parseInt(price) - (parseInt(price/100)*parseInt(percent));
-                console.log(sale);
-                $('.updateSale2 tr.item-'+id+' input.pricesale').val(sale);
+                var tr = $(this).closest('tr');
+                tr.find('input[type="number"]').val(number);
+                var priceInput = tr.find('input[name^="price_product"]');
+                if(priceInput.length > 0) {
+                    var price = priceInput.val();
+                    var sale = parseInt(price) - (parseInt(price/100)*parseInt(percent));
+                    tr.find('input.pricesale').val(sale);
+                }
             }
         })
     });

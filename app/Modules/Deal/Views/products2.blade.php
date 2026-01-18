@@ -34,28 +34,61 @@
                         $mang = Session::get('ss_sale_product');
                     }
                 @endphp
-                <body>
+                <tbody>
                     @foreach($products as $product)
-                    @php $variant = $product->variant($product->id) @endphp
-                    <tr>
-                        <td width="5%" style="text-align: center;">
-                            <input @if(isset($mang) && in_array($product->id,$mang)) checked @endif style="margin: 0px;display: inline-block;" type="checkbox" name="productid[]" class="checkbox wgr-checkbox" value="{{$product->id}}">
-                        </td>
-                        <td width="50%">
-                            <img src="{{$product->image}}" style="width:50px;height: 50px;float: left;margin-right: 5px;">
-                            <p>{{$product->name}}</p>
-                        </td>
-                        <td width="15%">@if(!empty($variant)){{number_format($variant->price)}}đ @endif</td>
-                        <td width="15%">@if(!empty($variant)){{number_format($variant->sale)}}đ @endif</td>
-                        <td width="15%">
-                            @php 
-                            $total1 = countProductWarehouse($product->id,'import');
-                            $total2 = countProductWarehouse($product->id,'export'); @endphp
-                            {{$total1-$total2}}
-                        </td>
-                    </tr>
+                    @php 
+                        $hasVariants = $product->has_variants == 1 && isset($product->variants) && $product->variants->count() > 0;
+                    @endphp
+                    
+                    @if($hasVariants)
+                        {{-- Sản phẩm có variants - hiển thị từng variant --}}
+                        @foreach($product->variants as $variant)
+                        <tr class="item-{{$product->id}}-variant-{{$variant->id}}">
+                            <td width="5%" style="text-align: center;">
+                                <input @if(isset($mang) && in_array($product->id.'_v'.$variant->id,$mang)) checked @endif style="margin: 0px;display: inline-block;" type="checkbox" name="productid[]" class="checkbox wgr-checkbox" value="{{$product->id}}_v{{$variant->id}}" data-product-id="{{$product->id}}" data-variant-id="{{$variant->id}}">
+                                <input type="hidden" name="variant_ids[{{$product->id}}][{{$variant->id}}]" value="{{$variant->id}}">
+                            </td>
+                            <td width="50%">
+                                <img src="{{$product->image}}" style="width:50px;height: 50px;float: left;margin-right: 5px;">
+                                <p><strong>{{$product->name}}</strong></p>
+                                <small class="text-muted">
+                                    Phân loại: {{$variant->option1_value ?? 'N/A'}}
+                                    @if($variant->sku) <br>SKU: {{$variant->sku}} @endif
+                                </small>
+                            </td>
+                            <td width="15%">{{number_format($variant->price)}}đ</td>
+                            <td width="15%">{{number_format($variant->sale)}}đ</td>
+                            <td width="15%">
+                                @php 
+                                $total1 = countProductWarehouse($product->id,'import');
+                                $total2 = countProductWarehouse($product->id,'export'); @endphp
+                                {{$total1-$total2}}
+                            </td>
+                        </tr>
+                        @endforeach
+                    @else
+                        {{-- Sản phẩm không có variants --}}
+                        @php $variant = $product->variant($product->id) @endphp
+                        <tr class="item-{{$product->id}}">
+                            <td width="5%" style="text-align: center;">
+                                <input @if(isset($mang) && in_array($product->id,$mang)) checked @endif style="margin: 0px;display: inline-block;" type="checkbox" name="productid[]" class="checkbox wgr-checkbox" value="{{$product->id}}" data-product-id="{{$product->id}}" data-variant-id="">
+                            </td>
+                            <td width="50%">
+                                <img src="{{$product->image}}" style="width:50px;height: 50px;float: left;margin-right: 5px;">
+                                <p>{{$product->name}}</p>
+                            </td>
+                            <td width="15%">@if(!empty($variant)){{number_format($variant->price)}}đ @endif</td>
+                            <td width="15%">@if(!empty($variant)){{number_format($variant->sale)}}đ @endif</td>
+                            <td width="15%">
+                                @php 
+                                $total1 = countProductWarehouse($product->id,'import');
+                                $total2 = countProductWarehouse($product->id,'export'); @endphp
+                                {{$total1-$total2}}
+                            </td>
+                        </tr>
+                    @endif
                     @endforeach
-                </body>
+                </tbody>
                 @endif
             </table>
         </div>
@@ -80,7 +113,8 @@
             var mang = []; 
             $('.checkbox').each(function () { 
                 this.checked = true;
-                mang.push($(this).val());
+                var value = $(this).val();
+                mang.push(value);
             });
             $.ajax({
                 type: 'post',
@@ -97,7 +131,8 @@
             var mang = [];
             $('.checkbox').each(function () { 
                 this.checked = false;
-                mang.push($(this).val());
+                var value = $(this).val();
+                mang.push(value);
             });
             $.ajax({
                 type: 'post',
@@ -113,9 +148,10 @@
         }
     });
     $('.list_product').on('click','.checkbox',function(){
+        var value = $(this).val();
         if (this.checked) {
             var mang = []; 
-            mang.push($(this).val());
+            mang.push(value);
             $.ajax({
                 type: 'post',
                 url: '/admin/deal/add-session2',
@@ -129,7 +165,7 @@
              })
         }else{
             var mang = []; 
-            mang.push($(this).val());
+            mang.push(value);
             $.ajax({
                 type: 'post',
                 url: '/admin/deal/del-session2',

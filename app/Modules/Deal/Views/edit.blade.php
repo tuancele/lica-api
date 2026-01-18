@@ -96,14 +96,21 @@
                                     @foreach($productdeals as $productdeal)
                                     @php 
                                         $product = $productdeal->product;
-                                        $variant = $product->variant($product->id)
+                                        $selectedVariant = $productdeal->variant;
+                                        $variant = $selectedVariant ?: $product->variant($product->id);
                                     @endphp
-                                    <tr class="item-{{$product->id}}">
-                                        <input type="hidden" name="productid[]" value="{{$product->id}}">
+                                    <tr class="item-{{$product->id}}@if($productdeal->variant_id)-variant-{{$productdeal->variant_id}}@endif">
+                                        <input type="hidden" name="productid[]" value="{{$product->id}}@if($productdeal->variant_id)_v{{$productdeal->variant_id}}@endif">
                                         <td style="text-align: center;"><input type="checkbox" name="checklist[]" class="checkbox2 wgr-checkbox" value="{{$product->id}}"></td>
                                         <td>
                                             <img src="{{$product->image}}" style="width:50px;height: 50px;float: left;margin-right: 5px;">
-                                            <p>{{$product->name}}</p>
+                                            <p><strong>{{$product->name}}</strong></p>
+                                            @if($selectedVariant)
+                                            <small class="text-muted">
+                                                Phân loại: {{$selectedVariant->option1_value ?? 'N/A'}}
+                                                @if($selectedVariant->sku) <br>SKU: {{$selectedVariant->sku}} @endif
+                                            </small>
+                                            @endif
                                         </td>
                                         <td>@if(!empty($variant)){{number_format($variant->price)}}đ 
                                         @endif</td>
@@ -117,7 +124,7 @@
                                             {{$total1-$total2}}
                                         </td>
                                         <td><input type="checkbox" name="statusdeal[{{$product->id}}]" class="wgr-checkbox" value="1" @if($productdeal->status)checked="" @endif></td>
-                                        <td><a class="btn btn-danger btn-xs delete_item" data-id="{{$product->id}}"><i class="fa fa-trash-o" aria-hidden="true"></i></a></td>
+                                        <td><a class="btn btn-danger btn-xs delete_item" data-id="{{$product->id}}@if($productdeal->variant_id)_v{{$productdeal->variant_id}}@endif"><i class="fa fa-trash-o" aria-hidden="true"></i></a></td>
                                     </tr>
                                     @endforeach
                                     @endif
@@ -237,29 +244,64 @@
                             <tbody>
                                 @if($saledeals->count() > 0)
                                 @foreach($saledeals as $saledeal)
-                                @php $product2 = $saledeal->product;$variant2 = $product2->variant($product2->id) @endphp
-                                <tr class="item-{{$product2->id}}">
-                                    <input type="hidden" name="productsale[]" value="{{$product2->id}}">
+                                @php 
+                                    $product2 = $saledeal->product;
+                                    $selectedVariant = $saledeal->variant;
+                                    $variant2 = $selectedVariant ?: $product2->variant($product2->id);
+                                @endphp
+                                <tr class="item-{{$product2->id}}@if($saledeal->variant_id)-variant-{{$saledeal->variant_id}}@endif">
+                                    <input type="hidden" name="productsale[]" value="{{$product2->id}}@if($saledeal->variant_id)_v{{$saledeal->variant_id}}@endif">
                                     <td style="text-align: center;"><input type="checkbox" name="checklist2[]" class="checkbox3 wgr-checkbox" value="{{$product2->id}}"></td>
                                     <td>
                                         <img src="{{$product2->image}}" style="width:50px;height: 50px;float: left;margin-right: 5px;">
-                                        <p>{{$product2->name}}</p>
+                                        <p><strong>{{$product2->name}}</strong></p>
+                                        @if($selectedVariant)
+                                        <small class="text-muted">
+                                            Phân loại: {{$selectedVariant->option1_value ?? 'N/A'}}
+                                            @if($selectedVariant->sku) <br>SKU: {{$selectedVariant->sku}} @endif
+                                        </small>
+                                        @endif
                                     </td>
-                                    <td>@if(!empty($variant2)){{number_format($variant2->price)}}đ 
-                                        <input type="hidden" name="price_product" value="{{$variant2->price}}">
+                                    <td>@if(!empty($variant2))
+                                        @php
+                                            $priceProductName = $saledeal->variant_id 
+                                                ? "price_product[{$product2->id}][{$saledeal->variant_id}]" 
+                                                : "price_product[{$product2->id}]";
+                                        @endphp
+                                        {{number_format($variant2->price)}}đ 
+                                        <input type="hidden" name="{{$priceProductName}}" value="{{$variant2->price}}">
                                     @endif</td>
                                     <td>
-                                        <input type="text" name="pricesale[{{$product2->id}}]" value="{{number_format($saledeal->price)}}" class="form-control pricesale price">
+                                        @php
+                                            $pricesaleName = $saledeal->variant_id 
+                                                ? "pricesale[{$product2->id}][{$saledeal->variant_id}]" 
+                                                : "pricesale[{$product2->id}]";
+                                        @endphp
+                                        <input type="text" name="{{$pricesaleName}}" value="{{number_format($saledeal->price)}}" class="form-control pricesale price">
                                         
                                     </td>
-                                    <td><input type="number" value="{{$saledeal->qty}}" name="numbersale[{{$product2->id}}]" class="form-control"></td>
+                                    <td>
+                                        @php
+                                            $numbersaleName = $saledeal->variant_id 
+                                                ? "numbersale[{$product2->id}][{$saledeal->variant_id}]" 
+                                                : "numbersale[{$product2->id}]";
+                                        @endphp
+                                        <input type="number" value="{{$saledeal->qty}}" name="{{$numbersaleName}}" class="form-control">
+                                    </td>
                                     <td>@php 
                                         $total3 = countProductWarehouse($product2->id,'import');
                                         $total4 = countProductWarehouse($product2->id,'export'); @endphp
                                         {{$total3-$total4}}
                                     </td>
-                                    <td><input type="checkbox" name="status2[{{$product2->id}}]" class="wgr-checkbox" value="1" @if($saledeal->status)checked="" @endif></td>
-                                    <td><a class="btn btn-danger btn-xs delete_item" data-id="{{$product2->id}}"><i class="fa fa-trash-o" aria-hidden="true"></i></a></td>
+                                    <td>
+                                        @php
+                                            $status2Name = $saledeal->variant_id 
+                                                ? "status2[{$product2->id}][{$saledeal->variant_id}]" 
+                                                : "status2[{$product2->id}]";
+                                        @endphp
+                                        <input type="checkbox" name="{{$status2Name}}" class="wgr-checkbox" value="1" @if($saledeal->status)checked="" @endif>
+                                    </td>
+                                    <td><a class="btn btn-danger btn-xs delete_item" data-id="{{$product2->id}}@if($saledeal->variant_id)_v{{$saledeal->variant_id}}@endif"><i class="fa fa-trash-o" aria-hidden="true"></i></a></td>
                                 </tr>
                                 @endforeach
                                 @endif

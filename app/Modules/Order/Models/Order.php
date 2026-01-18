@@ -22,4 +22,10 @@ class Order extends Model
     public function detail(){
         return $this->hasMany('App\Modules\Order\Models\OrderDetail','order_id','id');
     }
+    public function promotion(){
+        return $this->belongsTo('App\Modules\Promotion\Models\Promotion','promotion_id','id');
+    }
+    public function member(){
+        return $this->belongsTo('App\User','user_id','id');
+    }
 }

@@ -18,9 +18,50 @@ class Cart
     public function __construct($oldCart)
     {
         if ($oldCart) {
-            $this->items = $oldCart->items;
-            $this->totalQty = $oldCart->totalQty;
-            $this->totalPrice = $oldCart->totalPrice;
+            // IMPORTANT: Deep copy items array to avoid reference issues
+            // When Cart is unserialized from session, we need to ensure fresh copy
+            if (is_object($oldCart)) {
+                // Deep copy items array
+                $this->items = [];
+                if (isset($oldCart->items) && is_array($oldCart->items)) {
+                    foreach ($oldCart->items as $key => $item) {
+                        $this->items[$key] = $item; // PHP arrays are copied by value
+                    }
+                }
+                $this->totalQty = $oldCart->totalQty ?? 0;
+                $this->totalPrice = $oldCart->totalPrice ?? 0;
+            } elseif (is_array($oldCart)) {
+                // Handle case where oldCart is already an array (from session)
+                $this->items = $oldCart['items'] ?? [];
+                $this->totalQty = $oldCart['totalQty'] ?? 0;
+                $this->totalPrice = $oldCart['totalPrice'] ?? 0;
+            }
+        }
+    }
+    
+    /**
+     * Custom serialization for session storage
+     * Ensures Cart object is properly serialized
+     */
+    public function __sleep()
+    {
+        return ['items', 'totalQty', 'totalPrice'];
+    }
+    
+    /**
+     * Custom unserialization from session
+     * Ensures items array is properly restored
+     */
+    public function __wakeup()
+    {
+        // Ensure items is always an array
+        if (!is_array($this->items)) {
+            $this->items = [];
+        }
+        // Recalculate totals if needed
+        if (empty($this->items)) {
+            $this->totalQty = 0;
+            $this->totalPrice = 0;
         }
     }
 
@@ -158,7 +199,17 @@ class Cart
         if (!isset($this->items[$id])) {
             return;
         }
-        unset($this->items[$id]);
+        
+        // IMPORTANT: Create a new array without the removed item
+        // This ensures we don't modify the original array reference
+        // which could cause all items to be removed
+        $newItems = [];
+        foreach ($this->items as $key => $item) {
+            if ($key != $id) {
+                $newItems[$key] = $item;
+            }
+        }
+        $this->items = $newItems;
 
         // Recalculate Total
         $this->totalQty = 0;

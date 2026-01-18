@@ -48,130 +48,314 @@ class FlashSaleController extends Controller
             return redirect()->route('flashsale');
         }
         $data['detail'] = $detail;
-        $data['productsales'] = ProductSale::where('flashsale_id',$detail->id)->get();
-        // Optimized: Do not load all products
+        $data['productsales'] = ProductSale::where('flashsale_id',$detail->id)
+            ->with(['product.variants', 'variant'])
+            ->get();
+        
+        // Load products with variants for display
+        $productIds = $data['productsales']->pluck('product_id')->unique();
+        $data['products'] = Product::whereIn('id', $productIds)
+            ->with(['variants' => function($q) {
+                $q->with(['color', 'size']);
+            }])
+            ->get();
+        
         return view($this->view.'::edit',$data);
     }
     
     public function update(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'start' => 'required',
-            'end' => 'required',
-        ],[
-            'start.required' => 'Thời gian bắt đầu không được bỏ trống.',
-            'end.required' => 'Thời gian kết thúc không được bỏ trống',
-        ]);
-        if($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'errors' => $validator->errors()
+        try {
+            $validator = Validator::make($request->all(), [
+                'start' => 'required',
+                'end' => 'required',
+            ],[
+                'start.required' => 'Thời gian bắt đầu không được bỏ trống.',
+                'end.required' => 'Thời gian kết thúc không được bỏ trống',
             ]);
-        }
-        $up = $this->model::where('id',$request->id)->update(array(
-            'start' => strtotime($request->start),
-            'end' => strtotime($request->end),
-            'status' => $request->status,
-            'user_id'=> Auth::id()
-        ));
-        
-        if($up > 0){
+            if($validator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'errors' => $validator->errors()
+                ]);
+            }
+            $up = $this->model::where('id',$request->id)->update(array(
+                'start' => strtotime($request->start),
+                'end' => strtotime($request->end),
+                'status' => $request->status,
+                'user_id'=> Auth::id()
+            ));
+            
+            if($up > 0){
             $pricesale =  $request->pricesale;
             $numbersale = $request->numbersale;
-            $checklist = $request->checklist; // Selected product IDs
+            $checklist = $request->checklist; // Selected product/variant IDs
 
-            // FIX: Delete products that were removed from the UI
-            if(isset($checklist)){
-                 ProductSale::where('flashsale_id', $request->id)->whereNotIn('product_id', $checklist)->delete();
-            } else {
-                 // If empty checklist, remove all
-                 ProductSale::where('flashsale_id', $request->id)->delete();
-            }
-
-            if(isset($pricesale) && !empty($pricesale)){
-                foreach ($pricesale as $key => $value) {
-                    $product = ProductSale::where([['flashsale_id',$request->id],['product_id',$key]])->first();
-                    if(isset($product) && !empty($product)){
-                        ProductSale::where('id',$product->id)->update([
-                            'price_sale' => ($value != "")?str_replace(',','', $value):0,
-                            'number' => (isset($numbersale) && !empty($numbersale))?$numbersale[$key]:'0',
-                        ]);
-                    }else{
-                        ProductSale::insertGetId(
-                            [
-                                'flashsale_id' => $request->id,
-                                'product_id' => $key,
-                                'price_sale' => ($value != "")?str_replace(',','', $value):0,
-                                'number' => (isset($numbersale) && !empty($numbersale))?$numbersale[$key]:'0',
-                                'created_at' => date('Y-m-d H:i:s')
-                            ]
-                        );
+            // Get existing keys to keep
+            $existingKeys = [];
+            if(isset($pricesale) && is_array($pricesale)){
+                foreach($pricesale as $productId => $variants){
+                    if(is_array($variants)){
+                        // Product has variants
+                        foreach($variants as $variantId => $price){
+                            $existingKeys[] = $productId . '_' . $variantId;
+                        }
+                    } else {
+                        // Product without variants
+                        $existingKeys[] = $productId . '_null';
                     }
                 }
             }
-            return response()->json([
-                'status' => 'success',
-                'alert' => 'Sửa thành công!',
-                'url' => route('flashsale')
+
+            // Delete products/variants not in checklist or pricesale
+            // Build list of product_id + variant_id combinations to keep
+            $keepCombinations = [];
+            if(isset($pricesale) && is_array($pricesale)){
+                foreach($pricesale as $productId => $variants){
+                    if(is_array($variants)){
+                        // Product has variants
+                        foreach($variants as $variantId => $price){
+                            $keepCombinations[] = ['product_id' => $productId, 'variant_id' => $variantId];
+                        }
+                    } else {
+                        // Product without variants
+                        $keepCombinations[] = ['product_id' => $productId, 'variant_id' => null];
+                    }
+                }
+            }
+            
+            // Delete products not in keep list
+            if(!empty($keepCombinations)){
+                // Get all existing ProductSales for this flash sale
+                $existingProductSales = ProductSale::where('flashsale_id', $request->id)->get();
+                
+                // Delete those not in keep list
+                foreach($existingProductSales as $existingSale){
+                    $found = false;
+                    foreach($keepCombinations as $keep){
+                        if((int)$existingSale->product_id == (int)$keep['product_id']){
+                            $keepVariantId = $keep['variant_id'] !== null ? (int)$keep['variant_id'] : null;
+                            $existingVariantId = $existingSale->variant_id !== null ? (int)$existingSale->variant_id : null;
+                            
+                            if($keepVariantId === $existingVariantId){
+                                $found = true;
+                                break;
+                            }
+                        }
+                    }
+                    if(!$found){
+                        $existingSale->delete();
+                    }
+                }
+            } else {
+                // If no pricesale data, check checklist
+                if(isset($checklist) && !empty($checklist)){
+                    // Keep only items in checklist
+                    $keepCombinations = [];
+                    foreach($checklist as $item){
+                        if(strpos($item, '_v') !== false){
+                            // Has variant: product_id_variant_id
+                            list($productId, $variantId) = explode('_v', $item);
+                            $keepCombinations[] = ['product_id' => $productId, 'variant_id' => $variantId];
+                        } else {
+                            // No variant: product_id
+                            $keepCombinations[] = ['product_id' => $item, 'variant_id' => null];
+                        }
+                    }
+                    
+                    if(!empty($keepCombinations)){
+                        // Get all existing ProductSales for this flash sale
+                        $existingProductSales = ProductSale::where('flashsale_id', $request->id)->get();
+                        
+                        // Delete those not in keep list
+                        foreach($existingProductSales as $existingSale){
+                            $found = false;
+                            foreach($keepCombinations as $keep){
+                                if((int)$existingSale->product_id == (int)$keep['product_id']){
+                                    $keepVariantId = $keep['variant_id'] !== null ? (int)$keep['variant_id'] : null;
+                                    $existingVariantId = $existingSale->variant_id !== null ? (int)$existingSale->variant_id : null;
+                                    
+                                    if($keepVariantId === $existingVariantId){
+                                        $found = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if(!$found){
+                                $existingSale->delete();
+                            }
+                        }
+                    }
+                } else {
+                    // If empty checklist and no pricesale, remove all
+                    ProductSale::where('flashsale_id', $request->id)->delete();
+                }
+            }
+
+            // Process pricesale data
+            if(isset($pricesale) && !empty($pricesale)){
+                foreach ($pricesale as $productId => $variants) {
+                    if(is_array($variants)){
+                        // Product has variants
+                        foreach($variants as $variantId => $priceValue){
+                            $numberValue = isset($numbersale[$productId][$variantId]) ? $numbersale[$productId][$variantId] : '0';
+                            
+                            $variantIdInt = (int)$variantId;
+                            $productIdInt = (int)$productId;
+                            
+                            $productSale = ProductSale::where([
+                                ['flashsale_id', (int)$request->id],
+                                ['product_id', $productIdInt],
+                                ['variant_id', $variantIdInt]
+                            ])->first();
+                            
+                            if($productSale){
+                                ProductSale::where('id', $productSale->id)->update([
+                                    'price_sale' => ($priceValue != "") ? str_replace(',','', $priceValue) : 0,
+                                    'number' => (int)$numberValue,
+                                ]);
+                            } else {
+                                $productSale = new ProductSale();
+                                $productSale->flashsale_id = (int)$request->id;
+                                $productSale->product_id = $productIdInt;
+                                $productSale->variant_id = $variantIdInt;
+                                $productSale->price_sale = ($priceValue != "") ? str_replace(',','', $priceValue) : 0;
+                                $productSale->number = (int)$numberValue;
+                                $productSale->buy = 0;
+                                $productSale->save();
+                            }
+                        }
+                    } else {
+                        // Product without variants (old logic)
+                        $numberValue = isset($numbersale[$productId]) ? $numbersale[$productId] : '0';
+                        
+                        $productIdInt = (int)$productId;
+                        
+                        $productSale = ProductSale::where([
+                            ['flashsale_id', (int)$request->id],
+                            ['product_id', $productIdInt],
+                        ])->whereNull('variant_id')->first();
+                        
+                        if($productSale){
+                            ProductSale::where('id', $productSale->id)->update([
+                                'price_sale' => ($variants != "") ? str_replace(',','', $variants) : 0,
+                                'number' => (int)$numberValue,
+                            ]);
+                        } else {
+                            $productSale = new ProductSale();
+                            $productSale->flashsale_id = (int)$request->id;
+                            $productSale->product_id = $productIdInt;
+                            $productSale->variant_id = null;
+                            $productSale->price_sale = ($variants != "") ? str_replace(',','', $variants) : 0;
+                            $productSale->number = (int)$numberValue;
+                            $productSale->buy = 0;
+                            $productSale->save();
+                        }
+                    }
+                }
+            }
+                return response()->json([
+                    'status' => 'success',
+                    'alert' => 'Sửa thành công!',
+                    'url' => route('flashsale')
+                ]);
+            }else{
+                return response()->json([
+                    'status' => 'error',
+                    'errors' => array('alert' => array('0' => 'Sửa không thành công!'))
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Flash Sale Update Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all()
             ]);
-        }else{
             return response()->json([
                 'status' => 'error',
-                'errors' => array('alert' => array('0' => 'Sửa không thành công!'))
-            ]);
+                'errors' => array('alert' => array('0' => 'Có lỗi xảy ra: ' . $e->getMessage()))
+            ], 500);
         }
     }
 
     public function store(Request $request)
     {   
-        $validator = Validator::make($request->all(), [
-            'start' => 'required',
-            'end' => 'required',
-        ],[
-            'start.required' => 'Thời gian bắt đầu không được bỏ trống.',
-            'end.required' => 'Thời gian kết thúc không được bỏ trống',
-        ]);
-        if($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'errors' => $validator->errors()
+        try {
+            $validator = Validator::make($request->all(), [
+                'start' => 'required',
+                'end' => 'required',
+            ],[
+                'start.required' => 'Thời gian bắt đầu không được bỏ trống.',
+                'end.required' => 'Thời gian kết thúc không được bỏ trống',
             ]);
-        }
-        $id = $this->model::insertGetId(
-            [
-                'start' => strtotime($request->start),
-                'end' => strtotime($request->end),
-                'status' => $request->status,
-                'user_id'=> Auth::id(),
-                'created_at' => date('Y-m-d H:i:s')
-            ]
-        );
-        if($id > 0){
+            if($validator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'errors' => $validator->errors()
+                ]);
+            }
+            
+            $flashSale = new FlashSale();
+            $flashSale->start = strtotime($request->start);
+            $flashSale->end = strtotime($request->end);
+            $flashSale->status = $request->status;
+            $flashSale->user_id = Auth::id();
+            $flashSale->save();
+            $id = $flashSale->id;
+            
+            if($id > 0){
             $pricesale =  $request->pricesale;
             $numbersale = $request->numbersale;
             if(isset($pricesale) && !empty($pricesale)){
-                foreach ($pricesale as $key => $value) {
-                    ProductSale::insertGetId(
-                        [
-                            'flashsale_id' => $id,
-                            'product_id' => $key,
-                            'price_sale' => ($value != "")?str_replace(',','', $value):0,
-                            'number' => (isset($numbersale) && !empty($numbersale))?$numbersale[$key]:'0',
-                            'created_at' => date('Y-m-d H:i:s')
-                        ]
-                    );
+                foreach ($pricesale as $productId => $variants) {
+                    if(is_array($variants)){
+                        // Product has variants
+                        foreach($variants as $variantId => $priceValue){
+                            $numberValue = isset($numbersale[$productId][$variantId]) ? $numbersale[$productId][$variantId] : '0';
+                            
+                            $productSale = new ProductSale();
+                            $productSale->flashsale_id = $id;
+                            $productSale->product_id = (int)$productId;
+                            $productSale->variant_id = (int)$variantId;
+                            $productSale->price_sale = ($priceValue != "") ? str_replace(',','', $priceValue) : 0;
+                            $productSale->number = (int)$numberValue;
+                            $productSale->buy = 0;
+                            $productSale->save();
+                        }
+                    } else {
+                        // Product without variants (old logic)
+                        $numberValue = isset($numbersale[$productId]) ? $numbersale[$productId] : '0';
+                        
+                        $productSale = new ProductSale();
+                        $productSale->flashsale_id = $id;
+                        $productSale->product_id = (int)$productId;
+                        $productSale->variant_id = null;
+                        $productSale->price_sale = ($variants != "") ? str_replace(',','', $variants) : 0;
+                        $productSale->number = (int)$numberValue;
+                        $productSale->buy = 0;
+                        $productSale->save();
+                    }
                 }
             }
-            return response()->json([
-                'status' => 'success',
-                'alert' => 'Tạo thành công!',
-                'url' => route('flashsale')
+                return response()->json([
+                    'status' => 'success',
+                    'alert' => 'Tạo thành công!',
+                    'url' => route('flashsale')
+                ]);
+            }else{
+                return response()->json([
+                    'status' => 'error',
+                    'errors' => array('alert' => array('0' => 'Tạo không thành công!'))
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Flash Sale Store Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->all()
             ]);
-        }else{
             return response()->json([
                 'status' => 'error',
-                'errors' => array('alert' => array('0' => 'Tạo không thành công!'))
-            ]);
+                'errors' => array('alert' => array('0' => 'Có lỗi xảy ra: ' . $e->getMessage()))
+            ], 500);
         }
     }
     public function delete(Request $request)
@@ -243,9 +427,14 @@ class FlashSaleController extends Controller
     }
 
     public function choseProduct(Request $request){
-        // This is loadProduct
-        $data['products'] =  Product::select('id','name','image')->where('type','product')->whereIn('id',$request->productid)->get();
-        // Return only rows view (I will create it next)
+        // Load products with variants
+        $data['products'] = Product::where('type','product')
+            ->whereIn('id', $request->productid)
+            ->with(['variants' => function($q) {
+                $q->with(['color', 'size']);
+            }])
+            ->get();
+        // Return only rows view
         return view($this->view.'::product_rows',$data);
     }
 

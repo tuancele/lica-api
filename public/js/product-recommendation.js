@@ -498,8 +498,45 @@
                     }
                     // 初始化新添加产品的 skeleton 优化器
                     if (window.initSmartSkeleton) {
-                        window.initSmartSkeleton();
+                        setTimeout(function() {
+                            window.initSmartSkeleton();
+                        }, 100);
                     }
+                    
+                    // 确保图片加载后初始化 skeleton
+                    container.querySelectorAll('.js-skeleton-img').forEach(function(img) {
+                        const imgSrc = img.getAttribute('src');
+                        
+                        if (!imgSrc || imgSrc === '') {
+                            // 如果没有图片源，隐藏 skeleton 容器
+                            const skeletonContainer = img.closest('.js-skeleton');
+                            if (skeletonContainer) {
+                                skeletonContainer.style.display = 'none';
+                            }
+                            return;
+                        }
+                        
+                        if (img.complete && img.naturalWidth > 0) {
+                            // 图片已加载
+                            if (window.initSmartSkeleton) {
+                                window.initSmartSkeleton();
+                            }
+                        } else {
+                            // 等待图片加载
+                            img.addEventListener('load', function() {
+                                if (window.initSmartSkeleton) {
+                                    window.initSmartSkeleton();
+                                }
+                            }, { once: true });
+                            
+                            // 图片加载失败时也初始化 skeleton（使用默认尺寸）
+                            img.addEventListener('error', function() {
+                                if (window.initSmartSkeleton) {
+                                    window.initSmartSkeleton();
+                                }
+                            }, { once: true });
+                        }
+                    });
                 } else {
                     container.innerHTML = html;
                     this.initCarousel(container);
@@ -507,8 +544,45 @@
                     this.setupLoadMoreButton(container);
                     // 初始化 skeleton 优化器
                     if (window.initSmartSkeleton) {
-                        window.initSmartSkeleton();
+                        setTimeout(function() {
+                            window.initSmartSkeleton();
+                        }, 100);
                     }
+                    
+                    // 确保图片加载后初始化 skeleton
+                    container.querySelectorAll('.js-skeleton-img').forEach(function(img) {
+                        const imgSrc = img.getAttribute('src');
+                        
+                        if (!imgSrc || imgSrc === '') {
+                            // 如果没有图片源，隐藏 skeleton 容器
+                            const skeletonContainer = img.closest('.js-skeleton');
+                            if (skeletonContainer) {
+                                skeletonContainer.style.display = 'none';
+                            }
+                            return;
+                        }
+                        
+                        if (img.complete && img.naturalWidth > 0) {
+                            // 图片已加载
+                            if (window.initSmartSkeleton) {
+                                window.initSmartSkeleton();
+                            }
+                        } else {
+                            // 等待图片加载
+                            img.addEventListener('load', function() {
+                                if (window.initSmartSkeleton) {
+                                    window.initSmartSkeleton();
+                                }
+                            }, { once: true });
+                            
+                            // 图片加载失败时也初始化 skeleton（使用默认尺寸）
+                            img.addEventListener('error', function() {
+                                if (window.initSmartSkeleton) {
+                                    window.initSmartSkeleton();
+                                }
+                            }, { once: true });
+                        }
+                    });
                 }
             } else {
                 const html = products.map(product => `
