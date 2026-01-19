@@ -114,9 +114,13 @@ if ($displayPrice['type'] === 'normal') {
       - Hiển thị text đỏ ngay trong item: `"Deal đã hết quà hoặc hết kho"`.
     - Nếu `available === true`: hiển thị bình thường, cho phép click.
 - Nút `MUA DEAL SỐC` (`.btnBuyDealSốc`):
-  - Nếu **không còn bất kỳ** `deal-checkbox-custom` nào khả dụng (`!disabled`) → `disabled` + text `"HẾT QUÀ"`.
+  - Nếu **tất cả** `deal-checkbox-custom` đều `disabled` (hết suất) → **Loại bỏ class `btnBuyDealSốc`**, `enabled` + text `"Mua ngay"` → Nút quay về function mua hàng thường (chỉ add sản phẩm chính, không kèm dealsale_id).
   - Nếu còn deal khả dụng nhưng chưa chọn item → `disabled` + text `"MUA DEAL SỐC"`.
-  - Khi có ít nhất một item được check → `enabled`.
+  - Khi có ít nhất một item được check → `enabled` + text `"MUA DEAL SỐC"`.
+- Logic ràng buộc giỏ hàng:
+  - Xóa sản phẩm chính → tự động xóa toàn bộ sản phẩm mua kèm thuộc cùng deal (CartService::removeItem gọi removeRelatedDealItems).
+  - Giới hạn mua kèm: kiểm tra hạn mức (qty của sale_deals được dùng như limited_per_order) ngay khi add; nếu vượt, báo lỗi `"Bạn đã đạt giới hạn số lượng quà tặng cho ưu đãi này"`.
+  - Sau khi remove/add qua API, nếu server trả `removed_variant_ids`, FE reload trang giỏ để làm sạch sản phẩm phụ.
 
 **5.3. Chống ghi đè trạng thái (State Persistence)**
 
@@ -273,4 +277,56 @@ if ($displayPrice['type'] === 'normal') {
     - Xem numbersale hiện tại (ví dụ: 3).
     - Hủy đơn hàng có chứa Deal Sốc.
     - Kiểm tra: numbersale phải tăng lên (ví dụ: 4), `deal_sales.qty` tăng, `deal_sales.buy` giảm.
+
+#### 2026-01-23 (Update 2)
+- Fix: Logic hiển thị nút "MUA DEAL SỐC" khi tất cả deal hết suất:
+  - Root cause: Khi tất cả deal hết, nút bị `disabled` và hiển thị "HẾT QUÀ", khiến khách không thể mua sản phẩm chính.
+  - Fix (frontend):
+    - Sửa hàm `updateBuyDealButton()` trong `app/Themes/Website/Views/product/detail.blade.php`:
+      - Khi tất cả deal hết (`allDealsOutOfStock`): Loại bỏ class `btnBuyDealSốc`, `enabled` nút, đổi text về `"Mua ngay"`.
+      - Logic click tự động fallback về mua hàng thường (không còn class `btnBuyDealSốc` → chỉ add sản phẩm chính, không kèm dealsale_id).
+    - Sửa hàm `initializeDealControls()`: Tìm nút bằng `.buyNowDetail` thay vì `.btnBuyDealSốc` để đảm bảo luôn tìm thấy nút ngay cả khi tất cả deal hết.
+  - Quy tắc hiển thị nút:
+    - Tất cả deal hết → Nút "Mua ngay" (enabled, mua hàng thường).
+    - Còn deal available nhưng chưa chọn → Nút "MUA DEAL SỐC" (disabled, yêu cầu chọn).
+    - Đã chọn deal → Nút "MUA DEAL SỐC" (enabled, mua deal).
+
+#### 2026-01-23 (Update 3)
+- Fix: Logic giỏ hàng (tổng tiền, ràng buộc xóa, giới hạn mua kèm)
+  - Price sync: `CartService::removeItem` trả về summary/items sau khi gọi `getCart()` để luôn dùng PriceEngine; `CartController` vẫn tính giá từng item bằng PriceEngine.
+  - Ràng buộc xóa: Xóa sản phẩm chính sẽ tự động xóa toàn bộ sản phẩm mua kèm cùng deal (CartService::removeItem → removeRelatedDealItems).
+  - Giới hạn mua kèm:
+    - Khi add deal item, kiểm tra hạn mức (dùng `sale_deals.qty` như limited per order).
+    - Nếu **variant đã có trong giỏ** và khách bấm thêm vượt limit: không throw cứng, clamp/no-op để tránh UX lỗi khi click lặp.
+    - Chỉ throw `"Bạn đã đạt giới hạn số lượng quà tặng cho ưu đãi này"` khi khách cố tình thêm mới vượt limit.
+  - Sidebar tổng tiền:
+    - `public/js/cart-api-v1.js::updateCartUI` bắt buộc set `.total-price` (và `.subtotal-price` nếu có) từ `summary.total/summary.subtotal` từ backend, không tự cộng trừ bằng JS.
+    - `cart/index.blade.php` các chỗ update sidebar sau AJAX phải dùng `summary.total` (fallback `summary.subtotal`).
+    - Fix SSR/F5: `cart/index.blade.php` không được dùng biến `$totalPrice` bên trong vòng lặp item (tránh ghi đè sidebar total). Dùng biến riêng như `$lineTotalPrice`.
+  - Xóa & sync:
+    - Sau `removeItem`, FE gọi lại `getCart()` để đồng bộ sidebar/tổng tiền theo backend.
+  - Fix "Phải F5 mới thêm được quà sau khi xóa" (Memory Flush - Architecture Fix):
+    - Root cause: Service có thể giữ dữ liệu cũ trong memory thông qua biến trung gian `$cart`, không tự động refresh từ session.
+    - Solution (Architecture-level):
+      - Thêm thuộc tính `protected $items = []` vào `CartService` để lưu items array synced từ session.
+      - Tạo hàm `syncWithSession()`: Sync `$this->items` từ `Session::get('cart')`, đảm bảo luôn đọc dữ liệu mới nhất, không cache trong Service.
+      - Gọi `syncWithSession()` ở đầu mỗi hàm: `addItem`, `removeItem`, `getCart`.
+      - Trong `addItem` khi kiểm tra deal limit: **Dùng `$this->items` (đã sync từ session)** để đếm deal items, không dùng biến `$cart` trung gian.
+      - Trong `removeItem`: Sau khi persist session (`Session::put('cart', $cart) + session()->save()`), gọi lại `syncWithSession()` để cập nhật `$this->items`.
+    - Backend (`CartService::removeItem`): 
+      - Gọi `syncWithSession()` ở đầu hàm.
+      - Sau khi xóa, persist session ngay (`Session::put/forget + session()->save()`).
+      - Sau khi persist, gọi lại `syncWithSession()` để sync `$this->items`.
+      - Log cart state sau xóa để debug.
+    - Backend (`CartService::addItem`): 
+      - Gọi `syncWithSession()` ở đầu hàm.
+      - Khi kiểm tra deal limit: Dùng `$this->items` (đã sync từ session) thay vì biến `$cart` trung gian.
+      - Thêm log `[Cart_Final_Check] Items count: ' . count($this->items)` ngay trước dòng check limit_deal.
+    - Frontend (`cart/index.blade.php`):
+      - Set `window.cartProcessing = true` khi bắt đầu remove, `false` sau khi getCart() hoàn tất.
+      - Disable tất cả `.addDealCart` buttons trong khi processing.
+      - Thêm delay 150ms trước khi gọi `getCart()` sau remove để đảm bảo session flush hoàn tất.
+      - Handler `addDealCart` kiểm tra `window.cartProcessing` và chặn nếu đang processing.
+    - Session Driver: Kiểm tra `config/session.php` - driver là `file`, thư mục `storage/framework/sessions` có quyền ghi (BUILTIN\Users có ReadAndExecute, Authenticated Users có Modify).
+    - Logging: Thêm log `[CartService] removeItem - Cart state after removal`, `[CartService] addItem - Cart state before deal limit check`, và `[Cart_Final_Check] Items count: X` để debug memory sync.
 

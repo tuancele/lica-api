@@ -3483,11 +3483,18 @@
             
             const dealRows = document.querySelectorAll('.item_deal_row');
             const dealCheckboxes = document.querySelectorAll('.deal-checkbox-custom');
-            const buyDealButton = document.querySelector('.btnBuyDealSốc');
+            // Tìm nút bằng buyNowDetail vì khi tất cả deal hết, nút sẽ không còn class btnBuyDealSốc
+            const buyDealButton = document.querySelector('.buyNowDetail');
             let toastShown = false;
             
             if (dealRows.length === 0) {
                 console.warn('[API] No deal rows found');
+                return;
+            }
+            
+            // Nếu không tìm thấy nút, không thể khởi tạo deal controls
+            if (!buyDealButton) {
+                console.warn('[API] Buy button not found');
                 return;
             }
             
@@ -3559,15 +3566,26 @@
             // Update button state function
             function updateBuyDealButton() {
                 const checkedCount = document.querySelectorAll('.deal-checkbox-custom:checked').length;
-                const hasAvailableDeal = Array.from(document.querySelectorAll('.deal-checkbox-custom')).some(cb => !cb.disabled && (parseInt(cb.closest('.item_deal_row')?.dataset.remainingQuota || '1', 10) > 0));
+                const allDealCheckboxes = document.querySelectorAll('.deal-checkbox-custom');
+                const hasAvailableDeal = Array.from(allDealCheckboxes).some(cb => !cb.disabled && (parseInt(cb.closest('.item_deal_row')?.dataset.remainingQuota || '1', 10) > 0));
+                const allDealsOutOfStock = allDealCheckboxes.length > 0 && Array.from(allDealCheckboxes).every(cb => cb.disabled);
+                
                 if (buyDealButton) {
-                    if (!hasAvailableDeal) {
-                        buyDealButton.disabled = true;
-                        buyDealButton.textContent = 'HẾT QUÀ';
+                    // Nếu tất cả deal đều hết suất -> chuyển nút về mua hàng thường
+                    if (allDealsOutOfStock || !hasAvailableDeal) {
+                        // Loại bỏ class btnBuyDealSốc để nút quay về function mua hàng thường
+                        buyDealButton.classList.remove('btnBuyDealSốc');
+                        buyDealButton.disabled = false;
+                        buyDealButton.textContent = 'Mua ngay';
+                        console.log('[Deal] All deals out of stock, button switched to normal buy mode');
                     } else if (checkedCount === 0) {
+                        // Còn deal available nhưng chưa chọn -> disable và yêu cầu chọn
+                        buyDealButton.classList.add('btnBuyDealSốc');
                         buyDealButton.disabled = true;
                         buyDealButton.textContent = 'MUA DEAL SỐC';
                     } else {
+                        // Đã chọn deal -> enable và cho phép mua deal
+                        buyDealButton.classList.add('btnBuyDealSốc');
                         buyDealButton.disabled = false;
                         buyDealButton.textContent = 'MUA DEAL SỐC';
                     }

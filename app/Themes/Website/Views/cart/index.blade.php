@@ -115,10 +115,11 @@
                                                             $variantId = $variant['item']['id'];
                                                             $priceData = $productsWithPrice[$variantId] ?? null;
                                                             $hasBreakdown = $priceData && isset($priceData['price_breakdown']) && count($priceData['price_breakdown']) > 1;
-                                                            $totalPrice = $priceData['total_price'] ?? ($variant['price'] * $variant['qty']);
+                                                            // IMPORTANT: Do not overwrite $totalPrice (sidebar total). Use lineTotal instead.
+                                                            $lineTotalPrice = $priceData['total_price'] ?? ($variant['price'] * $variant['qty']);
                                                         @endphp
                                                         <span class="commerce-Price-amount amount item-total-{{$variantId}}">
-                                                            {{number_format($totalPrice)}}đ
+                                                            {{number_format($lineTotalPrice)}}đ
                                                         </span>
                                                         @if($hasBreakdown)
                                                             <div class="fs-11 text-muted mt-1" style="cursor: pointer;" title="Click để xem chi tiết">
@@ -421,8 +422,12 @@
                 timestamp: new Date().toISOString()
             });
             
+            // Set processing state to prevent rapid add/remove conflicts
+            window.cartProcessing = true;
             $btn.prop('disabled', true).text('Đang xóa...');
             $('.cart-wrapper').addClass('cart-loading');
+            // Disable all add deal buttons temporarily
+            $('.addDealCart').prop('disabled', true);
             
             CartAPI.removeItem(variantId)
                 .done(function(response) {
@@ -462,20 +467,51 @@
                         console.log('[CART DEBUG] All rows found:', allRows);
                         console.log('[CART DEBUG] Rows to remove:', $rowsToRemove.length);
                         
-                        // Update cart summary first (before removing rows)
-                        if (response.data && response.data.summary) {
-                            var summary = response.data.summary;
-                            // Update all total-price elements (table and sidebar)
-                            $('.total-price').text(CartAPI.formatCurrency(summary.subtotal));
-                            $('.count-cart').text(summary.total_qty || 0);
-                            
-                            // Also update checkout button state
-                            if (summary.total_qty === 0) {
-                                $('.checkout-button').prop('disabled', true).addClass('disabled');
-                            } else {
-                                $('.checkout-button').prop('disabled', false).removeClass('disabled');
-                            }
-                        }
+                        // CRITICAL: Small delay to ensure session is flushed before next add operation
+                        setTimeout(function() {
+                            // Always re-fetch cart after remove to sync totals & deal rules from backend
+                            CartAPI.getCart().done(function(cartRes) {
+                                if (cartRes && cartRes.data && cartRes.data.summary) {
+                                    var summary = cartRes.data.summary;
+                                    // Sidebar + table totals: always from backend
+                                    $('.subtotal-price').text(CartAPI.formatCurrency(summary.subtotal));
+                                    $('.total-price').text(CartAPI.formatCurrency(summary.total !== undefined ? summary.total : summary.subtotal));
+                                    $('.count-cart').text(summary.total_qty || 0);
+                                    
+                                    // Also update checkout button state
+                                    if (summary.total_qty === 0) {
+                                        $('.checkout-button').prop('disabled', true).addClass('disabled');
+                                    } else {
+                                        $('.checkout-button').prop('disabled', false).removeClass('disabled');
+                                    }
+                                    
+                                    // DEBUG: Log success with summary
+                                    console.log('[CART DEBUG] Remove item success:', {
+                                        variantId: variantId,
+                                        removedVariantIds: removedVariantIds,
+                                        summary: summary,
+                                        removedCount: removedCount
+                                    });
+                                    
+                                    // Check if cart is empty, reload only if empty
+                                    if (summary.total_qty === 0) {
+                                        console.log('[CART DEBUG] Cart is empty, reloading...');
+                                        setTimeout(function() {
+                                            window.location.reload();
+                                        }, 500);
+                                    }
+                                    
+                                    // CRITICAL: Release processing state and re-enable add deal buttons after cart sync
+                                    window.cartProcessing = false;
+                                    $('.addDealCart').prop('disabled', false);
+                                    console.log('[CART DEBUG] Cart state synced, add deal buttons re-enabled');
+                                }
+                            }).fail(function() {
+                                // Even on fail, release state
+                                window.cartProcessing = false;
+                                $('.addDealCart').prop('disabled', false);
+                            });
+                        }, 150); // 150ms delay to ensure session flush completes
                         
                         // Remove rows with animation
                         var totalRowsToRemove = $rowsToRemove.length;
@@ -501,6 +537,9 @@
                                             $tr.find('.form-quatity').prop('disabled', false);
                                             $tr.find('.remove-item-cart').prop('disabled', false);
                                         });
+                                        
+                                        // Ensure processing state is cleared
+                                        window.cartProcessing = false;
                                     }
                                 });
                             });
@@ -528,26 +567,13 @@
                             ? 'Đã xóa ' + removedCount + ' sản phẩm khỏi giỏ hàng'
                             : 'Đã xóa sản phẩm khỏi giỏ hàng';
                         CartAPI.showSuccess(successMsg);
-                        
-                        // DEBUG: Log success
-                        console.log('[CART DEBUG] Remove item success:', {
-                            variantId: variantId,
-                            removedVariantIds: removedVariantIds,
-                            summary: summary,
-                            removedCount: removedCount
-                        });
-                        
-                        // Check if cart is empty, reload only if empty
-                        if (summary.total_qty === 0) {
-                            console.log('[CART DEBUG] Cart is empty, reloading...');
-                            setTimeout(function() {
-                                window.location.reload();
-                            }, 500);
-                        }
                     } else {
                         CartAPI.showError(response.message || 'Xóa sản phẩm thất bại');
                         $btn.prop('disabled', false).text('×');
                         $('.cart-wrapper').removeClass('cart-loading');
+                        // Release processing state on error
+                        window.cartProcessing = false;
+                        $('.addDealCart').prop('disabled', false);
                     }
                 })
                 .fail(function(xhr, status, error) {
@@ -628,7 +654,7 @@
                         
                         // Update cart summary
                         if (data.summary) {
-                            $('.total-price').text(CartAPI.formatCurrency(data.summary.subtotal));
+                            $('.total-price').text(CartAPI.formatCurrency(data.summary.total !== undefined ? data.summary.total : data.summary.subtotal));
                             $('.count-cart').text(data.summary.total_qty || 0);
                         }
                         
@@ -697,7 +723,7 @@
                         
                         // Update cart summary
                         if (data.summary) {
-                            $('.total-price').text(CartAPI.formatCurrency(data.summary.subtotal));
+                            $('.total-price').text(CartAPI.formatCurrency(data.summary.total !== undefined ? data.summary.total : data.summary.subtotal));
                             $('.count-cart').text(data.summary.total_qty || 0);
                         }
                     } else {
@@ -801,7 +827,7 @@
                         
                         // Update cart summary
                         if (data.summary) {
-                            $('.total-price').text(CartAPI.formatCurrency(data.summary.subtotal));
+                            $('.total-price').text(CartAPI.formatCurrency(data.summary.total !== undefined ? data.summary.total : data.summary.subtotal));
                             $('.count-cart').text(data.summary.total_qty || 0);
                         }
                         
@@ -840,6 +866,13 @@
 
         // Add deal to cart
         $('body').on('click', '.addDealCart', function() {
+            // CRITICAL: Prevent add deal while cart is processing (e.g., removing items)
+            if (window.cartProcessing === true) {
+                console.log('[CART DEBUG] Add deal blocked: cart is processing');
+                CartAPI.showError('Vui lòng đợi giỏ hàng hoàn tất thao tác trước');
+                return;
+            }
+            
             var variantId = $(this).attr('data-id');
             var dealId = $(this).attr('data-deal-id');
             var limited = parseInt($(this).attr('data-limited'));

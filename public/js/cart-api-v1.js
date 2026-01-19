@@ -341,13 +341,26 @@
             if (!cartData || !cartData.data) return;
 
             const summary = cartData.data.summary || {};
-            
-            // Update total price: luôn tin vào số từ Backend (Single Source of Truth)
+            // Debug total from backend summary (single source of truth)
+            if (summary.total !== undefined || summary.subtotal !== undefined) {
+                console.log('[CartAPI] cart_summary', {
+                    total: summary.total,
+                    subtotal: summary.subtotal,
+                    total_qty: summary.total_qty
+                });
+            }
+            // IMPORTANT: Sidebar totals must always use backend summary (no client-side math)
+            if (summary.subtotal !== undefined) {
+                $('.subtotal-price').text(this.formatCurrency(summary.subtotal));
+            }
             if (summary.total !== undefined) {
                 $('.total-price').text(this.formatCurrency(summary.total));
             } else if (summary.subtotal !== undefined) {
                 $('.total-price').text(this.formatCurrency(summary.subtotal));
             }
+            
+            // Update total price: luôn tin vào số từ Backend (Single Source of Truth)
+            // (already set above for both .subtotal-price and .total-price)
 
             // Update cart count (if exists)
             if (summary.total_qty !== undefined) {
