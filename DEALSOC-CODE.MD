@@ -330,3 +330,184 @@ if ($displayPrice['type'] === 'normal') {
     - Session Driver: Kiểm tra `config/session.php` - driver là `file`, thư mục `storage/framework/sessions` có quyền ghi (BUILTIN\Users có ReadAndExecute, Authenticated Users có Modify).
     - Logging: Thêm log `[CartService] removeItem - Cart state after removal`, `[CartService] addItem - Cart state before deal limit check`, và `[Cart_Final_Check] Items count: X` để debug memory sync.
 
+#### 2026-01-23 (Update 4) - Frontend State Sync để xử lý triệt để độ trễ Session
+- Fix: Vẫn phải F5 mới thêm được Deal Sốc sau khi xóa (mặc dù đã có memory sync ở backend).
+- Root cause: Backend đã sync từ session nhưng vẫn có độ trễ giữa các request HTTP. Frontend không có cơ chế quản lý trạng thái Deal riêng, phụ thuộc hoàn toàn vào backend response.
+- Solution (Frontend State Management):
+  - **Bước 1: Quản lý trạng thái Deal bằng JavaScript**
+    - Tạo mảng toàn cục `window.activeDeals = []` để theo dõi các Deal đang có trong giỏ.
+    - Khởi tạo khi trang load (`DOMContentLoaded`): Duyệt toàn bộ `.is-deal-row`, lấy `variantId` và `dealId`, đẩy vào mảng.
+    - File: `app/Themes/Website/Views/cart/index.blade.php`.
+  - **Bước 2: Chặn và Cập nhật tức thì khi Xóa (Frontend Sync)**
+    - Khi xóa thành công: Xóa deal khỏi `window.activeDeals` ngay lập tức (không đợi session).
+    - Cập nhật UI các nút "THÊM NGAY" ngay lập tức: Enable button nếu deal đã được xóa khỏi giỏ.
+    - Xóa DOM ngay để tránh rác dữ liệu trong UI.
+    - File: `app/Themes/Website/Views/cart/index.blade.php` (handler `removeItem`).
+  - **Bước 3: Kiểm tra tại nút "THÊM NGAY" (The Gatekeeper)**
+    - Thay vì chỉ dựa vào Response của Server, kiểm tra mảng `window.activeDeals`.
+    - Nếu deal không còn trong mảng (vừa xóa xong), cho phép gửi Request `addItem` đi.
+    - Thêm tham số `force_refresh=1` vào API call để ép backend đọc lại session từ storage.
+    - File: `app/Themes/Website/Views/cart/index.blade.php` (handler `.addDealCart`).
+  - **Bước 4: Vá lỗi Backend (addItem Force Refresh)**
+    - `CartController::addItem()` nhận tham số `force_refresh` từ query string.
+    - `CartService::addItem()` nhận tham số `$forceRefresh` (bool).
+    - Nếu `force_refresh=true`: Gọi `session()->save()` và `session()->regenerate(false)` để ép Laravel đọc lại session từ storage, bỏ qua mọi cache nội bộ của PHP.
+    - Files: `app/Http/Controllers/Api/V1/CartController.php`, `app/Services/Cart/CartService.php`.
+  - **Bước 5: Loại bỏ thuộc tính $items khỏi bộ nhớ Service (Architecture Cleanup)**
+    - Xóa `protected array $items = []` khỏi `CartService`.
+    - Xóa hàm `syncWithSession()` (không cần nữa).
+    - Thêm hàm `getCartItemsFromSession()` để đọc trực tiếp từ session khi cần.
+    - Tất cả các hàm (`addItem`, `removeItem`, `getCart`) đọc trực tiếp từ `session()->get('cart', [])` thay vì dùng biến tạm trong memory.
+    - File: `app/Services/Cart/CartService.php`.
+  - **Bước 6: Ép ghi Session vật lý ngay khi Xóa**
+    - Trong `removeItem()`: Thứ tự `removeItem()` → `session()->put('cart', $cart)` → `session()->save()`.
+    - Đảm bảo session được flush ngay lập tức, không đợi request kết thúc.
+    - File: `app/Services/Cart/CartService.php`.
+  - **Bước 7: Sửa logic Validation trong addItem**
+    - Đọc trực tiếp từ session: `$currentCart = session()->get('cart', null)`.
+    - Extract `items` array từ Cart object.
+    - Đếm deal items từ `$currentCartItems` (không dùng biến tạm trong memory).
+    - Logging chi tiết: `[CART_VALIDATION] Kiểm tra Deal ID: X | Số lượng trong giỏ FRESH: Y`.
+    - File: `app/Services/Cart/CartService.php`.
+  - **Frontend API Update:**
+    - `public/js/cart-api-v1.js::addItem()` nhận tham số `forceRefresh` và thêm vào query string nếu `true`.
+  - **Kết quả:**
+    - Frontend quản lý trạng thái Deal độc lập, không phụ thuộc hoàn toàn vào backend response.
+    - Khi xóa, UI cập nhật ngay lập tức, không cần đợi session flush.
+    - Khi thêm, kiểm tra trạng thái frontend trước, chỉ gửi request khi deal không còn trong giỏ.
+    - Backend force refresh session khi nhận `force_refresh=1` để đảm bảo đọc dữ liệu mới nhất.
+    - Không còn biến tạm trong memory Service, tất cả đọc trực tiếp từ session.
+- Files modified:
+  - `app/Themes/Website/Views/cart/index.blade.php` - Frontend state management
+  - `public/js/cart-api-v1.js` - API call với force_refresh
+  - `app/Http/Controllers/Api/V1/CartController.php` - Nhận force_refresh
+  - `app/Services/Cart/CartService.php` - Force refresh session, loại bỏ memory cache
+
+#### 2026-01-23 (Update 7) - Fix hiển thị Tổng tiền 0đ và bị âm do logic tính giá phân tầng Flash Sale
+- Fix: Trang thanh toán (`/cart/thanh-toan`) hiển thị tổng giá trị đơn hàng là `0đ` hoặc bị âm do logic tính giá phân tầng Flash Sale (mua vượt hạn mức tính giá thường).
+- Root cause:
+  - JavaScript đang tự tính từ DOM thay vì dùng dữ liệu từ backend.
+  - Hàm `updateTotalOrderPriceCheckout()` vẫn có logic lặp qua các dòng sản phẩm để cộng tiền.
+  - Khi AJAX thay đổi (địa chỉ/coupon), không cập nhật `window.checkoutData` trước khi gọi `updateTotalOrderPriceCheckout()`.
+- Fix (Backend):
+  - **Bước 1: Đồng bộ hóa "Sự thật duy nhất" (Backend Data)**:
+    - Biến `$totalPrice` truyền từ Controller xuống View phải là con số cuối cùng sau khi đã cộng dồn tất cả các tầng giá (giá flash sale + giá thường vượt mức + giá quà tặng).
+    - Đảm bảo `PriceEngineService` trả về tổng tiền khớp với giỏ hàng (588,000đ).
+    - File: `app/Themes/Website/Controllers/CartController.php` (đã sử dụng `CartService::getCart()`).
+- Fix (Frontend):
+  - **Bước 2: Khóa dữ liệu vào biến toàn cục (Global Data Lock)**:
+    - Cập nhật `window.checkoutData` với comment rõ ràng:
+      - `subtotal`: Tổng tiền hàng (đã tính gộp các mức flash sale/thường) từ Backend.
+      - `sale`: Số tiền giảm giá từ Coupon.
+      - `feeship`: Phí ship hiện tại.
+      - `total`: Tổng thanh toán (không bao giờ âm).
+    - JavaScript CHỈ ĐƯỢC PHÉP đọc số từ đây, không được tự tính toán lại.
+  - **Bước 3: Sửa hàm JavaScript updateTotalOrderPriceCheckout()**:
+    - Loại bỏ hoàn toàn việc lặp qua các dòng sản phẩm trên UI để cộng tiền.
+    - Xóa bỏ logic `$('.price-item').each(...)`.
+    - Ép hàm chỉ làm nhiệm vụ hiển thị:
+      - `$('.subtotal-cart').text(formatPrice(data.subtotal) + 'đ')`.
+      - `$('.sale-promotion').text('-' + formatPrice(data.sale) + 'đ')`.
+      - `$('.total-order').text(formatPrice(grandTotal) + 'đ')`.
+    - Đọc `feeship` từ `input[name="feeShip"]` để đồng bộ với AJAX.
+  - **Bước 4: Cập nhật khi AJAX thay đổi (Địa chỉ/Coupon)**:
+    - Đảm bảo khi gọi API áp dụng Coupon hoặc tính phí Ship, kết quả trả về từ Server phải cập nhật lại biến `window.checkoutData` trước khi gọi `updateTotalOrderPriceCheckout()`.
+    - Áp dụng cho:
+      - `.btn_save_address` (chọn địa chỉ).
+      - `getFeeShip()` (tính phí ship).
+      - `$('#ward').change()` (chọn tỉnh thành).
+      - `.btn_coupon` (áp dụng coupon).
+      - `.btn_apply` (áp dụng promotion).
+      - `.btn_cancel_promotion` (hủy coupon).
+  - File: `app/Themes/Website/Views/cart/checkout.blade.php`.
+- Quy tắc tính giá:
+  - Backend: Tất cả giá phải được tính từ `CartService::getCart()` (sử dụng `PriceEngineService`), bao gồm cả logic phân tầng Flash Sale.
+  - Frontend: Chỉ đọc giá từ `window.checkoutData` (được khởi tạo từ backend), **KHÔNG tự tính từ DOM**.
+  - Tổng cuối cùng không được phép nhỏ hơn 0: `Math.max(0, subtotal - sale + feeship)`.
+- Files modified:
+  - `app/Themes/Website/Views/cart/checkout.blade.php` - Khóa dữ liệu sạch, sửa hàm tính tổng, cập nhật AJAX handlers
+
+#### 2026-01-23 (Update 6) - Fix hiển thị Tổng tiền 0đ và bị âm tại trang Thanh toán
+- Fix: Trang thanh toán (`/cart/thanh-toan`) hiển thị tổng giá trị đơn hàng là `0đ` hoặc bị âm.
+- Root cause:
+  - Biến `$totalPrice` trong Controller đang được tính thủ công từ vòng lặp, có thể bị sai hoặc bằng 0.
+  - JavaScript đang tự tính từ DOM thay vì dùng dữ liệu từ backend.
+  - Không có chốt chặn để ngăn coupon áp dụng khi subtotal chưa đúng.
+- Fix (Backend):
+  - **Bước 1: Sửa hàm checkout() trong Controller**:
+    - Inject `CartService` vào constructor.
+    - Gọi `CartService::getCart()` để lấy tổng tiền chuẩn từ `summary.subtotal`.
+    - CÔNG THỨC: `$totalPrice = Sum(PriceEngine::calculate(item) * qty)` - được tính bởi CartService.
+    - Lấy `productsWithPrice` từ CartService để đảm bảo tính nhất quán.
+    - Thêm logging: `[CartController::checkout] Total price from CartService` với `totalPrice`, `summary`, `items_count`.
+    - File: `app/Themes/Website/Controllers/CartController.php`.
+- Fix (Frontend):
+  - **Bước 2: Khóa dữ liệu "Sạch" vào JavaScript**:
+    - Cập nhật `window.checkoutData` với `max(0, ...)` để đảm bảo tổng cuối cùng không nhỏ hơn 0.
+    - File: `app/Themes/Website/Views/cart/checkout.blade.php`.
+  - **Bước 3: Sửa hàm updateTotalOrderPriceCheckout()**:
+    - Buộc giao diện phải hiển thị theo `window.checkoutData`.
+    - Gán: `$('.subtotal-cart').text(formatPrice(window.checkoutData.subtotal) + 'đ')`.
+    - Gán: `$('.total-order').text(formatPrice(window.checkoutData.total) + 'đ')`.
+    - **CẤM**: Không được dùng hàm lặp `each()` qua danh sách sản phẩm để cộng tiền ở trang Checkout nữa.
+    - Dữ liệu từ Backend gửi xuống là duy nhất.
+    - Gọi `updateTotalOrderPriceCheckout()` khi trang load để hiển thị giá đúng ngay từ đầu.
+  - **Bước 4: Thêm Chốt chặn Coupon**:
+    - Nếu `window.checkoutData.subtotal` chưa được tính đúng (<= 0), tuyệt đối không cho phép hàm `applyCoupon` chạy.
+    - Hiển thị cảnh báo: "Không thể áp dụng coupon: Tổng tiền đơn hàng chưa được tính đúng. Vui lòng làm mới trang."
+    - Áp dụng cho cả `.btn_coupon` và `.btn_apply`.
+  - File: `app/Themes/Website/Views/cart/checkout.blade.php`.
+- Quy tắc tính giá:
+  - Backend: Tất cả giá phải được tính từ `CartService::getCart()` (sử dụng `PriceEngineService`).
+  - Frontend: Chỉ đọc giá từ `window.checkoutData` (được khởi tạo từ backend), **KHÔNG tự tính từ DOM**.
+  - Tổng cuối cùng không được phép nhỏ hơn 0: `Math.max(0, subtotal - sale + feeship)`.
+- Files modified:
+  - `app/Themes/Website/Controllers/CartController.php` - Sử dụng CartService::getCart()
+  - `app/Themes/Website/Views/cart/checkout.blade.php` - Khóa dữ liệu sạch, sửa hàm tính tổng, thêm chốt chặn coupon
+
+#### 2026-01-23 (Update 5) - Fix tính tiền trang thanh toán
+- Fix: Trang thanh toán (`/cart/thanh-toan`) hiển thị tổng giá trị đơn hàng là `0đ` mặc dù có items trong giỏ.
+- Root cause: 
+  - `$recalculatedTotal` có thể bằng 0 nếu `PriceEngineService::calculatePriceWithQuantity` trả về giá trị không hợp lệ.
+  - JavaScript `updateTotalOrderPriceCheckout()` đang tự tính từ DOM (lặp qua `.price-item-...`), gây sai lệch với Deal Sốc 0đ.
+- Fix (Backend):
+  - Thêm validation và fallback trong `CartController::checkout()`:
+    - Kiểm tra `total_price` từ `PriceEngineService`, nếu không hợp lệ thì fallback về giá variant.
+    - Đảm bảo `$recalculatedTotal` luôn có giá trị hợp lệ (nếu bằng 0 nhưng có items, fallback về `$cart->totalPrice`).
+    - Thêm logging chi tiết để debug: `[CartController::checkout] Price recalculated` với `items_count`, `products_with_price`.
+  - File: `app/Themes/Website/Controllers/CartController.php`.
+- Fix (Frontend):
+  - **Bước 1: Khóa dữ liệu giá vào JavaScript**:
+    - Khởi tạo `window.checkoutData` từ backend khi trang load:
+      ```javascript
+      window.checkoutData = {
+          subtotal: {{ $totalPrice }},
+          total: {{ $totalPrice - $sale + $feeship }},
+          sale: {{ $sale }},
+          feeship: {{ $feeship }}
+      };
+      ```
+    - Khởi tạo `window.checkoutPriceBreakdowns` từ `$productsWithPrice` để lưu chi tiết từng item.
+  - **Bước 2: Sửa hàm tính tiền JavaScript**:
+    - `updateTotalOrderPriceCheckout()`:
+      - **Ưu tiên 1**: Lấy từ `window.checkoutData.subtotal` (từ backend).
+      - **Ưu tiên 2**: Tính từ `window.checkoutPriceBreakdowns` (từ backend).
+      - **CẤM**: Tuyệt đối không dùng hàm lặp qua các class `.price-item-...` để tự cộng bằng JS vì Deal Sốc 0đ sẽ làm sai lệch logic cộng dồn.
+    - Gán giá trị vào UI: `$('.subtotal-cart').text(formatPrice(subtotal) + 'đ')` và `$('.total-order').text(formatPrice(finalTotal) + 'đ')`.
+  - **Bước 3: Đồng bộ phí vận chuyển**:
+    - Khi phí ship thay đổi (chọn tỉnh thành), cập nhật `window.checkoutData.feeship` và gọi `updateTotalOrderPriceCheckout()`.
+    - Áp dụng cho các hàm: `getFeeShip()`, `$('#ward').change()`, `btn_save_address`.
+  - **Bước 4: Đồng bộ giảm giá (Coupon)**:
+    - Khi áp dụng/hủy coupon, cập nhật `window.checkoutData.sale` và gọi `updateTotalOrderPriceCheckout()`.
+    - Áp dụng cho các hàm: `.btn_coupon`, `.btn_apply`, `.btn_cancel_promotion`.
+  - **Bước 5: Thêm Log Debug**:
+    - Console log: `[Checkout_Price] subtotal from backend: ...`, `[Checkout_Price] Final calculation: {...}`.
+  - File: `app/Themes/Website/Views/cart/checkout.blade.php`.
+- Quy tắc tính giá:
+  - Backend: Tất cả giá phải được tính từ `PriceEngineService::calculatePriceWithQuantity`.
+  - Frontend: Đọc giá từ `window.checkoutData` hoặc `window.checkoutPriceBreakdowns` (được khởi tạo từ backend), **KHÔNG tự tính từ DOM**.
+  - Đảm bảo giá Deal Sốc (kể cả 0đ) được tính đúng và hiển thị đúng.
+- Files modified:
+  - `app/Themes/Website/Controllers/CartController.php` - Validation và fallback cho giá
+  - `app/Themes/Website/Views/cart/checkout.blade.php` - Khóa dữ liệu vào JS, sửa hàm tính tổng, đồng bộ phí ship và coupon
+

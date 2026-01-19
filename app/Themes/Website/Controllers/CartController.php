@@ -35,6 +35,7 @@ use App\Modules\Warehouse\Models\Warehouse;
 use App\Modules\Warehouse\Models\ProductWarehouse;
 use App\Services\Pricing\PriceEngineServiceInterface;
 use App\Services\Warehouse\WarehouseServiceInterface;
+use App\Services\Cart\CartService;
 
 class CartController extends Controller
 {
@@ -42,12 +43,15 @@ class CartController extends Controller
     
     protected PriceEngineServiceInterface $priceEngine;
     protected WarehouseServiceInterface $warehouseService;
+    protected CartService $cartService;
     
     public function __construct(
         PriceEngineServiceInterface $priceEngine,
-        WarehouseServiceInterface $warehouseService
+        WarehouseServiceInterface $warehouseService,
+        CartService $cartService
     ) {
         $this->priceEngine = $priceEngine;
+        $this->cartService = $cartService;
         $this->warehouseService = $warehouseService;
         
         // Inject WarehouseService vào PriceEngineService
@@ -227,70 +231,58 @@ class CartController extends Controller
             return redirect()->route('cart.payment', ['token' => $token]);
         }
 
+        // Bước 1: Sửa hàm checkout() trong Controller (The Core Fix)
+        // Đảm bảo gọi CartService::getCart() để lấy tổng tiền chuẩn
+        $cartSummary = $this->cartService->getCart();
+        
+        // CÔNG THỨC: $totalPrice = Sum(PriceEngine::calculate(item) * qty)
+        // Lấy từ CartService summary (đã tính từ PriceEngineService)
+        $totalPrice = (float)($cartSummary['summary']['subtotal'] ?? 0);
+        
+        // Bước 1: Log biến $totalPrice để debug
+        Log::info('[CartController::checkout] Total price from CartService', [
+            'totalPrice' => $totalPrice,
+            'summary' => $cartSummary['summary'] ?? null,
+            'items_count' => count($cartSummary['items'] ?? []),
+        ]);
+        
+        // CRITICAL: Nếu totalPrice bằng 0 nhưng có items, kiểm tra lại
+        if ($totalPrice <= 0 && !empty($cartSummary['items'])) {
+            Log::error('[CartController::checkout] Total price is 0 but cart has items', [
+                'items' => array_map(function($item) {
+                    return [
+                        'variant_id' => $item['variant_id'] ?? null,
+                        'product_id' => $item['product_id'] ?? null,
+                        'qty' => $item['qty'] ?? 0,
+                        'subtotal' => $item['subtotal'] ?? 0,
+                        'price' => $item['price'] ?? 0,
+                    ];
+                }, $cartSummary['items'] ?? []),
+                'summary' => $cartSummary['summary'] ?? null,
+            ]);
+        }
+        
         $oldCart = Session::get('cart');
         $cart = new Cart($oldCart);
         $data['products'] = $cart->items;
         $data['cart'] = $cart;
         
-        // QUAN TRỌNG: Tính lại giá cho từng item với số lượng thực tế
-        $recalculatedTotal = 0;
+        // Lấy productsWithPrice từ CartService để đảm bảo tính nhất quán
         $data['productsWithPrice'] = [];
-        
-        foreach ($cart->items as $variantId => $item) {
-            $variant = Variant::with('product')->find($variantId);
-            if (!$variant || !$variant->product) {
-                continue;
+        foreach ($cartSummary['items'] as $item) {
+            $variantId = $item['variant_id'] ?? null;
+            if ($variantId) {
+                $data['productsWithPrice'][$variantId] = [
+                    'price_breakdown' => $item['price_breakdown'] ?? null,
+                    'total_price' => (float)($item['subtotal'] ?? 0),
+                    'warning' => $item['warning'] ?? null,
+                    'deal_warning' => $item['deal_warning'] ?? null,
+                    'flash_sale_remaining' => $item['flash_sale_remaining'] ?? 0,
+                ];
             }
-            
-            $quantity = (int)($item['qty'] ?? 1);
-            
-            // Tính lại giá với PriceEngineService
-            $priceWithQuantity = $this->priceEngine->calculatePriceWithQuantity(
-                $variant->product->id,
-                $variantId,
-                $quantity
-            );
-
-            $dealWarning = null;
-            if (!empty($item['is_deal'])) {
-                $dealCheck = $this->validateDealAvailability($item['item']['product_id'], $variantId, $quantity);
-                if (!$dealCheck['available']) {
-                    $dealWarning = $dealCheck['message'];
-                } else {
-                    // Áp dụng giá Deal nếu thỏa điều kiện ưu tiên (kể cả Deal 0đ)
-                    $dealPricing = $this->applyDealPriceForCartItem(
-                        $item['item']['product_id'],
-                        $variantId,
-                        $quantity,
-                        $priceWithQuantity
-                    );
-                    if ($dealPricing !== null) {
-                        $priceWithQuantity['total_price'] = $dealPricing['total_price'];
-                        $priceWithQuantity['price_breakdown'] = $dealPricing['price_breakdown'];
-                    }
-                }
-            }
-            
-            $recalculatedTotal += $priceWithQuantity['total_price'];
-            
-            // Lưu thông tin giá đã tính lại
-            $data['productsWithPrice'][$variantId] = [
-                'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
-                'total_price' => $priceWithQuantity['total_price'],
-                'warning' => $priceWithQuantity['warning'] ?? null,
-                'deal_warning' => $dealWarning,
-                'flash_sale_remaining' => $priceWithQuantity['flash_sale_remaining'] ?? 0,
-            ];
         }
         
-        // Log để kiểm tra
-        Log::info('[CartController::checkout] Price recalculated', [
-            'old_total' => $cart->totalPrice,
-            'new_total' => $recalculatedTotal,
-            'difference' => abs($cart->totalPrice - $recalculatedTotal),
-        ]);
-        
-        $data['totalPrice'] = $recalculatedTotal; // Sử dụng tổng đã tính lại
+        $data['totalPrice'] = $totalPrice; // Sử dụng tổng từ CartService
         $data['province'] = $this->getProvince();
         $data['promotions'] = Promotion::where([['status', '1'], ['end', '>=', date('Y-m-d')], ['order_sale', '<=', $cart->totalPrice]])->limit('8')->get();
         
