@@ -1,31 +1,26 @@
+<td class="text-center"><strong></strong></td>
 <td>
-<select class="form-control select_product select" name="product_id[]" required="" style="width: 300px;height:34px">
-    <option value="0">Không</option>
-    @if($products->count() > 0)
-    @foreach($products as $variant)
-    <option value="{{$variant->id}}">{{$variant->sku}} - {{$variant->product->name??''}}</option>
-    @endforeach
-    @endif
-</select>
+    <select class="form-control select_product select" name="product_id[]" required>
+        <option value="0">-- Chọn sản phẩm --</option>
+    </select>
 </td>
 <td>
-<select class="form-control select_color" name="color_id[]" required="" >
-</select>
+    <select class="form-control select_variant" name="variant_id[]" required>
+        <option value="">-- Chọn phân loại --</option>
+    </select>
+    <small class="text-muted variant-info" style="display:none;"></small>
 </td>
 <td>
-<select class="form-control select_size" name="size_id[]" required="" >
-</select>
+    <input type="text" name="price[]" class="form-control input-price" placeholder="0" required data-original-value="">
 </td>
 <td>
-<input type="text" name="price[]" class="form-control price" data-validation="required" data-validation-error-msg="Không được bỏ trống" >
+    <input type="text" name="qty[]" class="form-control input-qty" placeholder="0" required data-original-value="">
 </td>
 <td>
-
-<input type="number" name="qty[]" class="form-control" min="1" data-validation="required" data-validation-error-msg="Không được bỏ trống" >
+    <input type="text" class="form-control text-total" readonly value="0 đ" style="background-color:#f5f5f5; font-weight:bold; color:#d9534f;">
 </td>
-<td>
-<a href="javascript:;" class="btnDelete" style="color:red"><i class="fa fa-trash-o" aria-hidden="true"></i></a>
+<td class="text-center">
+    <button type="button" class="btn btn-sm btn-danger btnDelete" title="Xóa">
+        <i class="fa fa-trash"></i>
+    </button>
 </td>
-<link href="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/css/select2.min.css" rel="stylesheet" />
-<script src="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/js/select2.min.js"></script>
-<script>$('body .select').select2();</script>

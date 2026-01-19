@@ -779,16 +779,28 @@
                             
                             // 计算变体的最终价格（按优先级：闪购 -> 促销 -> 原价）
                             $variantPriceInfo = getVariantFinalPrice($v->id, $detail->id);
+                            
+                            // Calculate warehouse stock
+                            $warehouseStock = 0;
+                            if(function_exists('countProduct')) {
+                                $import = countProduct($v->id, 'import');
+                                $export = countProduct($v->id, 'export');
+                                $warehouseStock = max(0, $import - $export);
+                            } else {
+                                $warehouseStock = (int)($v->stock ?? 0);
+                            }
+                            $isOutOfStock = $warehouseStock <= 0;
                         @endphp
-                        <div class="item-variant @if($k==0) active @endif"
+                        <div class="item-variant @if($k==0) active @endif @if($isOutOfStock) out-of-stock @endif"
                              data-variant-id="{{$v->id}}"
                              data-sku="{{$v->sku}}"
                              data-price="{{$variantPriceInfo['final_price']}}"
                              data-original-price="{{$variantPriceInfo['original_price']}}"
                              data-price-html="{{base64_encode($variantPriceInfo['html'])}}"
-                             data-stock="{{(int)($v->stock ?? 0)}}"
+                             data-stock="{{$warehouseStock}}"
                              data-image="{{getImage($v->image ?: $detail->image)}}"
-                             data-option1="{{ $optLabel }}">
+                             data-option1="{{ $optLabel }}"
+                             @if($isOutOfStock) style="opacity: 0.5; cursor: not-allowed; pointer-events: none;" @endif>
                             <p class="mb-0">{{ $optLabel }}</p>
                         </div>
                         @endforeach
@@ -820,6 +832,8 @@
                         @endif
                     </div>
                 </div>
+                <!-- Flash Sale Warning Container -->
+                <div class="flash-sale-warning-container" style="margin-top: 10px;"></div>
                 @if(isset($saledeals) && $saledeals->count() > 0)
                 <div class="sc-67558998-0 buy-x-get-y-wrapper mb-4">
                     <div class="buy-x-get-y-header">
@@ -1586,7 +1600,57 @@
         }
     });
     
-    $('body').on('click','.addCartDetail',function(){
+    $('body').on('click','.addCartDetail',function(e){
+        // Prevent click if button is disabled
+        if ($(this).prop('disabled') || $(this).hasClass('disabled')) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+        
+        // Check stock from active variant in #variant-option1-list
+        // First try to get from active variant
+        let stock = null;
+        const variantList = $('#variant-option1-list');
+        
+        if (variantList.length > 0) {
+            // Product has variants
+            const activeVariant = variantList.find('.item-variant.active');
+            if (activeVariant.length > 0) {
+                stock = parseInt(activeVariant.data('stock') || activeVariant.attr('data-stock') || 0);
+            } else {
+                // Fallback: get from hidden input variant_id and find variant
+                const variantId = $('input[name="variant_id"]').val();
+                if (variantId) {
+                    const variant = variantList.find(`.item-variant[data-variant-id="${variantId}"]`);
+                    if (variant.length > 0) {
+                        stock = parseInt(variant.data('stock') || variant.attr('data-stock') || 0);
+                    }
+                }
+            }
+        } else {
+            // Product has no variants, check product stock from API data or fallback
+            // Try to get from API-loaded data
+            const productDetailInfo = document.getElementById('product-detail-info');
+            if (productDetailInfo && productDetailInfo.dataset.productData) {
+                try {
+                    const productData = JSON.parse(productDetailInfo.dataset.productData);
+                    stock = productData.warehouse_stock !== undefined ? productData.warehouse_stock : productData.stock;
+                } catch(e) {
+                    console.warn('Failed to parse product data:', e);
+                }
+            }
+            // If still null, skip stock check (allow action to proceed)
+        }
+        
+        // Only show alert if stock is explicitly 0 or less (not null/undefined)
+        if (stock !== null && stock !== undefined && (isNaN(stock) || stock <= 0)) {
+            e.preventDefault();
+            e.stopPropagation();
+            alert('Sản phẩm đã hết hàng');
+            return false;
+        }
+        
         var main_id = $('input[name="variant_id"]').val();
         var main_qty = $('input.quantity-input').val();
         var combo = [];
@@ -1626,7 +1690,57 @@
       })
     });
 
-    $('body').on('click','.buyNowDetail',function(){
+    $('body').on('click','.buyNowDetail',function(e){
+        // Prevent click if button is disabled
+        if ($(this).prop('disabled') || $(this).hasClass('disabled')) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+        
+        // Check stock from active variant in #variant-option1-list
+        // First try to get from active variant
+        let stock = null;
+        const variantList = $('#variant-option1-list');
+        
+        if (variantList.length > 0) {
+            // Product has variants
+            const activeVariant = variantList.find('.item-variant.active');
+            if (activeVariant.length > 0) {
+                stock = parseInt(activeVariant.data('stock') || activeVariant.attr('data-stock') || 0);
+            } else {
+                // Fallback: get from hidden input variant_id and find variant
+                const variantId = $('input[name="variant_id"]').val();
+                if (variantId) {
+                    const variant = variantList.find(`.item-variant[data-variant-id="${variantId}"]`);
+                    if (variant.length > 0) {
+                        stock = parseInt(variant.data('stock') || variant.attr('data-stock') || 0);
+                    }
+                }
+            }
+        } else {
+            // Product has no variants, check product stock from API data or fallback
+            // Try to get from API-loaded data
+            const productDetailInfo = document.getElementById('product-detail-info');
+            if (productDetailInfo && productDetailInfo.dataset.productData) {
+                try {
+                    const productData = JSON.parse(productDetailInfo.dataset.productData);
+                    stock = productData.warehouse_stock !== undefined ? productData.warehouse_stock : productData.stock;
+                } catch(e) {
+                    console.warn('Failed to parse product data:', e);
+                }
+            }
+            // If still null, skip stock check (allow action to proceed)
+        }
+        
+        // Only show alert if stock is explicitly 0 or less (not null/undefined)
+        if (stock !== null && stock !== undefined && (isNaN(stock) || stock <= 0)) {
+            e.preventDefault();
+            e.stopPropagation();
+            alert('Sản phẩm đã hết hàng');
+            return false;
+        }
+        
         if($(this).hasClass('btnBuyDealSốc')) {
             var main_id = $('input[name="variant_id"]').val();
             var main_qty = $('input.quantity-input').val();
@@ -1779,6 +1893,27 @@
             // Toggle buttons by stock
             var disabled = stock <= 0;
             $('.addCartDetail, .buyNowDetail, .btn_plus.entry, .btn_minus.entry, .quantity-input').prop('disabled', disabled);
+            
+            // Update button styles and text
+            if (disabled) {
+                $('.addCartDetail, .buyNowDetail').css({
+                    'opacity': '0.5',
+                    'cursor': 'not-allowed',
+                    'pointer-events': 'none'
+                });
+                $('.addCartDetail span:last-child').text('Hết hàng');
+                $('.buyNowDetail').not('.btnBuyDealSốc').text('Hết hàng');
+                $('.buyNowDetail.btnBuyDealSốc').text('Hết hàng');
+            } else {
+                $('.addCartDetail, .buyNowDetail').css({
+                    'opacity': '',
+                    'cursor': '',
+                    'pointer-events': ''
+                });
+                $('.addCartDetail span:last-child').text('Thêm Vào Giỏ Hàng');
+                $('.buyNowDetail').not('.btnBuyDealSốc').text('Mua ngay');
+                $('.buyNowDetail.btnBuyDealSốc').text('MUA DEAL SỐC');
+            }
         });
     } else {
     $('#detailProduct .box-color').on('click','.item-variant',function(){
@@ -2033,6 +2168,30 @@
         background: #ee4d2d;
         color: #fff;
         box-shadow: 0 2px 6px rgba(238,77,45,0.28);
+    }
+    .box-variant.box-option1 .list-variant .item-variant.out-of-stock{
+        opacity: 0.5;
+        cursor: not-allowed;
+        pointer-events: none;
+        background: #f5f5f5;
+        border-color: #ddd;
+        position: relative;
+    }
+    .box-variant.box-option1 .list-variant .item-variant.out-of-stock::after{
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: repeating-linear-gradient(
+            45deg,
+            transparent,
+            transparent 5px,
+            rgba(0,0,0,0.1) 5px,
+            rgba(0,0,0,0.1) 10px
+        );
+        pointer-events: none;
     }
     .box-variant.box-option1 .list-variant .item-variant p{
         margin-bottom: 0;
@@ -2439,6 +2598,7 @@
     .group-cart.product-action .addCartDetail:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+        pointer-events: none;
     }
     
     .group-cart.product-action .buyNowDetail {
@@ -2455,6 +2615,7 @@
     .group-cart.product-action .buyNowDetail:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+        pointer-events: none;
     }
     
     @media (max-width: 768px) {
@@ -2812,28 +2973,38 @@
                             <span id="variant-option1-current">${firstVariant.option_label || ''}</span>
                         </div>
                         <div class="list-variant" id="variant-option1-list">
-                            ${product.variants.map((v, index) => `
-                                <div class="item-variant ${index === 0 ? 'active' : ''}"
+                            ${product.variants.map((v, index) => {
+                                const warehouseStock = v.warehouse_stock !== undefined ? v.warehouse_stock : v.stock;
+                                const isOutOfStock = warehouseStock <= 0 || (v.is_out_of_stock !== undefined ? v.is_out_of_stock : false);
+                                return `
+                                <div class="item-variant ${index === 0 ? 'active' : ''} ${isOutOfStock ? 'out-of-stock' : ''}"
                                      data-variant-id="${v.id}"
                                      data-sku="${v.sku}"
                                      data-price="${v.price_info.final_price}"
                                      data-original-price="${v.price_info.original_price}"
                                      data-price-html="${encodeUnicodeBase64(v.price_info.html || '')}"
-                                     data-stock="${v.stock}"
+                                     data-stock="${warehouseStock}"
                                      data-image="${v.image}"
-                                     data-option1="${v.option_label}">
+                                     data-option1="${v.option_label}"
+                                     ${isOutOfStock ? 'style="opacity: 0.5; cursor: not-allowed; pointer-events: none;"' : ''}>
                                     <p class="mb-0">${v.option_label}</p>
                                 </div>
-                            `).join('')}
+                            `;
+                            }).join('')}
+                        </div>
+                        <div class="variant-stock-info" id="variant-stock-display" style="margin-top: 10px; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; font-size: 13px; color: #666;">
+                            <span class="stock-label"><strong>Tồn kho:</strong></span>
+                            <span class="stock-value" id="variant-stock-value" style="font-weight: 600; color: #333; margin-left: 5px;">${(product.variants[0]?.warehouse_stock !== undefined ? product.variants[0].warehouse_stock : (product.variants[0]?.stock || 0)).toLocaleString('vi-VN')}</span>
+                            <span class="stock-unit" style="margin-left: 3px;">sản phẩm</span>
                         </div>
                     </div>
                 `;
             }
             
-            // Build action buttons
+            // Build action buttons - check warehouse_stock
             const hasStock = product.has_variants 
-                ? (product.first_variant && product.first_variant.stock > 0)
-                : (product.stock > 0);
+                ? (product.first_variant && (product.first_variant.warehouse_stock !== undefined ? product.first_variant.warehouse_stock : product.first_variant.stock) > 0 && !(product.first_variant.is_out_of_stock === true))
+                : ((product.warehouse_stock !== undefined ? product.warehouse_stock : product.stock) > 0 && !(product.is_out_of_stock === true));
             
             const actionHtml = `
                 <input type="hidden" name="variant_id" value="${product.first_variant ? product.first_variant.id : ''}">
@@ -2848,15 +3019,15 @@
                         </button>
                     </div>
                     <div class="item-action">
-                        <button ${!hasStock ? 'disabled' : ''} type="button" class="addCartDetail">
+                        <button ${!hasStock ? 'disabled style="opacity: 0.5; cursor: not-allowed; pointer-events: none;"' : ''} type="button" class="addCartDetail">
                             <span role="img" class="icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.5H14.5L10.5 0.5C10.3 0.2 10 0 9.7 0C9.4 0 9.1 0.2 8.9 0.5L4.9 6.5H0.5C0.2 6.5 0 6.7 0 7C0 7.1 0 7.2 0.1 7.3L2.3 16.3C2.5 17 3.1 17.5 3.8 17.5H16.2C16.9 17.5 17.5 17 17.7 16.3L19.9 7.3L20 7C20 6.7 19.8 6.5 19.5 6.5H19ZM9.7 2.5L12.5 6.5H6.9L9.7 2.5ZM16.2 16.5H3.8L1.8 8.5H18.2L16.2 16.5ZM9.7 10.5C8.9 10.5 8.2 11.2 8.2 12C8.2 12.8 8.9 13.5 9.7 13.5C10.5 13.5 11.2 12.8 11.2 12C11.2 11.2 10.5 10.5 9.7 10.5Z" stroke="#ee4d2d" stroke-width="1.5" fill="none"/><path d="M9.7 8.5V15.5M6.2 12H13.2" stroke="#ee4d2d" stroke-width="1.5" stroke-linecap="round"/></svg></span>
-                            <span>Thêm Vào Giỏ Hàng</span>
+                            <span>${!hasStock ? 'Hết hàng' : 'Thêm Vào Giỏ Hàng'}</span>
                         </button>
                     </div>
                     <div class="item-action">
                         ${product.deal && product.deal.sale_deals && product.deal.sale_deals.length > 0
-                            ? `<button ${!hasStock ? 'disabled' : ''} class="buyNowDetail btnBuyDealSốc" type="button">MUA DEAL SỐC</button>`
-                            : `<button ${!hasStock ? 'disabled' : ''} class="buyNowDetail" type="button">Mua ngay</button>`
+                            ? `<button ${!hasStock ? 'disabled style="opacity: 0.5; cursor: not-allowed; pointer-events: none;"' : ''} class="buyNowDetail btnBuyDealSốc" type="button">${!hasStock ? 'Hết hàng' : 'MUA DEAL SỐC'}</button>`
+                            : `<button ${!hasStock ? 'disabled style="opacity: 0.5; cursor: not-allowed; pointer-events: none;"' : ''} class="buyNowDetail" type="button">${!hasStock ? 'Hết hàng' : 'Mua ngay'}</button>`
                         }
                     </div>
                 </div>
@@ -3018,23 +3189,88 @@
             const btnMinus = document.querySelector('.btn_minus.entry');
             const quantityInput = document.querySelector('.quantity-input');
             
+            // Get product and variant IDs
+            const productId = document.getElementById('detailProduct')?.getAttribute('data-product-id');
+            const variantIdInput = document.querySelector('input[name="variant_id"]');
+            const variantId = variantIdInput ? variantIdInput.value : null;
+            
+            // Function to trigger price calculation
+            const triggerPriceCalculation = function() {
+                if (!productId || !quantityInput) return;
+                
+                const quantity = parseInt(quantityInput.value) || 1;
+                
+                // Check if FlashSaleMixedPrice is available
+                if (typeof FlashSaleMixedPrice !== 'undefined') {
+                    // Ensure warning container exists
+                    let warningContainer = document.querySelector('.flash-sale-warning-container');
+                    if (!warningContainer) {
+                        warningContainer = document.createElement('div');
+                        warningContainer.className = 'flash-sale-warning-container';
+                        warningContainer.style.marginTop = '10px';
+                        
+                        // Insert after the product action buttons
+                        const productAction = document.querySelector('.group-cart.product-action');
+                        if (productAction && productAction.parentNode) {
+                            productAction.parentNode.insertBefore(warningContainer, productAction.nextSibling);
+                        }
+                    }
+                    
+                    // Call FlashSaleMixedPrice to calculate price
+                    FlashSaleMixedPrice.calculatePriceWithQuantity(
+                        parseInt(productId),
+                        variantId ? parseInt(variantId) : null,
+                        quantity,
+                        '.product-price-display', // Price display selector (if exists)
+                        '.flash-sale-warning-container' // Warning container
+                    );
+                }
+            };
+            
+            // Remove old event listeners to avoid duplicates
             if (btnPlus) {
-                btnPlus.addEventListener('click', function() {
+                btnPlus.removeEventListener('click', triggerPriceCalculation);
+                btnPlus.addEventListener('click', function(e) {
+                    e.stopPropagation(); // Prevent event bubbling
                     if (quantityInput && !quantityInput.disabled) {
                         const current = parseInt(quantityInput.value) || 1;
                         quantityInput.value = current + 1;
+                        // Trigger price calculation immediately
+                        triggerPriceCalculation();
                     }
                 });
             }
             
             if (btnMinus) {
-                btnMinus.addEventListener('click', function() {
+                btnMinus.removeEventListener('click', triggerPriceCalculation);
+                btnMinus.addEventListener('click', function(e) {
+                    e.stopPropagation(); // Prevent event bubbling
                     if (quantityInput && !quantityInput.disabled) {
                         const current = parseInt(quantityInput.value) || 1;
                         if (current > 1) {
                             quantityInput.value = current - 1;
+                            // Trigger price calculation immediately
+                            triggerPriceCalculation();
                         }
                     }
+                });
+            }
+            
+            // Listen to direct input changes với debounce
+            if (quantityInput) {
+                quantityInput.removeEventListener('change', triggerPriceCalculation);
+                quantityInput.removeEventListener('input', triggerPriceCalculation);
+                
+                quantityInput.addEventListener('change', function() {
+                    triggerPriceCalculation();
+                });
+                
+                quantityInput.addEventListener('input', function() {
+                    // Debounce for better performance
+                    clearTimeout(quantityInput.priceCalculationTimeout);
+                    quantityInput.priceCalculationTimeout = setTimeout(function() {
+                        triggerPriceCalculation();
+                    }, 500);
                 });
             }
         }
@@ -3092,6 +3328,16 @@
             
             // Add click event listeners directly (jQuery handler will skip API-loaded content)
             variantItems.forEach((item) => {
+                // Skip if out of stock
+                const stock = parseInt(item.getAttribute('data-stock') || '0');
+                const isOutOfStock = stock <= 0 || item.classList.contains('out-of-stock');
+                if (isOutOfStock) {
+                    item.style.opacity = '0.5';
+                    item.style.cursor = 'not-allowed';
+                    item.style.pointerEvents = 'none';
+                    return; // Skip adding event listener
+                }
+                
                 // Add click event listener with stopPropagation to prevent jQuery handler
                 item.addEventListener('click', function(e) {
                     // Stop jQuery handler from processing
@@ -3149,17 +3395,60 @@
                         skuDisplay.textContent = this.getAttribute('data-sku') || '';
                     }
                     
-                    // Update stock status
+                    // Update stock display
                     const stock = parseInt(this.getAttribute('data-stock') || '0');
+                    const stockDisplay = document.getElementById('variant-stock-value');
+                    if (stockDisplay) {
+                        stockDisplay.textContent = stock.toLocaleString('vi-VN');
+                    }
+                    
+                    // Update stock status
                     const buttons = document.querySelectorAll('.addCartDetail, .buyNowDetail, .btn_minus.entry, .btn_plus.entry');
                     const quantityInput = document.querySelector('.quantity-input');
+                    const isOutOfStock = stock <= 0;
                     
-                    if (stock <= 0) {
-                        buttons.forEach(btn => btn.disabled = true);
-                        if (quantityInput) quantityInput.disabled = true;
+                    if (isOutOfStock) {
+                        buttons.forEach(btn => {
+                            btn.disabled = true;
+                            btn.style.opacity = '0.5';
+                            btn.style.cursor = 'not-allowed';
+                            btn.style.pointerEvents = 'none';
+                            // Update button text
+                            if (btn.classList.contains('addCartDetail')) {
+                                const span = btn.querySelector('span:last-child');
+                                if (span) span.textContent = 'Hết hàng';
+                            }
+                            if (btn.classList.contains('buyNowDetail')) {
+                                btn.textContent = 'Hết hàng';
+                            }
+                        });
+                        if (quantityInput) {
+                            quantityInput.disabled = true;
+                            quantityInput.style.opacity = '0.5';
+                            quantityInput.style.cursor = 'not-allowed';
+                        }
                     } else {
-                        buttons.forEach(btn => btn.disabled = false);
-                        if (quantityInput) quantityInput.disabled = false;
+                        buttons.forEach(btn => {
+                            btn.disabled = false;
+                            btn.style.opacity = '';
+                            btn.style.cursor = '';
+                            btn.style.pointerEvents = '';
+                            // Restore button text
+                            if (btn.classList.contains('addCartDetail')) {
+                                const span = btn.querySelector('span:last-child');
+                                if (span) span.textContent = 'Thêm Vào Giỏ Hàng';
+                            }
+                            if (btn.classList.contains('buyNowDetail') && !btn.classList.contains('btnBuyDealSốc')) {
+                                btn.textContent = 'Mua ngay';
+                            } else if (btn.classList.contains('btnBuyDealSốc')) {
+                                btn.textContent = 'MUA DEAL SỐC';
+                            }
+                        });
+                        if (quantityInput) {
+                            quantityInput.disabled = false;
+                            quantityInput.style.opacity = '';
+                            quantityInput.style.cursor = '';
+                        }
                     }
                     
                     // Update image in slider if needed

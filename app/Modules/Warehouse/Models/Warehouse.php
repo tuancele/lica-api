@@ -15,4 +15,7 @@ class Warehouse extends Model
     public function size(){
         return $this->belongsTo('App\Modules\Size\Models\Size','size_id','id');
     }
+    public function items(){
+        return $this->hasMany('App\Modules\Warehouse\Models\ProductWarehouse','warehouse_id','id');
+    }
 }

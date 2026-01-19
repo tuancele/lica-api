@@ -32,11 +32,11 @@
     <thead>
         <tr>
             <th width="5%" style="text-align: center;"><input type="checkbox" id="checkall3" class="wgr-checkbox"></th>
-            <th width="35%">Sản phẩm</th>
+            <th width="30%">Sản phẩm</th>
             <th width="10%">Giá gốc</th>
             <th width="10%">Giá mua kèm</th>
             <th width="10%">Số lượng</th>
-            <th width="10%">Kho hàng</th>
+            <th width="10%" style="text-align: center;">Tồn kho thực tế</th>
             <th width="10%">Trạng thái</th>
             <th width="10%">Thao tác</th>
         </tr>
@@ -85,10 +85,8 @@
                     <input type="text" name="pricesale[{{$product->id}}][{{$selectedVariant->id}}]" class="form-control pricesale price">
                 </td>
                 <td><input type="number" name="numbersale[{{$product->id}}][{{$selectedVariant->id}}]" class="form-control"></td>
-                <td>@php 
-                    $total3 = countProductWarehouse($product->id,'import');
-                    $total4 = countProductWarehouse($product->id,'export'); @endphp
-                    {{$total3-$total4}}
+                <td style="text-align: center;">
+                    <strong>{{number_format($selectedVariant->actual_stock ?? 0)}}</strong>
                 </td>
                 <td><input type="checkbox" name="status2[{{$product->id}}][{{$selectedVariant->id}}]" class="wgr-checkbox" value="1" checked=""></td>
                 <td><a class="btn btn-danger btn-xs delete_item" data-id="{{$product->id}}_v{{$selectedVariant->id}}"><i class="fa fa-trash-o" aria-hidden="true"></i></a></td>
@@ -111,10 +109,8 @@
                     <input type="text" name="pricesale[{{$product->id}}]" class="form-control pricesale price">
                 </td>
                 <td><input type="number" name="numbersale[{{$product->id}}]" class="form-control"></td>
-                <td>@php 
-                    $total3 = countProductWarehouse($product->id,'import');
-                    $total4 = countProductWarehouse($product->id,'export'); @endphp
-                    {{$total3-$total4}}
+                <td style="text-align: center;">
+                    <strong>{{number_format($product->actual_stock ?? 0)}}</strong>
                 </td>
                 <td><input type="checkbox" name="status2[{{$product->id}}]" class="wgr-checkbox" value="1" checked=""></td>
                 <td><a class="btn btn-danger btn-xs delete_item" data-id="{{$product->id}}"><i class="fa fa-trash-o" aria-hidden="true"></i></a></td>

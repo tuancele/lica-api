@@ -9,8 +9,11 @@ use App\Modules\Order\Models\Order;
 use App\Modules\Order\Models\OrderDetail;
 use App\Modules\Delivery\Models\Delivery;
 use App\Modules\Pick\Models\Pick;
+use App\Modules\Warehouse\Models\Warehouse;
+use App\Modules\Warehouse\Models\ProductWarehouse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use GuzzleHttp\Client;
 use Validator;
 
@@ -146,6 +149,9 @@ class OrderController extends Controller
                 'errors' => ['alert' => ['0' => 'Đơn hàng không tồn tại!']]
             ]);
         } else {
+            $oldStatus = $order->status;
+            $oldShip = $order->ship;
+            
             Order::where('id', $order->id)->update([
                 'content' => $req->content,
                 'status' => $req->status,
@@ -153,12 +159,97 @@ class OrderController extends Controller
                 'ship' => $req->ship,
                 'user_id' => Auth::id()
             ]);
+            
+            // Auto create import receipt if order is cancelled or returned
+            // Only create if status/ship changed to cancelled/returned
+            if (($req->status == 2 && $oldStatus != 2) || ($req->ship == 3 && $oldShip != 3)) {
+                try {
+                    // Reload order to get updated values
+                    $order->refresh();
+                    $this->createImportReceiptFromOrder($order);
+                } catch (\Exception $e) {
+                    Log::error("Auto create import receipt error for order " . $order->code . ": " . $e->getMessage());
+                    // Don't fail the order update if import receipt creation fails
+                }
+            }
+            
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Cập nhật thành công!',
                 'url' => '/admin/order/view/' . $req->code
             ]);
         }
+    }
+
+    /**
+     * Auto create import receipt when order is cancelled or returned
+     * @param Order $order
+     * @return bool
+     */
+    private function createImportReceiptFromOrder(Order $order): bool
+    {
+        // Check if import receipt already exists for this order
+        // Check by order ID in content to avoid duplicates
+        $existingReceipt = Warehouse::where('content', 'like', '%ID ' . $order->id)
+            ->where('type', 'import')
+            ->first();
+        
+        if ($existingReceipt) {
+            Log::info("Import receipt already exists for order ID: " . $order->id);
+            return false;
+        }
+        
+        // Content format: "Đơn hàng thất bại/Hoàn trả ID {order_id}"
+        // No VAT invoice (leave blank as requested)
+        $content = 'Đơn hàng thất bại/Hoàn trả ID ' . $order->id;
+        
+        // Generate unique code for import receipt
+        $importCode = 'NH-' . $order->code . '-' . time();
+        
+        // Check if code already exists, if yes, append random number
+        while (Warehouse::where('code', $importCode)->exists()) {
+            $importCode = 'NH-' . $order->code . '-' . time() . '-' . rand(1000, 9999);
+        }
+        
+        // Determine subject based on status
+        // Priority: ship=3 (returned) > status=2 (cancelled)
+        $statusText = ($order->ship == 3) ? 'Hoàn trả' : (($order->status == 2) ? 'Đơn hàng thất bại' : 'Hoàn trả');
+        
+        // Create warehouse entry
+        $warehouseId = Warehouse::insertGetId([
+            'code' => $importCode,
+            'subject' => $statusText . ' - ' . $order->code,
+            'content' => $content,
+            'type' => 'import',
+            'created_at' => date('Y-m-d H:i:s'),
+            'user_id' => Auth::id(),
+        ]);
+        
+        if ($warehouseId > 0) {
+            // Get order details
+            $orderDetails = OrderDetail::where('order_id', $order->id)->get();
+            
+            if ($orderDetails->count() > 0) {
+                foreach ($orderDetails as $detail) {
+                    // Only create ProductWarehouse if variant_id exists
+                    if ($detail->variant_id) {
+                        ProductWarehouse::insert([
+                            'variant_id' => $detail->variant_id,
+                            'price' => $detail->price ?? 0,
+                            'qty' => $detail->qty ?? 0,
+                            'type' => 'import',
+                            'warehouse_id' => $warehouseId,
+                            'created_at' => date('Y-m-d H:i:s'),
+                        ]);
+                    }
+                }
+            }
+            
+            Log::info("Auto created import receipt: " . $importCode . " for order: " . $order->code . " (ID: " . $order->id . ")");
+            return true;
+        }
+        
+        return false;
     }
 
     public function delete(Request $request)

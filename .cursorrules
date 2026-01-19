@@ -1,3 +1,9 @@
+适用范围：本仓库所有改动
+- 回复语言：默认中文简体；如需对业务流程解释可附越南语备注
+- 不回滚或覆盖用户已有改动；避免使用破坏性 git 命令
+- 编辑限制：仅使用 ASCII；必要注释用英文，保持精简
+- 接口/服务改动需同步更新相关文档（API_ADMIN_DOCS.md 或新建的业务文档）
+- 优先确保 Flash Sale 混合定价、库存与 Warehouse 校验、Cart/Checkout 价格一致性、日志与单测不回归
 # Laravel API Admin & Documentation Rules
 
 Bạn là một Kỹ sư Hệ thống Laravel chuyên nghiệp. Nhiệm vụ của bạn là xây dựng hệ thống API Admin tại `app/Modules/ApiAdmin` (hoặc module tương đương) và tự động duy trì tài liệu API.
@@ -31,3 +37,11 @@ Sau khi xây dựng xong mỗi API, bạn **BẮT BUỘC** phải ghi lại thô
 - Luôn giải thích bằng **tiếng Việt** về những gì bạn đã làm.
 - Code comment phải bằng **tiếng Anh**.
 - Nếu phát hiện logic cũ có rủi ro bảo mật (ví dụ: thiếu check quyền admin), phải cảnh báo người dùng ngay.
+
+## 6. TÀI LIỆU LOGIC ECOMMERCE (THAM KHẢO TRƯỚC KHI LÀM)
+- Các tài liệu tổng hợp tại root:
+  - `ECOMMERCE_OVERVIEW.md` (kiến trúc & thuật ngữ chung).
+  - `ECOMMERCE_PRICING_INVENTORY.md` (giá ưu tiên, mixed pricing, tồn kho S_phy/S_flash, Warehouse).
+  - `ECOMMERCE_CART_CHECKOUT.md` (giỏ hàng, thanh toán, đối soát tổng tiền, chặn gian lận).
+  - `ECOMMERCE_MARKETING.md` (Flash Sale, Deal, quy tắc chọn sản phẩm chính/phụ).
+- Khi nhận yêu cầu mới, luôn đọc nhanh các file trên để bám đúng logic hiện hành, tránh phá vỡ đồng bộ giá/kho.

@@ -55,6 +55,16 @@
                             @php
                                 $detail = App\Modules\Post\Models\Post::select('slug')->where('id',$product->product_id)->first();
                             @endphp
+                                @php
+                                    // Kiểm tra xem có price_breakdown không (từ JSON field hoặc relation)
+                                    $priceBreakdown = null;
+                                    if (isset($product->price_breakdown) && !empty($product->price_breakdown)) {
+                                        $priceBreakdown = is_string($product->price_breakdown) ? json_decode($product->price_breakdown, true) : $product->price_breakdown;
+                                    } elseif (property_exists($product, 'price_breakdown')) {
+                                        $priceBreakdown = $product->price_breakdown;
+                                    }
+                                    $hasMixedPrice = $priceBreakdown && is_array($priceBreakdown) && count($priceBreakdown) > 1;
+                                @endphp
                                 <tr>
                                     <td>{{$key + 1}}</td>
                                     <td><img src="{{$product->image}}" width="50px" alt="{{$product->name}}"></td>
@@ -62,12 +72,49 @@
                                         @if(str_contains($product->name, '[DEAL SỐC]'))
                                             <span class="label label-danger">DEAL SỐC</span>
                                         @endif
+                                        @if($hasMixedPrice)
+                                            <span class="label label-warning" style="background-color: #f0ad4e; color: #fff; padding: 3px 8px; border-radius: 3px; font-size: 11px; margin-right: 5px;">Vượt hạn mức FS</span>
+                                        @endif
                                         <a href="{{asset($detail->slug)}}" target="_blank">{{$product->name}}</a>
                                         <p style="margin-bottom:0px">@if($product->color)<span class="me-3" style="margin-right:15px">Màu sắc: {{$product->color->name}}</span>@endif @if($product->size)<span>Kích thước: {{$product->size->name}}{{$product->size->unit}}</span>@endif</p>
+                                        @if($hasMixedPrice)
+                                            <div style="margin-top: 8px; padding: 8px; background-color: #f9f9f9; border-left: 3px solid #f0ad4e; font-size: 12px;">
+                                                <strong>Chi tiết giá hỗn hợp:</strong><br>
+                                                @foreach($priceBreakdown as $breakdown)
+                                                    @php
+                                                        $typeLabel = $breakdown['type'] === 'flashsale' ? 'Flash Sale' : ($breakdown['type'] === 'promotion' ? 'Khuyến mãi' : 'Giá thường');
+                                                        $typeColor = $breakdown['type'] === 'flashsale' ? '#d9534f' : ($breakdown['type'] === 'promotion' ? '#5bc0de' : '#777');
+                                                    @endphp
+                                                    <span style="color: {{$typeColor}};">
+                                                        {{$breakdown['quantity']}}x{{number_format($breakdown['unit_price'])}}đ ({{$typeLabel}}) = {{number_format($breakdown['subtotal'])}}đ
+                                                    </span>
+                                                    @if(!$loop->last) + @endif
+                                                @endforeach
+                                            </div>
+                                        @endif
                                     </td>
-                                    <td style="color:red">{{number_format($product->price)}}</td>
+                                    <td style="color:red">
+                                        @if($hasMixedPrice)
+                                            <span style="font-size: 11px; color: #777;">Hỗn hợp</span><br>
+                                            <strong>{{number_format($product->qty * $product->price / $product->qty)}}</strong>
+                                        @else
+                                            {{number_format($product->price)}}
+                                        @endif
+                                    </td>
                                     <td>{{$product->qty}}</td>
-                                    <td style="color:red;font-weight:600">{{number_format($product->qty * $product->price)}}</td>
+                                    <td style="color:red;font-weight:600">
+                                        @if($hasMixedPrice)
+                                            @php
+                                                $totalFromBreakdown = 0;
+                                                foreach($priceBreakdown as $bd) {
+                                                    $totalFromBreakdown += $bd['subtotal'];
+                                                }
+                                            @endphp
+                                            {{number_format($totalFromBreakdown)}}
+                                        @else
+                                            {{number_format($product->qty * $product->price)}}
+                                        @endif
+                                    </td>
                                 </tr>
                             @endforeach
                             @endif

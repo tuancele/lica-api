@@ -15,6 +15,7 @@ use App\Modules\Brand\Models\Brand;
 use App\Enums\ProductType;
 use App\Enums\ProductStatus;
 use App\Services\PriceCalculationService;
+use App\Services\Warehouse\WarehouseServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -29,10 +30,16 @@ use Illuminate\Support\Facades\DB;
 class ProductController extends Controller
 {
     protected PriceCalculationService $priceService;
+    protected WarehouseServiceInterface $warehouseService;
     
-    public function __construct(PriceCalculationService $priceService)
-    {
+    public function __construct(
+        PriceCalculationService $priceService,
+        WarehouseServiceInterface $warehouseService
+    ) {
+        // Inject warehouse service into price service for effective stock calculation
+        $priceService->setWarehouseService($warehouseService);
         $this->priceService = $priceService;
+        $this->warehouseService = $warehouseService;
     }
     
     /**
@@ -232,9 +239,8 @@ class ProductController extends Controller
             $result['price_sale'] = $priceInfo->price; // Flash Sale price for backward compatibility
         }
         
-        // Add Deal information if available
-        // Frontend will handle excluding Deal voucher in Flash Sale block
-        // Get variant_id if available
+        // Get warehouse stock for variant
+        $warehouseStock = 0;
         $variantId = null;
         if (isset($product->size_id) && isset($product->color_id)) {
             $variant = Variant::where('product_id', $product->id)
@@ -243,9 +249,46 @@ class ProductController extends Controller
                 ->first();
             if ($variant) {
                 $variantId = $variant->id;
+                try {
+                    $stockData = $this->warehouseService->getVariantStock($variant->id);
+                    $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
+                } catch (\Exception $e) {
+                    Log::warning('Failed to get warehouse stock for variant: ' . $variant->id, [
+                        'error' => $e->getMessage()
+                    ]);
+                    // Fallback to variant stock
+                    $warehouseStock = (int) ($variant->stock ?? 0);
+                }
+            }
+        } else {
+            // No variant info - try to get first variant's stock
+            try {
+                $firstVariant = Variant::where('product_id', $product->id)
+                    ->orderBy('position', 'asc')
+                    ->orderBy('id', 'asc')
+                    ->first();
+                if ($firstVariant) {
+                    $variantId = $firstVariant->id;
+                    $stockData = $this->warehouseService->getVariantStock($firstVariant->id);
+                    $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
+                } else {
+                    // Fallback to product stock
+                    $warehouseStock = (int) ($product->stock ?? 0);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Failed to get warehouse stock for product: ' . $product->id, [
+                    'error' => $e->getMessage()
+                ]);
+                $warehouseStock = (int) ($product->stock ?? 0);
             }
         }
         
+        // Add warehouse_stock to result
+        $result['warehouse_stock'] = $warehouseStock;
+        $result['is_out_of_stock'] = $warehouseStock <= 0;
+        
+        // Add Deal information if available
+        // Frontend will handle excluding Deal voucher in Flash Sale block
         $dealInfo = $this->getActiveDeal($product->id, $variantPrice, $variantId);
         if ($dealInfo) {
             $result['deal'] = $dealInfo;
@@ -730,6 +773,11 @@ class ProductController extends Controller
                 return $this->formatProductForResponse($product, $variantPrice, $additionalData);
             });
             
+            // Calculate total products in Flash Sale (unique product IDs)
+            $totalProductsInFlashSale = ProductSale::where('flashsale_id', $flash->id)
+                ->distinct('product_id')
+                ->count('product_id');
+            
             $response = [
                 'success' => true,
                 'data' => $formattedProducts,
@@ -740,8 +788,9 @@ class ProductController extends Controller
                     'end' => $flash->end,
                     'end_date' => date('Y-m-d H:i:s', $flash->end), // ISO format for JavaScript Date parsing
                     'end_timestamp' => $flash->end,
+                    'total_products' => $totalProductsInFlashSale, // Total unique products in Flash Sale
                 ],
-                'count' => $formattedProducts->count(),
+                'count' => $formattedProducts->count(), // Number of products returned in this response
             ];
             
             \Log::info('Flash Sale API Response', [
@@ -890,9 +939,22 @@ class ProductController extends Controller
                 }
             }
             
-            // Get variants with price info
+            // Get variants with price info and warehouse stock
             $variants = $product->variants->map(function($variant) use ($product) {
                 $variantPriceInfo = $this->getVariantPriceInfo($variant->id, $product->id);
+                
+                // Get warehouse stock
+                $warehouseStock = 0;
+                try {
+                    $stockData = $this->warehouseService->getVariantStock($variant->id);
+                    $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
+                } catch (\Exception $e) {
+                    Log::warning('Failed to get warehouse stock for variant: ' . $variant->id, [
+                        'error' => $e->getMessage()
+                    ]);
+                    // Fallback to variant stock
+                    $warehouseStock = (int) ($variant->stock ?? 0);
+                }
                 
                 $optLabel = $variant->option1_value;
                 if (!$optLabel) {
@@ -911,7 +973,9 @@ class ProductController extends Controller
                     'image' => $this->formatImageUrl($variant->image ?? null),
                     'price' => (float) $variant->price,
                     'sale' => (float) $variant->sale,
-                    'stock' => (int) ($variant->stock ?? 0),
+                    'stock' => (int) ($variant->stock ?? 0), // Original stock from variants table
+                    'warehouse_stock' => $warehouseStock, // Current stock from warehouse
+                    'is_out_of_stock' => $warehouseStock <= 0,
                     'weight' => (float) $variant->weight,
                     'size_id' => $variant->size_id,
                     'color_id' => $variant->color_id,
@@ -1058,6 +1122,22 @@ class ProductController extends Controller
                     'seo_title' => $product->seo_title,
                     'seo_description' => $product->seo_description,
                     'stock' => (int) $product->stock,
+                    'warehouse_stock' => $firstVariant ? (function() use ($firstVariant) {
+                        try {
+                            $stockData = $this->warehouseService->getVariantStock($firstVariant->id);
+                            return (int) ($stockData['current_stock'] ?? 0);
+                        } catch (\Exception $e) {
+                            return (int) ($firstVariant->stock ?? 0);
+                        }
+                    })() : (int) $product->stock,
+                    'is_out_of_stock' => $firstVariant ? (function() use ($firstVariant) {
+                        try {
+                            $stockData = $this->warehouseService->getVariantStock($firstVariant->id);
+                            return (int) ($stockData['current_stock'] ?? 0) <= 0;
+                        } catch (\Exception $e) {
+                            return (int) ($firstVariant->stock ?? 0) <= 0;
+                        }
+                    })() : ((int) $product->stock <= 0),
                     'best' => (int) $product->best,
                     'is_new' => (int) ($product->is_new ?? 0),
                     'cbmp' => $product->cbmp,
@@ -1077,13 +1157,25 @@ class ProductController extends Controller
                         'name' => $category->name,
                         'slug' => $category->slug,
                     ] : null,
-                    'first_variant' => $firstVariant ? [
-                        'id' => $firstVariant->id,
-                        'sku' => $firstVariant->sku,
-                        'price' => (float) $firstVariant->price,
-                        'sale' => (float) $firstVariant->sale,
-                        'stock' => (int) ($firstVariant->stock ?? 0),
-                    ] : null,
+                    'first_variant' => $firstVariant ? (function() use ($firstVariant) {
+                        $warehouseStock = 0;
+                        try {
+                            $stockData = $this->warehouseService->getVariantStock($firstVariant->id);
+                            $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
+                        } catch (\Exception $e) {
+                            Log::warning('Failed to get warehouse stock for first variant: ' . $firstVariant->id);
+                            $warehouseStock = (int) ($firstVariant->stock ?? 0);
+                        }
+                        return [
+                            'id' => $firstVariant->id,
+                            'sku' => $firstVariant->sku,
+                            'price' => (float) $firstVariant->price,
+                            'sale' => (float) $firstVariant->sale,
+                            'stock' => (int) ($firstVariant->stock ?? 0),
+                            'warehouse_stock' => $warehouseStock,
+                            'is_out_of_stock' => $warehouseStock <= 0,
+                        ];
+                    })() : null,
                     'variants' => $variants->toArray(),
                     'variants_count' => $variants->count(),
                     'rating' => [

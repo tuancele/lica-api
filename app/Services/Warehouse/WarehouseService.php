@@ -1,0 +1,1086 @@
+<?php
+
+namespace App\Services\Warehouse;
+
+use App\Modules\Warehouse\Models\Warehouse;
+use App\Modules\Warehouse\Models\ProductWarehouse;
+use App\Modules\Product\Models\Product;
+use App\Modules\Product\Models\Variant;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
+
+/**
+ * Service class for Warehouse business logic
+ * 
+ * This service handles all warehouse-related business operations,
+ * separating business logic from controllers and data access.
+ */
+class WarehouseService implements WarehouseServiceInterface
+{
+    /**
+     * Get inventory list with filters
+     * 
+     * @param array $filters
+     * @param int $perPage
+     * @return LengthAwarePaginator
+     */
+    public function getInventory(array $filters = [], int $perPage = 10): LengthAwarePaginator
+    {
+        $query = Variant::select(
+            'variants.id as variant_id',
+            'variants.sku as variant_sku',
+            'variants.option1_value as variant_option',
+            'posts.id as product_id',
+            'posts.name as product_name',
+            'posts.image as product_image'
+        )
+        ->join('posts', 'posts.id', '=', 'variants.product_id')
+        ->where('posts.type', 'product')
+        ->where('posts.status', 1);
+
+        // Filter by keyword
+        if (isset($filters['keyword']) && !empty($filters['keyword'])) {
+            $keyword = $filters['keyword'];
+            $query->where(function($q) use ($keyword) {
+                $q->where('posts.name', 'like', "%{$keyword}%")
+                  ->orWhere('variants.sku', 'like', "%{$keyword}%");
+            });
+        }
+
+        // Filter by variant_id
+        if (isset($filters['variant_id']) && !empty($filters['variant_id'])) {
+            $query->where('variants.id', $filters['variant_id']);
+        }
+
+        // Filter by product_id
+        if (isset($filters['product_id']) && !empty($filters['product_id'])) {
+            $query->where('posts.id', $filters['product_id']);
+        }
+
+        // Get import/export totals
+        $query->selectRaw('
+            COALESCE(SUM(CASE WHEN pw_import.qty IS NOT NULL THEN pw_import.qty ELSE 0 END), 0) as import_total,
+            COALESCE(SUM(CASE WHEN pw_export.qty IS NOT NULL THEN pw_export.qty ELSE 0 END), 0) as export_total,
+            MAX(CASE WHEN pw_import.created_at IS NOT NULL THEN pw_import.created_at END) as last_import_date,
+            MAX(CASE WHEN pw_export.created_at IS NOT NULL THEN pw_export.created_at END) as last_export_date
+        ')
+        ->leftJoin('product_warehouse as pw_import', function($join) {
+            $join->on('pw_import.variant_id', '=', 'variants.id')
+                 ->where('pw_import.type', '=', 'import');
+        })
+        ->leftJoin('product_warehouse as pw_export', function($join) {
+            $join->on('pw_export.variant_id', '=', 'variants.id')
+                 ->where('pw_export.type', '=', 'export');
+        })
+        ->groupBy('variants.id', 'variants.sku', 'variants.option1_value', 'posts.id', 'posts.name', 'posts.image');
+
+        // Filter by stock range
+        if (isset($filters['min_stock'])) {
+            $query->havingRaw('(import_total - export_total) >= ?', [$filters['min_stock']]);
+        }
+        if (isset($filters['max_stock'])) {
+            $query->havingRaw('(import_total - export_total) <= ?', [$filters['max_stock']]);
+        }
+
+        // Sort
+        $sortBy = $filters['sort_by'] ?? 'product_name';
+        $sortOrder = $filters['sort_order'] ?? 'asc';
+        
+        if ($sortBy === 'stock') {
+            $query->orderByRaw("(import_total - export_total) {$sortOrder}");
+        } elseif ($sortBy === 'variant_name') {
+            $query->orderBy('variants.option1_value', $sortOrder);
+        } else {
+            $query->orderBy('posts.name', $sortOrder);
+        }
+
+        return $query->paginate($perPage);
+    }
+
+    /**
+     * Get inventory detail for a variant
+     * 
+     * @param int $variantId
+     * @return array
+     */
+    public function getVariantInventory(int $variantId): array
+    {
+        $variant = Variant::with(['product'])->findOrFail($variantId);
+        
+        $importTotal = countProduct($variantId, 'import');
+        $exportTotal = countProduct($variantId, 'export');
+        $currentStock = max(0, $importTotal - $exportTotal);
+
+        // Get import history
+        $importHistory = ProductWarehouse::where('variant_id', $variantId)
+            ->where('type', 'import')
+            ->with(['warehouse'])
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get()
+            ->map(function($item) {
+                return [
+                    'receipt_id' => $item->warehouse_id,
+                    'receipt_code' => $item->warehouse?->code ?? '',
+                    'quantity' => $item->qty ?? 0,
+                    'price' => $item->price ?? 0,
+                    'date' => $item->created_at?->toISOString(),
+                ];
+            });
+
+        // Get export history
+        $exportHistory = ProductWarehouse::where('variant_id', $variantId)
+            ->where('type', 'export')
+            ->with(['warehouse'])
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get()
+            ->map(function($item) {
+                return [
+                    'receipt_id' => $item->warehouse_id,
+                    'receipt_code' => $item->warehouse?->code ?? '',
+                    'quantity' => $item->qty ?? 0,
+                    'price' => $item->price ?? 0,
+                    'date' => $item->created_at?->toISOString(),
+                ];
+            });
+
+        return [
+            'variant_id' => $variant->id,
+            'variant_sku' => $variant->sku,
+            'variant_option' => $variant->option1_value ?? 'Mặc định',
+            'product_id' => $variant->product_id,
+            'product_name' => $variant->product?->name ?? '',
+            'product_image' => $variant->product?->image ?? null,
+            'import_total' => $importTotal,
+            'export_total' => $exportTotal,
+            'current_stock' => $currentStock,
+            'import_history' => $importHistory,
+            'export_history' => $exportHistory,
+            'last_import_date' => ProductWarehouse::where('variant_id', $variantId)
+                ->where('type', 'import')
+                ->max('created_at')?->toISOString(),
+            'last_export_date' => ProductWarehouse::where('variant_id', $variantId)
+                ->where('type', 'export')
+                ->max('created_at')?->toISOString(),
+        ];
+    }
+
+    /**
+     * Get import receipts list with filters
+     * 
+     * @param array $filters
+     * @param int $perPage
+     * @return LengthAwarePaginator
+     */
+    public function getImportReceipts(array $filters = [], int $perPage = 10): LengthAwarePaginator
+    {
+        $query = Warehouse::with(['user', 'items.variant.product'])
+            ->where('type', 'import');
+
+        // Filter by keyword
+        if (isset($filters['keyword']) && !empty($filters['keyword'])) {
+            $keyword = $filters['keyword'];
+            $query->where(function($q) use ($keyword) {
+                $q->where('code', 'like', "%{$keyword}%")
+                  ->orWhere('subject', 'like', "%{$keyword}%");
+            });
+        }
+
+        // Filter by code
+        if (isset($filters['code']) && !empty($filters['code'])) {
+            $query->where('code', $filters['code']);
+        }
+
+        // Filter by user_id
+        if (isset($filters['user_id']) && !empty($filters['user_id'])) {
+            $query->where('user_id', $filters['user_id']);
+        }
+
+        // Filter by date range
+        if (isset($filters['date_from']) && !empty($filters['date_from'])) {
+            $query->whereDate('created_at', '>=', $filters['date_from']);
+        }
+        if (isset($filters['date_to']) && !empty($filters['date_to'])) {
+            $query->whereDate('created_at', '<=', $filters['date_to']);
+        }
+
+        // Sort
+        $sortBy = $filters['sort_by'] ?? 'created_at';
+        $sortOrder = $filters['sort_order'] ?? 'desc';
+        $query->orderBy($sortBy, $sortOrder);
+
+        return $query->paginate($perPage);
+    }
+
+    /**
+     * Get import receipt detail with items
+     * 
+     * @param int $id
+     * @return Warehouse
+     */
+    public function getImportReceipt(int $id): Warehouse
+    {
+        return Warehouse::with(['user', 'items.variant.product'])
+            ->where('type', 'import')
+            ->findOrFail($id);
+    }
+
+    /**
+     * Create a new import receipt
+     * 
+     * @param array $data
+     * @return Warehouse
+     */
+    public function createImportReceipt(array $data): Warehouse
+    {
+        DB::beginTransaction();
+        
+        try {
+            // Combine VAT invoice and content
+            $content = $data['content'] ?? '';
+            if (isset($data['vat_invoice']) && !empty($data['vat_invoice'])) {
+                $content = ($content ? $content . "\n" : '') . 'Số hóa đơn VAT: ' . $data['vat_invoice'];
+            }
+
+            // Create warehouse record
+            $warehouse = Warehouse::create([
+                'code' => $data['code'],
+                'subject' => $data['subject'],
+                'content' => $content,
+                'type' => 'import',
+                'user_id' => Auth::id(),
+            ]);
+
+            // Create product warehouse items
+            if (isset($data['items']) && is_array($data['items'])) {
+                foreach ($data['items'] as $item) {
+                    ProductWarehouse::create([
+                        'warehouse_id' => $warehouse->id,
+                        'variant_id' => $item['variant_id'],
+                        'price' => $item['price'] ?? 0,
+                        'qty' => $item['quantity'] ?? 0,
+                        'type' => 'import',
+                    ]);
+                }
+            }
+
+            DB::commit();
+            
+            // Reload with relations
+            return $warehouse->load(['user', 'items.variant.product']);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Create import receipt failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Update an existing import receipt
+     * 
+     * @param int $id
+     * @param array $data
+     * @return Warehouse
+     */
+    public function updateImportReceipt(int $id, array $data): Warehouse
+    {
+        DB::beginTransaction();
+        
+        try {
+            $warehouse = Warehouse::where('type', 'import')->findOrFail($id);
+
+            // Combine VAT invoice and content
+            $content = $data['content'] ?? $warehouse->content;
+            if (isset($data['vat_invoice']) && !empty($data['vat_invoice'])) {
+                // Remove old VAT invoice if exists
+                $content = preg_replace('/Số hóa đơn VAT:\s*.+/i', '', $content);
+                $content = trim($content);
+                $content = ($content ? $content . "\n" : '') . 'Số hóa đơn VAT: ' . $data['vat_invoice'];
+            }
+
+            // Update warehouse record
+            if (isset($data['code'])) {
+                $warehouse->code = $data['code'];
+            }
+            if (isset($data['subject'])) {
+                $warehouse->subject = $data['subject'];
+            }
+            $warehouse->content = $content;
+            $warehouse->save();
+
+            // Update items if provided
+            if (isset($data['items']) && is_array($data['items'])) {
+                // Delete old items
+                ProductWarehouse::where('warehouse_id', $warehouse->id)->delete();
+                
+                // Create new items
+                foreach ($data['items'] as $item) {
+                    ProductWarehouse::create([
+                        'warehouse_id' => $warehouse->id,
+                        'variant_id' => $item['variant_id'],
+                        'price' => $item['price'] ?? 0,
+                        'qty' => $item['quantity'] ?? 0,
+                        'type' => 'import',
+                    ]);
+                }
+            }
+
+            DB::commit();
+            
+            // Reload with relations
+            return $warehouse->load(['user', 'items.variant.product']);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Update import receipt failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Delete an import receipt
+     * 
+     * @param int $id
+     * @return bool
+     */
+    public function deleteImportReceipt(int $id): bool
+    {
+        DB::beginTransaction();
+        
+        try {
+            $warehouse = Warehouse::where('type', 'import')->findOrFail($id);
+            
+            // Delete items first
+            ProductWarehouse::where('warehouse_id', $warehouse->id)->delete();
+            
+            // Delete warehouse record
+            $warehouse->delete();
+            
+            DB::commit();
+            return true;
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Delete import receipt failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Get export receipts list with filters
+     * 
+     * @param array $filters
+     * @param int $perPage
+     * @return LengthAwarePaginator
+     */
+    public function getExportReceipts(array $filters = [], int $perPage = 10): LengthAwarePaginator
+    {
+        $query = Warehouse::with(['user', 'items.variant.product'])
+            ->where('type', 'export');
+
+        // Filter by keyword
+        if (isset($filters['keyword']) && !empty($filters['keyword'])) {
+            $keyword = $filters['keyword'];
+            $query->where(function($q) use ($keyword) {
+                $q->where('code', 'like', "%{$keyword}%")
+                  ->orWhere('subject', 'like', "%{$keyword}%");
+            });
+        }
+
+        // Filter by code
+        if (isset($filters['code']) && !empty($filters['code'])) {
+            $query->where('code', $filters['code']);
+        }
+
+        // Filter by user_id
+        if (isset($filters['user_id']) && !empty($filters['user_id'])) {
+            $query->where('user_id', $filters['user_id']);
+        }
+
+        // Filter by date range
+        if (isset($filters['date_from']) && !empty($filters['date_from'])) {
+            $query->whereDate('created_at', '>=', $filters['date_from']);
+        }
+        if (isset($filters['date_to']) && !empty($filters['date_to'])) {
+            $query->whereDate('created_at', '<=', $filters['date_to']);
+        }
+
+        // Sort
+        $sortBy = $filters['sort_by'] ?? 'created_at';
+        $sortOrder = $filters['sort_order'] ?? 'desc';
+        $query->orderBy($sortBy, $sortOrder);
+
+        return $query->paginate($perPage);
+    }
+
+    /**
+     * Get export receipt detail with items
+     * 
+     * @param int $id
+     * @return Warehouse
+     */
+    public function getExportReceipt(int $id): Warehouse
+    {
+        return Warehouse::with(['user', 'items.variant.product'])
+            ->where('type', 'export')
+            ->findOrFail($id);
+    }
+
+    /**
+     * Create a new export receipt
+     * 
+     * @param array $data
+     * @return Warehouse
+     * @throws \Exception
+     */
+    public function createExportReceipt(array $data): Warehouse
+    {
+        DB::beginTransaction();
+        
+        try {
+            // Validate stock availability
+            $stockErrors = [];
+            foreach ($data['items'] ?? [] as $index => $item) {
+                $variantId = $item['variant_id'] ?? null;
+                $quantity = $item['quantity'] ?? 0;
+                
+                if ($variantId) {
+                    $importTotal = countProduct($variantId, 'import');
+                    $exportTotal = countProduct($variantId, 'export');
+                    $availableStock = max(0, $importTotal - $exportTotal);
+                    
+                    if ($quantity > $availableStock) {
+                        $stockErrors["items.{$index}.quantity"] = [
+                            "Số lượng vượt quá tồn kho. Tồn kho hiện tại: {$availableStock}"
+                        ];
+                    }
+                }
+            }
+            
+            if (!empty($stockErrors)) {
+                DB::rollBack();
+                throw new \Exception(json_encode(['errors' => $stockErrors]));
+            }
+
+            // Combine VAT invoice and content
+            $content = $data['content'] ?? '';
+            if (isset($data['vat_invoice']) && !empty($data['vat_invoice'])) {
+                $content = ($content ? $content . "\n" : '') . 'Số hóa đơn VAT: ' . $data['vat_invoice'];
+            }
+
+            // Create warehouse record
+            $warehouse = Warehouse::create([
+                'code' => $data['code'],
+                'subject' => $data['subject'],
+                'content' => $content,
+                'type' => 'export',
+                'user_id' => Auth::id(),
+            ]);
+
+            // Create product warehouse items
+            if (isset($data['items']) && is_array($data['items'])) {
+                foreach ($data['items'] as $item) {
+                    ProductWarehouse::create([
+                        'warehouse_id' => $warehouse->id,
+                        'variant_id' => $item['variant_id'],
+                        'price' => $item['price'] ?? 0,
+                        'qty' => $item['quantity'] ?? 0,
+                        'type' => 'export',
+                    ]);
+                }
+            }
+
+            DB::commit();
+            
+            // Reload with relations
+            return $warehouse->load(['user', 'items.variant.product']);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Create export receipt failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Update an existing export receipt
+     * 
+     * @param int $id
+     * @param array $data
+     * @return Warehouse
+     * @throws \Exception
+     */
+    public function updateExportReceipt(int $id, array $data): Warehouse
+    {
+        DB::beginTransaction();
+        
+        try {
+            $warehouse = Warehouse::where('type', 'export')->findOrFail($id);
+
+            // Validate stock availability if items are being updated
+            if (isset($data['items']) && is_array($data['items'])) {
+                $stockErrors = [];
+                foreach ($data['items'] as $index => $item) {
+                    $variantId = $item['variant_id'] ?? null;
+                    $quantity = $item['quantity'] ?? 0;
+                    
+                    if ($variantId) {
+                        // Calculate stock excluding current receipt
+                        $importTotal = countProduct($variantId, 'import');
+                        $exportTotal = countProduct($variantId, 'export');
+                        
+                        // Subtract current receipt's export quantity
+                        $currentReceiptExport = ProductWarehouse::where('warehouse_id', $warehouse->id)
+                            ->where('variant_id', $variantId)
+                            ->where('type', 'export')
+                            ->sum('qty');
+                        
+                        $availableStock = max(0, $importTotal - $exportTotal + $currentReceiptExport);
+                        
+                        if ($quantity > $availableStock) {
+                            $stockErrors["items.{$index}.quantity"] = [
+                                "Số lượng vượt quá tồn kho. Tồn kho hiện tại: {$availableStock}"
+                            ];
+                        }
+                    }
+                }
+                
+                if (!empty($stockErrors)) {
+                    DB::rollBack();
+                    throw new \Exception(json_encode(['errors' => $stockErrors]));
+                }
+            }
+
+            // Combine VAT invoice and content
+            $content = $data['content'] ?? $warehouse->content;
+            if (isset($data['vat_invoice']) && !empty($data['vat_invoice'])) {
+                // Remove old VAT invoice if exists
+                $content = preg_replace('/Số hóa đơn VAT:\s*.+/i', '', $content);
+                $content = trim($content);
+                $content = ($content ? $content . "\n" : '') . 'Số hóa đơn VAT: ' . $data['vat_invoice'];
+            }
+
+            // Update warehouse record
+            if (isset($data['code'])) {
+                $warehouse->code = $data['code'];
+            }
+            if (isset($data['subject'])) {
+                $warehouse->subject = $data['subject'];
+            }
+            $warehouse->content = $content;
+            $warehouse->save();
+
+            // Update items if provided
+            if (isset($data['items']) && is_array($data['items'])) {
+                // Delete old items
+                ProductWarehouse::where('warehouse_id', $warehouse->id)->delete();
+                
+                // Create new items
+                foreach ($data['items'] as $item) {
+                    ProductWarehouse::create([
+                        'warehouse_id' => $warehouse->id,
+                        'variant_id' => $item['variant_id'],
+                        'price' => $item['price'] ?? 0,
+                        'qty' => $item['quantity'] ?? 0,
+                        'type' => 'export',
+                    ]);
+                }
+            }
+
+            DB::commit();
+            
+            // Reload with relations
+            return $warehouse->load(['user', 'items.variant.product']);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Update export receipt failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Delete an export receipt
+     * 
+     * @param int $id
+     * @return bool
+     */
+    public function deleteExportReceipt(int $id): bool
+    {
+        DB::beginTransaction();
+        
+        try {
+            $warehouse = Warehouse::where('type', 'export')->findOrFail($id);
+            
+            // Delete items first
+            ProductWarehouse::where('warehouse_id', $warehouse->id)->delete();
+            
+            // Delete warehouse record
+            $warehouse->delete();
+            
+            DB::commit();
+            return true;
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Delete export receipt failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Search products by keyword
+     * 
+     * @param string $keyword
+     * @param int $limit
+     * @return array
+     */
+    public function searchProducts(string $keyword, int $limit = 50): array
+    {
+        if (strlen($keyword) < 2) {
+            return [];
+        }
+
+        $products = Product::select('id', 'name', 'slug', 'image')
+            ->where('type', 'product')
+            ->where('status', 1)
+            ->where('name', 'like', "%{$keyword}%")
+            ->orderBy('name', 'asc')
+            ->limit($limit)
+            ->get();
+
+        return $products->map(function($product) {
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'slug' => $product->slug,
+                'image' => $product->image,
+            ];
+        })->toArray();
+    }
+
+    /**
+     * Get variants for a product
+     * 
+     * @param int $productId
+     * @return array
+     */
+    public function getProductVariants(int $productId): array
+    {
+        $variants = Variant::select('id', 'sku', 'option1_value')
+            ->where('product_id', $productId)
+            ->orderBy('option1_value', 'asc')
+            ->get();
+
+        return $variants->map(function($variant) {
+            $importTotal = countProduct($variant->id, 'import');
+            $exportTotal = countProduct($variant->id, 'export');
+            $currentStock = max(0, $importTotal - $exportTotal);
+            
+            return [
+                'id' => $variant->id,
+                'sku' => $variant->sku,
+                'option1_value' => $variant->option1_value ?? 'Mặc định',
+                'current_stock' => $currentStock,
+            ];
+        })->toArray();
+    }
+
+    /**
+     * Get stock information for a variant
+     * 
+     * @param int $variantId
+     * @return array
+     */
+    public function getVariantStock(int $variantId): array
+    {
+        $variant = Variant::findOrFail($variantId);
+        
+        $importTotal = countProduct($variantId, 'import');
+        $exportTotal = countProduct($variantId, 'export');
+        $currentStock = max(0, $importTotal - $exportTotal);
+        
+        $importAvgPrice = ProductWarehouse::where('variant_id', $variantId)
+            ->where('type', 'import')
+            ->where('price', '>', 0)
+            ->avg('price');
+        
+        $exportAvgPrice = ProductWarehouse::where('variant_id', $variantId)
+            ->where('type', 'export')
+            ->where('price', '>', 0)
+            ->avg('price');
+
+        return [
+            'variant_id' => $variant->id,
+            'variant_sku' => $variant->sku,
+            'variant_option' => $variant->option1_value ?? 'Mặc định',
+            'import_total' => $importTotal,
+            'export_total' => $exportTotal,
+            'current_stock' => $currentStock,
+            'price' => [
+                'import_avg' => $importAvgPrice ? (float) $importAvgPrice : null,
+                'export_avg' => $exportAvgPrice ? (float) $exportAvgPrice : null,
+            ],
+        ];
+    }
+
+    /**
+     * Get suggested price for a variant
+     * 
+     * @param int $variantId
+     * @param string $type
+     * @return array
+     */
+    public function getVariantPrice(int $variantId, string $type = 'export'): array
+    {
+        $variant = Variant::findOrFail($variantId);
+        
+        $suggestedPrice = null;
+        $lastPrice = null;
+        
+        if ($type === 'export') {
+            // For export, use variant sale price or price
+            $suggestedPrice = $variant->sale > 0 ? $variant->sale : $variant->price;
+            
+            // Get last export price
+            $lastExport = ProductWarehouse::where('variant_id', $variantId)
+                ->where('type', 'export')
+                ->where('price', '>', 0)
+                ->orderBy('created_at', 'desc')
+                ->first();
+            
+            $lastPrice = $lastExport?->price;
+        } else {
+            // For import, use last import price
+            $lastImport = ProductWarehouse::where('variant_id', $variantId)
+                ->where('type', 'import')
+                ->where('price', '>', 0)
+                ->orderBy('created_at', 'desc')
+                ->first();
+            
+            $suggestedPrice = $lastImport?->price ?? $variant->price;
+            $lastPrice = $lastImport?->price;
+        }
+
+        return [
+            'variant_id' => $variant->id,
+            'suggested_price' => $suggestedPrice ? (float) $suggestedPrice : null,
+            'price_type' => $type,
+            'last_price' => $lastPrice ? (float) $lastPrice : null,
+            'variant_price' => $variant->price ? (float) $variant->price : null,
+            'variant_sale' => $variant->sale ? (float) $variant->sale : null,
+        ];
+    }
+
+    /**
+     * Get quantity statistics
+     * 
+     * @param array $filters
+     * @param int $perPage
+     * @return LengthAwarePaginator
+     */
+    public function getQuantityStatistics(array $filters = [], int $perPage = 10): LengthAwarePaginator
+    {
+        $query = Variant::select(
+            'variants.id as variant_id',
+            'variants.sku as variant_sku',
+            'variants.option1_value as variant_option',
+            'posts.id as product_id',
+            'posts.name as product_name'
+        )
+        ->join('posts', 'posts.id', '=', 'variants.product_id')
+        ->where('posts.type', 'product');
+
+        // Filter by keyword
+        if (isset($filters['keyword']) && !empty($filters['keyword'])) {
+            $keyword = $filters['keyword'];
+            $query->where(function($q) use ($keyword) {
+                $q->where('posts.name', 'like', "%{$keyword}%")
+                  ->orWhere('variants.sku', 'like', "%{$keyword}%");
+            });
+        }
+
+        // Get import/export totals
+        $query->selectRaw('
+            COALESCE(SUM(CASE WHEN pw_import.qty IS NOT NULL THEN pw_import.qty ELSE 0 END), 0) as import_total,
+            COALESCE(SUM(CASE WHEN pw_export.qty IS NOT NULL THEN pw_export.qty ELSE 0 END), 0) as export_total
+        ')
+        ->leftJoin('product_warehouse as pw_import', function($join) {
+            $join->on('pw_import.variant_id', '=', 'variants.id')
+                 ->where('pw_import.type', '=', 'import');
+        })
+        ->leftJoin('product_warehouse as pw_export', function($join) {
+            $join->on('pw_export.variant_id', '=', 'variants.id')
+                 ->where('pw_export.type', '=', 'export');
+        })
+        ->groupBy('variants.id', 'variants.sku', 'variants.option1_value', 'posts.id', 'posts.name');
+
+        // Sort
+        $sortBy = $filters['sort_by'] ?? 'product_name';
+        $sortOrder = $filters['sort_order'] ?? 'asc';
+        
+        if ($sortBy === 'stock') {
+            $query->orderByRaw("(import_total - export_total) {$sortOrder}");
+        } else {
+            $query->orderBy('posts.name', $sortOrder);
+        }
+
+        return $query->paginate($perPage);
+    }
+
+    /**
+     * Get revenue statistics
+     * 
+     * @param array $filters
+     * @param int $perPage
+     * @return LengthAwarePaginator
+     */
+    public function getRevenueStatistics(array $filters = [], int $perPage = 10): LengthAwarePaginator
+    {
+        $query = Variant::select(
+            'variants.id as variant_id',
+            'variants.sku as variant_sku',
+            'variants.option1_value as variant_option',
+            'posts.id as product_id',
+            'posts.name as product_name'
+        )
+        ->join('posts', 'posts.id', '=', 'variants.product_id')
+        ->where('posts.type', 'product');
+
+        // Filter by keyword
+        if (isset($filters['keyword']) && !empty($filters['keyword'])) {
+            $keyword = $filters['keyword'];
+            $query->where(function($q) use ($keyword) {
+                $q->where('posts.name', 'like', "%{$keyword}%")
+                  ->orWhere('variants.sku', 'like', "%{$keyword}%");
+            });
+        }
+
+        // Get import/export values and quantities
+        $query->selectRaw('
+            COALESCE(SUM(CASE WHEN pw_import.price * pw_import.qty IS NOT NULL THEN pw_import.price * pw_import.qty ELSE 0 END), 0) as import_value,
+            COALESCE(SUM(CASE WHEN pw_export.price * pw_export.qty IS NOT NULL THEN pw_export.price * pw_export.qty ELSE 0 END), 0) as export_value,
+            COALESCE(SUM(CASE WHEN pw_import.qty IS NOT NULL THEN pw_import.qty ELSE 0 END), 0) as import_quantity,
+            COALESCE(SUM(CASE WHEN pw_export.qty IS NOT NULL THEN pw_export.qty ELSE 0 END), 0) as export_quantity
+        ')
+        ->leftJoin('product_warehouse as pw_import', function($join) {
+            $join->on('pw_import.variant_id', '=', 'variants.id')
+                 ->where('pw_import.type', '=', 'import');
+        })
+        ->leftJoin('product_warehouse as pw_export', function($join) {
+            $join->on('pw_export.variant_id', '=', 'variants.id')
+                 ->where('pw_export.type', '=', 'export');
+        })
+        ->groupBy('variants.id', 'variants.sku', 'variants.option1_value', 'posts.id', 'posts.name');
+
+        // Sort
+        $sortBy = $filters['sort_by'] ?? 'product_name';
+        $sortOrder = $filters['sort_order'] ?? 'asc';
+        $query->orderBy('posts.name', $sortOrder);
+
+        return $query->paginate($perPage);
+    }
+
+    /**
+     * Get warehouse summary statistics
+     * 
+     * @param array $filters
+     * @return array
+     */
+    public function getSummaryStatistics(array $filters = []): array
+    {
+        $dateFrom = $filters['date_from'] ?? null;
+        $dateTo = $filters['date_to'] ?? null;
+
+        // Total products and variants
+        $totalProducts = Product::where('type', 'product')->where('status', 1)->count();
+        $totalVariants = Variant::join('posts', 'posts.id', '=', 'variants.product_id')
+            ->where('posts.type', 'product')
+            ->where('posts.status', 1)
+            ->count();
+
+        // Receipt counts
+        $importReceiptsQuery = Warehouse::where('type', 'import');
+        $exportReceiptsQuery = Warehouse::where('type', 'export');
+        
+        if ($dateFrom) {
+            $importReceiptsQuery->whereDate('created_at', '>=', $dateFrom);
+            $exportReceiptsQuery->whereDate('created_at', '>=', $dateFrom);
+        }
+        if ($dateTo) {
+            $importReceiptsQuery->whereDate('created_at', '<=', $dateTo);
+            $exportReceiptsQuery->whereDate('created_at', '<=', $dateTo);
+        }
+        
+        $totalImportReceipts = $importReceiptsQuery->count();
+        $totalExportReceipts = $exportReceiptsQuery->count();
+
+        // Total values
+        $importValueQuery = ProductWarehouse::where('type', 'import')
+            ->selectRaw('SUM(price * qty) as total');
+        $exportValueQuery = ProductWarehouse::where('type', 'export')
+            ->selectRaw('SUM(price * qty) as total');
+        
+        if ($dateFrom) {
+            $importValueQuery->whereDate('created_at', '>=', $dateFrom);
+            $exportValueQuery->whereDate('created_at', '>=', $dateFrom);
+        }
+        if ($dateTo) {
+            $importValueQuery->whereDate('created_at', '<=', $dateTo);
+            $exportValueQuery->whereDate('created_at', '<=', $dateTo);
+        }
+        
+        $totalImportValue = $importValueQuery->first()->total ?? 0;
+        $totalExportValue = $exportValueQuery->first()->total ?? 0;
+        $totalProfit = $totalExportValue - $totalImportValue;
+
+        // Total quantities
+        $importQuantityQuery = ProductWarehouse::where('type', 'import')
+            ->selectRaw('SUM(qty) as total');
+        $exportQuantityQuery = ProductWarehouse::where('type', 'export')
+            ->selectRaw('SUM(qty) as total');
+        
+        if ($dateFrom) {
+            $importQuantityQuery->whereDate('created_at', '>=', $dateFrom);
+            $exportQuantityQuery->whereDate('created_at', '>=', $dateFrom);
+        }
+        if ($dateTo) {
+            $importQuantityQuery->whereDate('created_at', '<=', $dateTo);
+            $exportQuantityQuery->whereDate('created_at', '<=', $dateTo);
+        }
+        
+        $totalImportQuantity = $importQuantityQuery->first()->total ?? 0;
+        $totalExportQuantity = $exportQuantityQuery->first()->total ?? 0;
+
+        // Current stock value (approximate)
+        $currentStockValue = 0;
+        $variants = Variant::join('posts', 'posts.id', '=', 'variants.product_id')
+            ->where('posts.type', 'product')
+            ->where('posts.status', 1)
+            ->get();
+        
+        foreach ($variants as $variant) {
+            $importTotal = countProduct($variant->id, 'import');
+            $exportTotal = countProduct($variant->id, 'export');
+            $currentStock = max(0, $importTotal - $exportTotal);
+            
+            // Use average import price for stock value calculation
+            $avgPrice = ProductWarehouse::where('variant_id', $variant->id)
+                ->where('type', 'import')
+                ->where('price', '>', 0)
+                ->avg('price');
+            
+            if ($avgPrice) {
+                $currentStockValue += $currentStock * $avgPrice;
+            }
+        }
+
+        // Low stock items (stock < 10)
+        $lowStockItems = 0;
+        $outOfStockItems = 0;
+        
+        foreach ($variants as $variant) {
+            $importTotal = countProduct($variant->id, 'import');
+            $exportTotal = countProduct($variant->id, 'export');
+            $currentStock = max(0, $importTotal - $exportTotal);
+            
+            if ($currentStock === 0) {
+                $outOfStockItems++;
+            } elseif ($currentStock < 10) {
+                $lowStockItems++;
+            }
+        }
+
+        return [
+            'total_products' => $totalProducts,
+            'total_variants' => $totalVariants,
+            'total_import_receipts' => $totalImportReceipts,
+            'total_export_receipts' => $totalExportReceipts,
+            'total_import_value' => (float) $totalImportValue,
+            'total_export_value' => (float) $totalExportValue,
+            'total_profit' => (float) $totalProfit,
+            'total_import_quantity' => (int) $totalImportQuantity,
+            'total_export_quantity' => (int) $totalExportQuantity,
+            'current_stock_value' => (float) $currentStockValue,
+            'low_stock_items' => $lowStockItems,
+            'out_of_stock_items' => $outOfStockItems,
+        ];
+    }
+
+    /**
+     * Deduct stock for a variant (create export receipt automatically)
+     * 
+     * @param int $variantId Variant ID (or Product ID if no variant)
+     * @param int $quantity Quantity to deduct
+     * @param string $reason Reason for deduction (e.g., 'flashsale_order', 'normal_order')
+     * @return bool
+     */
+    public function deductStock(int $variantId, int $quantity, string $reason = 'order'): bool
+    {
+        DB::beginTransaction();
+        
+        try {
+            // Check if variant exists
+            $variant = Variant::find($variantId);
+            if (!$variant) {
+                // If not found as variant, try to find default variant for product
+                $product = Product::find($variantId);
+                if ($product) {
+                    $variant = $product->variant($variantId);
+                }
+            }
+            
+            if (!$variant) {
+                throw new \Exception("Variant hoặc Product không tồn tại: {$variantId}");
+            }
+            
+            // Check available stock
+            $stockInfo = $this->getVariantStock($variant->id);
+            if ($stockInfo['current_stock'] < $quantity) {
+                throw new \Exception("Không đủ tồn kho. Tồn kho hiện tại: {$stockInfo['current_stock']}, Yêu cầu: {$quantity}");
+            }
+            
+            // Create export receipt automatically
+            $code = 'XH-' . strtoupper($reason) . '-' . $variant->id . '-' . time();
+            $subject = "Xuất hàng tự động - " . $reason;
+            $content = "Tự động tạo phiếu xuất hàng khi xử lý đơn hàng. Lý do: {$reason}";
+            
+            $warehouse = Warehouse::create([
+                'code' => $code,
+                'subject' => $subject,
+                'content' => $content,
+                'type' => 'export',
+                'user_id' => Auth::id() ?? 1,
+            ]);
+            
+            // Get variant price for export
+            $variantPrice = $variant->sale > 0 ? $variant->sale : $variant->price;
+            
+            // Create product warehouse item
+            ProductWarehouse::create([
+                'warehouse_id' => $warehouse->id,
+                'variant_id' => $variant->id,
+                'price' => $variantPrice,
+                'qty' => $quantity,
+                'type' => 'export',
+            ]);
+            
+            DB::commit();
+            return true;
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Deduct stock failed: ' . $e->getMessage(), [
+                'variant_id' => $variantId,
+                'quantity' => $quantity,
+                'reason' => $reason
+            ]);
+            throw $e;
+        }
+    }
+}

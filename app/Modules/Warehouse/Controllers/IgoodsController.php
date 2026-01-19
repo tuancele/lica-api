@@ -8,8 +8,6 @@ use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
 use Validator;
 use Illuminate\Support\Facades\Auth;
-use App\Modules\Color\Models\Color;
-use App\Modules\Size\Models\Size;
 use App\Modules\Warehouse\Models\ProductWarehouse;
 use App\Modules\Warehouse\Models\Warehouse;
 class IgoodsController extends Controller
@@ -26,16 +24,48 @@ class IgoodsController extends Controller
     }
     public function create(){
     	active('warehouse','importgoods');
-    	$data['products'] = Variant::select('id','sku','color_id','size_id','product_id')->latest()->get();
+    	// Don't load all products to avoid overload - use AJAX search instead
+    	$data['products'] = collect([]);
         return view('Warehouse::import.create',$data);
+    }
+    
+    public function searchProducts(Request $request){
+        $search = $request->get('q', '');
+        $products = Product::select('id','name','slug')
+            ->where('type','product')
+            ->where('status', 1);
+        
+        if($search && strlen($search) >= 2) {
+            $products->where('name', 'like', '%'.$search.'%');
+        } else {
+            // If search is too short, return empty
+            return response()->json(['results' => []]);
+        }
+        
+        $products = $products->orderBy('name','asc')
+            ->limit(50)
+            ->get();
+        
+        $results = [];
+        foreach($products as $product) {
+            $results[] = [
+                'id' => $product->id,
+                'text' => $product->name
+            ];
+        }
+        
+        return response()->json(['results' => $results]);
     }
     public function store(Request $request)
     {   
         $validator = Validator::make($request->all(), [
-            'code' => 'required|unique:warehouse,code'
+            'code' => 'required|unique:warehouse,code',
+            'variant_id.*' => 'required|exists:variants,id'
         ],[
             'code.required' => 'Bạn chưa nhập mã đơn hàng.',
             'code.unique' => 'Mã đơn hàng đã tồn tại',
+            'variant_id.*.required' => 'Vui lòng chọn phân loại cho tất cả sản phẩm.',
+            'variant_id.*.exists' => 'Phân loại không hợp lệ.',
         ]);
         if($validator->fails()) {
             return response()->json([
@@ -43,32 +73,40 @@ class IgoodsController extends Controller
                 'errors' => $validator->errors()
             ]);
         }
+        // Combine VAT invoice and content
+        $content = $request->content ?? '';
+        if($request->vat_invoice) {
+            $content = ($content ? $content . "\n" : '') . 'Số hóa đơn VAT: ' . $request->vat_invoice;
+        }
+        
         $id = Warehouse::insertGetId(
             [
                 'code' => $request->code,
                 'subject' => $request->subject,
-                'content' => $request->content,
+                'content' => $content,
                 'type' => 'import',
                 'created_at' => date('Y-m-d H:i:s'),
                 'user_id'=> Auth::id(),
             ]
         );
         if($id > 0){
-            $product = $request->product_id;
+            $variants = $request->variant_id;
             $price = $request->price;
             $qty = $request->qty;
-            if(isset($product) && !empty($product)){
-                foreach ($product as $key => $value) {
-                    ProductWarehouse::insertGetId(
-                        [
-                            'variant_id' => $value,
-                            'price' => (isset($price))?$price[$key]:"",
-                            'qty' => (isset($qty))?$qty[$key]:"",
-                            'type' => 'import',
-                            'warehouse_id' => $id,
-                            'created_at' => date('Y-m-d H:i:s'),
-                        ]
-                    );
+            if(isset($variants) && !empty($variants)){
+                foreach ($variants as $key => $variantId) {
+                    if($variantId && $variantId != ''){
+                        ProductWarehouse::insertGetId(
+                            [
+                                'variant_id' => $variantId,
+                                'price' => (isset($price))?$price[$key]:"",
+                                'qty' => (isset($qty))?$qty[$key]:"",
+                                'type' => 'import',
+                                'warehouse_id' => $id,
+                                'created_at' => date('Y-m-d H:i:s'),
+                            ]
+                        );
+                    }
                 }
             }
             return response()->json([
@@ -83,35 +121,56 @@ class IgoodsController extends Controller
             ]);
         }
     } 
-    public function getSize($id){
-        $variant = Variant::find($id);
-    	if(isset($variant) && !empty($variant)){
-            echo '<option value="'.$variant->size_id.'" selected>'.$variant->size->name.''.$variant->size->unit.'</option>';
+    public function getVariants($productId){
+        $variants = Variant::select('id','sku','option1_value')
+            ->where('product_id', $productId)
+            ->orderBy('option1_value', 'asc')
+            ->get();
+        
+        $options = '<option value="">-- Chọn phân loại --</option>';
+        foreach($variants as $variant){
+            $optionValue = $variant->option1_value ?? 'Mặc định';
+            $options .= '<option value="'.$variant->id.'">'.$optionValue.'</option>';
         }
+        
+        return response()->json([
+            'variants' => $options
+        ]);
     }
-
-    public function getColor($id){
-        $variant = Variant::find($id);
-        if(isset($variant) && !empty($variant)){
-            echo '<option value="'.$variant->color_id.'" selected>'.$variant->color->name.'</option>';
-        }
+    
+    public function getVariantStock($variantId){
+        $import = countProduct($variantId, 'import');
+        $export = countProduct($variantId, 'export');
+        $stock = $import - $export;
+        
+        return response()->json([
+            'stock' => max(0, $stock)
+        ]);
     }
 
     public function loadAdd(){
-        $data['products'] = Variant::select('id','sku','color_id','size_id','product_id')->latest()->get();
+        $data['products'] = Product::select('id','name')->where('type','product')->orderBy('name','asc')->get();
         return view('Warehouse::import.loadAdd',$data);
     }
 
     public function show(Request $request){
         $detail = Warehouse::find($request->id);
         $data['detail'] = $detail;
-        $data['products'] = ProductWarehouse::where([['type','import'],['warehouse_id',$request->id]])->get();
+        $data['products'] = ProductWarehouse::with(['variant.product:id,name'])->where([['type','import'],['warehouse_id',$request->id]])->get();
+        $data['receipt_code'] = getImportReceiptCode($detail->id, $detail->created_at);
+        $data['vat_invoice'] = getVatInvoiceFromContent($detail->content);
+        $data['view_url'] = url('/admin/import-goods/print/' . $detail->id);
+        $data['qr_code'] = generateQRCode($data['view_url'], 120);
         return view('Warehouse::import.show',$data);
     }
     public function print($id){
         $detail = Warehouse::find($id);
         $data['detail'] = $detail;
-        $data['products'] = ProductWarehouse::where([['type','import'],['warehouse_id',$id]])->get();
+        $data['products'] = ProductWarehouse::with(['variant.product:id,name'])->where([['type','import'],['warehouse_id',$id]])->get();
+        $data['receipt_code'] = getImportReceiptCode($detail->id, $detail->created_at);
+        $data['vat_invoice'] = getVatInvoiceFromContent($detail->content);
+        $data['view_url'] = url('/admin/import-goods/print/' . $detail->id);
+        $data['qr_code'] = generateQRCode($data['view_url'], 120);
         return view('Warehouse::import.print',$data);
     }
     public function edit($id){
@@ -121,8 +180,8 @@ class IgoodsController extends Controller
             return redirect('admin/import-goods');
         }
         $data['detail'] = $detail;
-        $data['products'] = Variant::select('id','sku','color_id','size_id','product_id')->latest()->get();
-       	$data['list'] = ProductWarehouse::where([['type','import'],['warehouse_id',$id]])->orderBy('created_at','desc')->get();
+        $data['products'] = Product::select('id','name')->where('type','product')->orderBy('name','asc')->get();
+       	$data['list'] = ProductWarehouse::with(['variant.product:id,name'])->where([['type','import'],['warehouse_id',$id]])->orderBy('created_at','desc')->get();
         return view('Warehouse::import.edit',$data);
     }
     public function update(Request $request)
@@ -148,21 +207,23 @@ class IgoodsController extends Controller
         ));
         if($update > 0){
             ProductWarehouse::where('warehouse_id',$request->id)->delete();
-            $product = $request->product_id;
+            $variants = $request->variant_id;
             $price = $request->price;
             $qty = $request->qty;
-            if(isset($product) && !empty($product)){
-                foreach ($product as $key => $value) {
-                    ProductWarehouse::insertGetId(
-                        [
-                            'variant_id' => $value,
-                            'price' => (isset($price))?$price[$key]:"",
-                            'qty' => (isset($qty))?$qty[$key]:"",
-                            'type' => 'import',
-                            'warehouse_id' => $request->id,
-                            'created_at' => date('Y-m-d H:i:s'),
-                        ]
-                    );
+            if(isset($variants) && !empty($variants)){
+                foreach ($variants as $key => $variantId) {
+                    if($variantId && $variantId != ''){
+                        ProductWarehouse::insertGetId(
+                            [
+                                'variant_id' => $variantId,
+                                'price' => (isset($price))?$price[$key]:"",
+                                'qty' => (isset($qty))?$qty[$key]:"",
+                                'type' => 'import',
+                                'warehouse_id' => $request->id,
+                                'created_at' => date('Y-m-d H:i:s'),
+                            ]
+                        );
+                    }
                 }
             }
             return response()->json([

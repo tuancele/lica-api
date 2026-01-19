@@ -23,10 +23,11 @@
     <thead>
         <tr>
             <th width="5%" style="text-align: center;"><input type="checkbox" id="checkall2" class="wgr-checkbox"></th>
-            <th width="40%">Sản phẩm</th>
+            <th width="30%">Sản phẩm</th>
             <th width="10%">Giá gốc</th>
             <th width="10%">Giá khuyến mại</th>
             <th width="10%">Số lượng</th>
+            <th width="10%" style="text-align: center;">Tồn kho thực tế</th>
             <th width="10%">Trạng thái</th>
             <th width="10%">Thao tác</th>
         </tr>
@@ -70,10 +71,9 @@
                 </td>
                 <td>{{number_format($selectedVariant->price)}}đ</td>
                 <td>{{number_format($selectedVariant->sale)}}đ</td>
-                <td>@php 
-                    $total1 = countProductWarehouse($product->id,'import');
-                    $total2 = countProductWarehouse($product->id,'export'); @endphp
-                    {{$total1-$total2}}
+                <td>-</td>
+                <td style="text-align: center;">
+                    <strong>{{number_format($selectedVariant->actual_stock ?? 0)}}</strong>
                 </td>
                 <td><input type="checkbox" name="statusdeal[{{$product->id}}]" class="wgr-checkbox" value="1" checked=""></td>
                 <td><a class="btn btn-danger btn-xs delete_item" data-id="{{$product->id}}_v{{$selectedVariant->id}}"><i class="fa fa-trash-o" aria-hidden="true"></i></a></td>
@@ -95,10 +95,9 @@
                     @if(!empty($variant)){{number_format($variant->sale)}}đ 
                     @endif
                 </td>
-                <td>@php 
-                    $total1 = countProductWarehouse($product->id,'import');
-                    $total2 = countProductWarehouse($product->id,'export'); @endphp
-                    {{$total1-$total2}}
+                <td>-</td>
+                <td style="text-align: center;">
+                    <strong>{{number_format($product->actual_stock ?? 0)}}</strong>
                 </td>
                 <td><input type="checkbox" name="statusdeal[{{$product->id}}]" class="wgr-checkbox" value="1" checked=""></td>
                 <td><a class="btn btn-danger btn-xs delete_item" data-id="{{$product->id}}"><i class="fa fa-trash-o" aria-hidden="true"></i></a></td>

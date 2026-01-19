@@ -9,6 +9,7 @@ use App\Http\Resources\Product\ProductResource;
 use App\Modules\FlashSale\Models\FlashSale;
 use App\Modules\FlashSale\Models\ProductSale;
 use App\Services\PriceCalculationService;
+use App\Services\Warehouse\WarehouseServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -22,10 +23,14 @@ use Illuminate\Support\Facades\Log;
 class FlashSaleController extends Controller
 {
     protected PriceCalculationService $priceService;
+    protected WarehouseServiceInterface $warehouseService;
 
-    public function __construct(PriceCalculationService $priceService)
-    {
+    public function __construct(
+        PriceCalculationService $priceService,
+        WarehouseServiceInterface $warehouseService
+    ) {
         $this->priceService = $priceService;
+        $this->warehouseService = $warehouseService;
     }
 
     /**
@@ -185,6 +190,16 @@ class FlashSaleController extends Controller
                     if ($variant) {
                         $variantPriceInfo = $this->priceService->calculateVariantPrice($variant, $product->id, $id);
                         
+                        // Get warehouse stock for variant
+                        $warehouseStock = 0;
+                        try {
+                            $stockData = $this->warehouseService->getVariantStock($variant->id);
+                            $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
+                        } catch (\Exception $e) {
+                            Log::warning('Failed to get warehouse stock for variant: ' . $variant->id);
+                            $warehouseStock = (int) ($variant->stock ?? 0);
+                        }
+                        
                         $productData['variants'] = [
                             [
                                 'id' => $variant->id,
@@ -192,6 +207,8 @@ class FlashSaleController extends Controller
                                 'option1_value' => $variant->option1_value,
                                 'price' => (float) $variant->price,
                                 'stock' => (int) $variant->stock,
+                                'warehouse_stock' => $warehouseStock,
+                                'is_out_of_stock' => $warehouseStock <= 0,
                                 'flash_sale_info' => [
                                     'price_sale' => (float) $productSale->price_sale,
                                     'original_price' => (float) $variant->price,
@@ -221,12 +238,25 @@ class FlashSaleController extends Controller
                         $variants = $product->variants;
                         $productData['variants'] = $variants->map(function($variant) use ($product, $id) {
                             $variantPriceInfo = $this->priceService->calculateVariantPrice($variant, $product->id, $id);
+                            
+                            // Get warehouse stock
+                            $warehouseStock = 0;
+                            try {
+                                $stockData = $this->warehouseService->getVariantStock($variant->id);
+                                $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
+                            } catch (\Exception $e) {
+                                Log::warning('Failed to get warehouse stock for variant: ' . $variant->id);
+                                $warehouseStock = (int) ($variant->stock ?? 0);
+                            }
+                            
                             return [
                                 'id' => $variant->id,
                                 'sku' => $variant->sku,
                                 'option1_value' => $variant->option1_value,
                                 'price' => (float) $variant->price,
                                 'stock' => (int) $variant->stock,
+                                'warehouse_stock' => $warehouseStock,
+                                'is_out_of_stock' => $warehouseStock <= 0,
                                 'price_info' => $variantPriceInfo,
                             ];
                         })->toArray();
@@ -236,17 +266,30 @@ class FlashSaleController extends Controller
                 $products[] = $productData;
             }
 
+            // Calculate total unique products in Flash Sale
+            $totalUniqueProducts = ProductSale::where('flashsale_id', $id)
+                ->distinct('product_id')
+                ->count('product_id');
+            
+            // Get Flash Sale resource and add total_products if not already included
+            $flashSaleResource = new FlashSaleResource($flashSale);
+            $flashSaleData = $flashSaleResource->toArray($request);
+            if (!isset($flashSaleData['total_products'])) {
+                $flashSaleData['total_products'] = $totalUniqueProducts;
+            }
+            
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'flash_sale' => new FlashSaleResource($flashSale),
+                    'flash_sale' => $flashSaleData,
                     'products' => $products,
                     'pagination' => [
                         'current_page' => $productSales->currentPage(),
                         'per_page' => $productSales->perPage(),
-                        'total' => $productSales->total(),
+                        'total' => $productSales->total(), // Total ProductSale entries
                         'last_page' => $productSales->lastPage(),
                     ],
+                    'total_unique_products' => $totalUniqueProducts, // Total unique products in Flash Sale
                 ],
             ], 200);
 

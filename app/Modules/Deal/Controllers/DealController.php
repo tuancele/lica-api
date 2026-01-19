@@ -9,6 +9,8 @@ use App\Modules\Product\Models\Product;
 use App\Modules\Deal\Models\ProductDeal;
 use App\Modules\Deal\Models\SaleDeal;
 use App\Modules\Brand\Models\Brand;
+use App\Services\Promotion\ProductStockValidatorInterface;
+use App\Services\Inventory\InventoryServiceInterface;
 use Validator;
 use Illuminate\Support\Facades\Auth;
 use Session;
@@ -18,8 +20,13 @@ class DealController extends Controller
     private $controller = 'deal';
     private $view = 'Deal';
     private $limit = 10;
-    public function __construct(Deal $model){
+    protected ProductStockValidatorInterface $productStockValidator;
+    protected InventoryServiceInterface $inventoryService;
+    
+    public function __construct(Deal $model, ProductStockValidatorInterface $productStockValidator, InventoryServiceInterface $inventoryService){
         $this->model = $model;
+        $this->productStockValidator = $productStockValidator;
+        $this->inventoryService = $inventoryService;
     }
     public function index(Request $request)
     {
@@ -74,6 +81,35 @@ class DealController extends Controller
             }
         }
         Session::put('ss_sale_product', $saleDealSession);
+        
+        // Load products with actual stock for display
+        $productIds = $productdeals->pluck('product_id')->merge($saledeals->pluck('product_id'))->unique();
+        $products = Product::whereIn('id', $productIds)
+            ->with(['variants' => function($q) {
+                $q->select('id', 'product_id', 'option1_value', 'price', 'stock', 'sku');
+            }])
+            ->get();
+        
+        // Calculate actual stock for each product/variant
+        $productsWithStock = $products->map(function($product) {
+            if ($product->has_variants == 1 && $product->variants) {
+                // Product has variants - calculate stock for each variant
+                $product->variants = $product->variants->map(function($variant) use ($product) {
+                    $variant->actual_stock = $this->productStockValidator->getProductStock(
+                        $product->id,
+                        $variant->id
+                    );
+                    return $variant;
+                });
+            } else {
+                // Product without variants
+                $product->actual_stock = $this->productStockValidator->getProductStock($product->id);
+            }
+            return $product;
+        });
+        
+        $data['products'] = $productsWithStock;
+        
         return view($this->view.'::edit',$data);
     }
 
@@ -114,9 +150,80 @@ class DealController extends Controller
             'user_id'=> Auth::id()
         ));
         if($up > 0){
+            // Validation: Check conflicts before saving
+            $productid = $request->productid;
             $pricesale =  $request->pricesale;
             $numbersale = $request->numbersale;
             $status2 = $request->status2;
+            
+            // Rule 1: Sản phẩm phụ không thể là sản phẩm chính trong cùng deal
+            if(isset($pricesale) && !empty($pricesale) && isset($productid) && !empty($productid)){
+                $mainProductKeys = [];
+                foreach($productid as $productValue) {
+                    $mainProductKeys[] = $productValue;
+                }
+                
+                foreach ($pricesale as $key => $value) {
+                    if (is_array($value)) {
+                        foreach ($value as $vId => $price) {
+                            $saleProductKey = $key . '_v' . $vId;
+                            if (in_array($saleProductKey, $mainProductKeys)) {
+                                return response()->json([
+                                    'status' => 'error',
+                                    'message' => 'Sản phẩm "' . $this->getProductName($key, $vId) . '" đã là sản phẩm chính, không thể thêm làm sản phẩm phụ!'
+                                ]);
+                            }
+                        }
+                    } else {
+                        $saleProductKey = (string)$key;
+                        if (in_array($saleProductKey, $mainProductKeys)) {
+                            return response()->json([
+                                'status' => 'error',
+                                'message' => 'Sản phẩm "' . $this->getProductName($key) . '" đã là sản phẩm chính, không thể thêm làm sản phẩm phụ!'
+                            ]);
+                        }
+                    }
+                }
+            }
+            
+            // Rule 2: Sản phẩm chính không thể là sản phẩm chính của deal khác đang active
+            if(isset($productid) && !empty($productid)){
+                $currentTime = time();
+                $activeDeals = Deal::where('status', '1')
+                    ->where(function($q) use ($currentTime) {
+                        $q->where('start', '<=', $currentTime)
+                          ->where('end', '>=', $currentTime);
+                    })
+                    ->where('id', '!=', $request->id) // Exclude current deal
+                    ->pluck('id');
+                
+                if ($activeDeals->count() > 0) {
+                    $conflictProducts = ProductDeal::whereIn('deal_id', $activeDeals)
+                        ->get();
+                    
+                    foreach($productid as $productValue) {
+                        $productId = $productValue;
+                        $variantId = null;
+                        
+                        if (strpos($productValue, '_v') !== false) {
+                            $parts = explode('_v', $productValue);
+                            $productId = $parts[0];
+                            $variantId = $parts[1];
+                        }
+                        
+                        foreach($conflictProducts as $conflictProduct) {
+                            if ($conflictProduct->product_id == $productId && 
+                                $conflictProduct->variant_id == $variantId) {
+                                return response()->json([
+                                    'status' => 'error',
+                                    'message' => 'Sản phẩm "' . $this->getProductName($productId, $variantId) . '" đã là sản phẩm chính của Deal khác đang hoạt động!'
+                                ]);
+                            }
+                        }
+                    }
+                }
+            }
+            
             SaleDeal::where('deal_id',$request->id)->delete();
             if(isset($pricesale) && !empty($pricesale)){
                 foreach ($pricesale as $key => $value) {
@@ -222,9 +329,79 @@ class DealController extends Controller
             ]
         );
         if($id > 0){
+            // Validation: Check conflicts before saving
+            $productid = $request->productid;
             $pricesale =  $request->pricesale;
             $numbersale = $request->numbersale;
             $status2 = $request->status2;
+            
+            // Rule 1: Sản phẩm phụ không thể là sản phẩm chính trong cùng deal
+            if(isset($pricesale) && !empty($pricesale) && isset($productid) && !empty($productid)){
+                $mainProductKeys = [];
+                foreach($productid as $productValue) {
+                    $mainProductKeys[] = $productValue;
+                }
+                
+                foreach ($pricesale as $key => $value) {
+                    $saleProductKey = $key;
+                    if (is_array($value)) {
+                        foreach ($value as $vId => $price) {
+                            $saleProductKey = $key . '_v' . $vId;
+                            if (in_array($saleProductKey, $mainProductKeys)) {
+                                return response()->json([
+                                    'status' => 'error',
+                                    'message' => 'Sản phẩm "' . $this->getProductName($key, $vId) . '" đã là sản phẩm chính, không thể thêm làm sản phẩm phụ!'
+                                ]);
+                            }
+                        }
+                    } else {
+                        if (in_array($saleProductKey, $mainProductKeys)) {
+                            return response()->json([
+                                'status' => 'error',
+                                'message' => 'Sản phẩm "' . $this->getProductName($key) . '" đã là sản phẩm chính, không thể thêm làm sản phẩm phụ!'
+                            ]);
+                        }
+                    }
+                }
+            }
+            
+            // Rule 2: Sản phẩm chính không thể là sản phẩm chính của deal khác đang active
+            if(isset($productid) && !empty($productid)){
+                $currentTime = time();
+                $activeDeals = Deal::where('status', '1')
+                    ->where(function($q) use ($currentTime) {
+                        $q->where('start', '<=', $currentTime)
+                          ->where('end', '>=', $currentTime);
+                    })
+                    ->pluck('id');
+                
+                if ($activeDeals->count() > 0) {
+                    $conflictProducts = ProductDeal::whereIn('deal_id', $activeDeals)
+                        ->get();
+                    
+                    foreach($productid as $productValue) {
+                        $productId = $productValue;
+                        $variantId = null;
+                        
+                        if (strpos($productValue, '_v') !== false) {
+                            $parts = explode('_v', $productValue);
+                            $productId = $parts[0];
+                            $variantId = $parts[1];
+                        }
+                        
+                        foreach($conflictProducts as $conflictProduct) {
+                            if ($conflictProduct->product_id == $productId && 
+                                $conflictProduct->variant_id == $variantId) {
+                                return response()->json([
+                                    'status' => 'error',
+                                    'message' => 'Sản phẩm "' . $this->getProductName($productId, $variantId) . '" đã là sản phẩm chính của Deal khác đang hoạt động!'
+                                ]);
+                            }
+                        }
+                    }
+                }
+            }
+            
             if(isset($pricesale) && !empty($pricesale)){
                 foreach ($pricesale as $key => $value) {
                     // Parse product_id and variant_id from key format: "product_id" or "product_id[variant_id]"
@@ -390,14 +567,20 @@ class DealController extends Controller
         $limit = $this->limit;
         $offset = ($page-1)*$limit;
         $mang = $this->showProduct($request->deal_id);
-        $products = Product::select('id','name','image','stock','has_variants')->where([['status','1'],['type','product'],['stock','1']])->whereNotIn('id',$mang)->where(function ($query) use ($search,$brand) {
-            if(isset($search) && $search != "") {
-                $query->where('name','like','%'.$search.'%');
-            }
-            if(isset($brand) && $brand != "") {
-                $query->where('brand_id',$brand);
-            }
-        })->limit($limit)->offset($offset)->get();
+        $products = Product::select('id','name','image','stock','has_variants')
+            ->where([['status','1'],['type','product']])
+            ->whereNotIn('id',$mang)
+            ->where(function ($query) use ($search,$brand) {
+                if(isset($search) && $search != "") {
+                    $query->where('name','like','%'.$search.'%');
+                }
+                if(isset($brand) && $brand != "") {
+                    $query->where('brand_id',$brand);
+                }
+            })
+            ->limit($limit * 2) // Load more to filter by stock
+            ->offset($offset)
+            ->get();
         
         // Load variants for products that have variants
         foreach ($products as $product) {
@@ -405,18 +588,74 @@ class DealController extends Controller
                 $product->load('variants');
             }
         }
-        $html = "";
-        $total = Product::select('id')->where([['status','1'],['type','product'],['stock','1']])->whereNotIn('id',$mang)->where(function ($query) use ($search,$brand) {
-            if(isset($search) && $search != "") {
-                $query->where('name','like','%'.$search.'%');
+        
+        // Filter products with stock > 0 and calculate actual stock
+        $productsWithStock = $products->filter(function($product) {
+            $stock = $this->productStockValidator->getProductStock($product->id);
+            
+            if ($stock <= 0) {
+                // Check if product has variants with stock > 0
+                if ($product->has_variants == 1 && $product->variants) {
+                    $hasStock = false;
+                    foreach ($product->variants as $variant) {
+                        $variantStock = $this->productStockValidator->getProductStock(
+                            $product->id,
+                            $variant->id
+                        );
+                        if ($variantStock > 0) {
+                            $hasStock = true;
+                            break;
+                        }
+                    }
+                    return $hasStock;
+                }
+                return false;
             }
-            if(isset($brand) && $brand != "") {
-                $query->where('brand_id',$brand);
+            return true;
+        })->take($limit); // Take only the limit after filtering
+        
+        // Add actual stock to products and variants
+        $productsWithStock = $productsWithStock->map(function($product) {
+            if ($product->has_variants == 1 && $product->variants) {
+                $product->variants = $product->variants->map(function($variant) use ($product) {
+                    $variant->actual_stock = $this->productStockValidator->getProductStock(
+                        $product->id,
+                        $variant->id
+                    );
+                    return $variant;
+                });
+            } else {
+                $product->actual_stock = $this->productStockValidator->getProductStock($product->id);
             }
-        })->get()->count();
+            return $product;
+        });
+        
+        $total = Product::select('id')
+            ->where([['status','1'],['type','product']])
+            ->whereNotIn('id',$mang)
+            ->where(function ($query) use ($search,$brand) {
+                if(isset($search) && $search != "") {
+                    $query->where('name','like','%'.$search.'%');
+                }
+                if(isset($brand) && $brand != "") {
+                    $query->where('brand_id',$brand);
+                }
+            })
+            ->get()
+            ->filter(function($product) {
+                $stock = $this->productStockValidator->getProductStock($product->id);
+                if ($stock <= 0) {
+                    // For products with variants, we'd need to check variants
+                    // For simplicity, we'll count them and filter later
+                    return true; // Include in count, will be filtered in view
+                }
+                return true;
+            })
+            ->count();
+        
         $pages = ceil($total/$limit);
         $data['pages'] = $pages;
-        $data['products'] = $products;
+        $data['products'] = $productsWithStock;
         $data['brands'] = Brand::select('id','name')->where('status','1')->orderBy('name','asc')->get();
         $data['deal_id'] = $request->deal_id;
         $view = view($this->view.'::products',$data)->render();
@@ -443,36 +682,167 @@ class DealController extends Controller
         // }else{
         //     Session::put('ss_product_deal',$request->productid);
         // }
-        $mang = Session::get('ss_product_deal');
-        if(empty($mang)) {
-            $mang = [];
-        }
-        
-        // Parse product IDs and variant IDs from session
+        // Parse product IDs and variant IDs from request
+        // Format: "product_id" or "product_id_vvariant_id"
         $productIds = [];
-        foreach($mang as $item) {
+        $productVariantMap = [];
+        
+        foreach($request->productid as $item) {
             if(strpos($item, '_v') !== false) {
+                // Has variant
                 $parts = explode('_v', $item);
-                $productIds[] = $parts[0];
+                $productId = (int)$parts[0];
+                $variantId = (int)$parts[1];
+                $productIds[] = $productId;
+                $productVariantMap[$productId][] = $variantId;
             } else {
-                $productIds[] = $item;
+                // No variant
+                $productId = (int)$item;
+                $productIds[] = $productId;
+                $productVariantMap[$productId] = [];
             }
         }
         
-        $products = Product::select('id','name','image','has_variants')
-            ->where('type','product')
-            ->whereIn('id', $productIds)
+        // Load products with variants
+        $products = Product::where('type','product')
+            ->whereIn('id', array_unique($productIds))
+            ->with(['variants' => function($q) {
+                $q->with(['color', 'size']);
+            }])
             ->get();
         
-        // Load variants for products that have variants
-        foreach ($products as $product) {
-            if ($product->has_variants == 1) {
-                $product->load('variants');
+        // Calculate actual stock and available stock for each product/variant
+        $productsWithStock = $products->map(function($product) use ($productVariantMap) {
+            if ($product->has_variants == 1 && $product->variants) {
+                // Product has variants - filter only selected variants
+                $selectedVariantIds = $productVariantMap[$product->id] ?? [];
+                if (!empty($selectedVariantIds)) {
+                    $product->variants = $product->variants->filter(function($variant) use ($selectedVariantIds) {
+                        return in_array($variant->id, $selectedVariantIds);
+                    })->map(function($variant) use ($product) {
+                        $variant->actual_stock = $this->productStockValidator->getProductStock(
+                            $product->id,
+                            $variant->id
+                        );
+                        // Calculate available stock (S_phy - S_flash)
+                        $variant->available_stock = $this->inventoryService->getAvailableStock(
+                            $product->id,
+                            $variant->id
+                        );
+                        return $variant;
+                    });
+                } else {
+                    // No specific variants selected, show all
+                    $product->variants = $product->variants->map(function($variant) use ($product) {
+                        $variant->actual_stock = $this->productStockValidator->getProductStock(
+                            $product->id,
+                            $variant->id
+                        );
+                        // Calculate available stock (S_phy - S_flash)
+                        $variant->available_stock = $this->inventoryService->getAvailableStock(
+                            $product->id,
+                            $variant->id
+                        );
+                        return $variant;
+                    });
+                }
+            } else {
+                // Product without variants
+                $product->actual_stock = $this->productStockValidator->getProductStock($product->id);
+                // Calculate available stock (S_phy - S_flash)
+                $product->available_stock = $this->inventoryService->getAvailableStock($product->id);
             }
+            return $product;
+        });
+        
+        // Store selected products in session - merge with existing
+        if(Session::has('ss_product_deal')){
+            $ss_product = Session::get('ss_product_deal');
+            if (!is_array($ss_product)) {
+                $ss_product = [];
+            }
+            foreach($request->productid as $item) {
+                if(!in_array($item, $ss_product)) {
+                    $ss_product[] = $item;
+                }
+            }
+            Session::put('ss_product_deal', $ss_product);
+        } else {
+            Session::put('ss_product_deal', $request->productid);
         }
         
-        $data['products'] = $products;
-        return view($this->view.'::loadproduct',$data);
+        // For AJAX requests, only return NEW products (for appending)
+        // For full page loads, return ALL products from session
+        if ($request->ajax() || $request->wantsJson()) {
+            // Only return new products
+            $data['products'] = $productsWithStock;
+            return view($this->view.'::product_rows',$data);
+        } else {
+            // Load ALL products from session (for full page reload)
+            $allProductIds = Session::get('ss_product_deal', []);
+            $allProductVariantMap = [];
+            
+            foreach($allProductIds as $item) {
+                if(strpos($item, '_v') !== false) {
+                    $parts = explode('_v', $item);
+                    $productId = (int)$parts[0];
+                    $variantId = (int)$parts[1];
+                    $allProductVariantMap[$productId][] = $variantId;
+                } else {
+                    $productId = (int)$item;
+                    $allProductVariantMap[$productId] = [];
+                }
+            }
+            
+            // Load all products from session
+            $allProducts = Product::where('type','product')
+                ->whereIn('id', array_unique(array_keys($allProductVariantMap)))
+                ->with(['variants' => function($q) {
+                    $q->with(['color', 'size']);
+                }])
+                ->get();
+            
+            // Calculate stock for all products
+            $allProductsWithStock = $allProducts->map(function($product) use ($allProductVariantMap) {
+                if ($product->has_variants == 1 && $product->variants) {
+                    $selectedVariantIds = $allProductVariantMap[$product->id] ?? [];
+                    if (!empty($selectedVariantIds)) {
+                        $product->variants = $product->variants->filter(function($variant) use ($selectedVariantIds) {
+                            return in_array($variant->id, $selectedVariantIds);
+                        })->map(function($variant) use ($product) {
+                            $variant->actual_stock = $this->productStockValidator->getProductStock(
+                                $product->id,
+                                $variant->id
+                            );
+                            $variant->available_stock = $this->inventoryService->getAvailableStock(
+                                $product->id,
+                                $variant->id
+                            );
+                            return $variant;
+                        });
+                    } else {
+                        $product->variants = $product->variants->map(function($variant) use ($product) {
+                            $variant->actual_stock = $this->productStockValidator->getProductStock(
+                                $product->id,
+                                $variant->id
+                            );
+                            $variant->available_stock = $this->inventoryService->getAvailableStock(
+                                $product->id,
+                                $variant->id
+                            );
+                            return $variant;
+                        });
+                    }
+                } else {
+                    $product->actual_stock = $this->productStockValidator->getProductStock($product->id);
+                    $product->available_stock = $this->inventoryService->getAvailableStock($product->id);
+                }
+                return $product;
+            });
+            
+            $data['products'] = $allProductsWithStock;
+            return view($this->view.'::loadproduct',$data);
+        }
     }
 
     public function delProduct(Request $request){
@@ -496,14 +866,19 @@ class DealController extends Controller
         $page = $request->page;
         $limit = $this->limit;
         $offset = ($page-1)*$limit;
-        $products = Product::select('id','name','image','stock','has_variants')->where([['status','1'],['type','product'],['stock','1']])->where(function ($query) use ($search,$brand) {
-            if(isset($search) && $search != "") {
-                $query->where('name','like','%'.$search.'%');
-            }
-            if(isset($brand) && $brand != "") {
-                $query->where('brand_id',$brand);
-            }
-        })->limit($limit)->offset($offset)->get();
+        $products = Product::select('id','name','image','stock','has_variants')
+            ->where([['status','1'],['type','product']])
+            ->where(function ($query) use ($search,$brand) {
+                if(isset($search) && $search != "") {
+                    $query->where('name','like','%'.$search.'%');
+                }
+                if(isset($brand) && $brand != "") {
+                    $query->where('brand_id',$brand);
+                }
+            })
+            ->limit($limit * 2) // Load more to filter by stock
+            ->offset($offset)
+            ->get();
         
         // Load variants for products that have variants
         foreach ($products as $product) {
@@ -511,19 +886,64 @@ class DealController extends Controller
                 $product->load('variants');
             }
         }
-        $html = "";
-        $mang = array();
-        $total = Product::select('id')->where([['status','1'],['type','product'],['stock','1']])->where(function ($query) use ($search,$brand) {
-            if(isset($search) && $search != "") {
-                $query->where('name','like','%'.$search.'%');
+        
+        // Filter products with stock > 0 and calculate actual stock
+        $productsWithStock = $products->filter(function($product) {
+            $stock = $this->productStockValidator->getProductStock($product->id);
+            
+            if ($stock <= 0) {
+                // Check if product has variants with stock > 0
+                if ($product->has_variants == 1 && $product->variants) {
+                    $hasStock = false;
+                    foreach ($product->variants as $variant) {
+                        $variantStock = $this->productStockValidator->getProductStock(
+                            $product->id,
+                            $variant->id
+                        );
+                        if ($variantStock > 0) {
+                            $hasStock = true;
+                            break;
+                        }
+                    }
+                    return $hasStock;
+                }
+                return false;
             }
-            if(isset($brand) && $brand != "") {
-                $query->where('brand_id',$brand);
+            return true;
+        })->take($limit); // Take only the limit after filtering
+        
+        // Add actual stock to products and variants
+        $productsWithStock = $productsWithStock->map(function($product) {
+            if ($product->has_variants == 1 && $product->variants) {
+                $product->variants = $product->variants->map(function($variant) use ($product) {
+                    $variant->actual_stock = $this->productStockValidator->getProductStock(
+                        $product->id,
+                        $variant->id
+                    );
+                    return $variant;
+                });
+            } else {
+                $product->actual_stock = $this->productStockValidator->getProductStock($product->id);
             }
-        })->get()->count();
+            return $product;
+        });
+        
+        $total = Product::select('id')
+            ->where([['status','1'],['type','product']])
+            ->where(function ($query) use ($search,$brand) {
+                if(isset($search) && $search != "") {
+                    $query->where('name','like','%'.$search.'%');
+                }
+                if(isset($brand) && $brand != "") {
+                    $query->where('brand_id',$brand);
+                }
+            })
+            ->get()
+            ->count();
+        
         $pages = ceil($total/$limit);
         $data['pages'] = $pages;
-        $data['products'] = $products;
+        $data['products'] = $productsWithStock;
         $data['deal_id'] = $request->deal_id;
         $data['brands'] = Brand::select('id','name')->where('status','1')->orderBy('name','asc')->get();
         $view = view($this->view.'::products2',$data)->render();
@@ -536,50 +956,167 @@ class DealController extends Controller
     }
 
     public function choseProduct2(Request $request){
-        // if(Session::has('ss_sale_product')){
-        //     $ss_product = Session::get('ss_sale_product');
-        //     if(isset($request->productid) && !empty($request->productid)){
-        //         foreach ($request->productid as $key => $value) {
-        //             if(in_array($value, $ss_product)){
-        //             }else{
-        //                 array_push($ss_product, $value);
-        //             }
-        //         }
-        //     }
-        //     Session::put('ss_sale_product',$ss_product);
-        // }else{
-        //     Session::put('ss_sale_product',$request->productid);
-        // }
-        $mang = Session::get('ss_sale_product');
-        if(empty($mang)) {
-            $mang = [];
-        }
-        
-        // Parse product IDs and variant IDs from session
+        // Parse product IDs and variant IDs from request
+        // Format: "product_id" or "product_id_vvariant_id"
         $productIds = [];
-        foreach($mang as $item) {
+        $productVariantMap = [];
+        
+        foreach($request->productid as $item) {
             if(strpos($item, '_v') !== false) {
+                // Has variant
                 $parts = explode('_v', $item);
-                $productIds[] = $parts[0];
+                $productId = (int)$parts[0];
+                $variantId = (int)$parts[1];
+                $productIds[] = $productId;
+                $productVariantMap[$productId][] = $variantId;
             } else {
-                $productIds[] = $item;
+                // No variant
+                $productId = (int)$item;
+                $productIds[] = $productId;
+                $productVariantMap[$productId] = [];
             }
         }
         
-        $products = Product::select('id','name','image','has_variants')
-            ->where('type','product')
-            ->whereIn('id', $productIds)
+        // Load products with variants
+        $products = Product::where('type','product')
+            ->whereIn('id', array_unique($productIds))
+            ->with(['variants' => function($q) {
+                $q->with(['color', 'size']);
+            }])
             ->get();
         
-        // Load variants for products that have variants
-        foreach ($products as $product) {
-            if ($product->has_variants == 1) {
-                $product->load('variants');
+        // Calculate actual stock and available stock for each product/variant
+        $productsWithStock = $products->map(function($product) use ($productVariantMap) {
+            if ($product->has_variants == 1 && $product->variants) {
+                // Product has variants - filter only selected variants
+                $selectedVariantIds = $productVariantMap[$product->id] ?? [];
+                if (!empty($selectedVariantIds)) {
+                    $product->variants = $product->variants->filter(function($variant) use ($selectedVariantIds) {
+                        return in_array($variant->id, $selectedVariantIds);
+                    })->map(function($variant) use ($product) {
+                        $variant->actual_stock = $this->productStockValidator->getProductStock(
+                            $product->id,
+                            $variant->id
+                        );
+                        // Calculate available stock (S_phy - S_flash)
+                        $variant->available_stock = $this->inventoryService->getAvailableStock(
+                            $product->id,
+                            $variant->id
+                        );
+                        return $variant;
+                    });
+                } else {
+                    // No specific variants selected, show all
+                    $product->variants = $product->variants->map(function($variant) use ($product) {
+                        $variant->actual_stock = $this->productStockValidator->getProductStock(
+                            $product->id,
+                            $variant->id
+                        );
+                        // Calculate available stock (S_phy - S_flash)
+                        $variant->available_stock = $this->inventoryService->getAvailableStock(
+                            $product->id,
+                            $variant->id
+                        );
+                        return $variant;
+                    });
+                }
+            } else {
+                // Product without variants
+                $product->actual_stock = $this->productStockValidator->getProductStock($product->id);
+                // Calculate available stock (S_phy - S_flash)
+                $product->available_stock = $this->inventoryService->getAvailableStock($product->id);
             }
+            return $product;
+        });
+        
+        // Store selected products in session - merge with existing
+        if(Session::has('ss_sale_product')){
+            $ss_product = Session::get('ss_sale_product');
+            if (!is_array($ss_product)) {
+                $ss_product = [];
+            }
+            foreach($request->productid as $item) {
+                if(!in_array($item, $ss_product)) {
+                    $ss_product[] = $item;
+                }
+            }
+            Session::put('ss_sale_product', $ss_product);
+        } else {
+            Session::put('ss_sale_product', $request->productid);
         }
         
-        $data['products'] = $products;
-        return view($this->view.'::load_product',$data);
+        // For AJAX requests, only return NEW products (for appending)
+        // For full page loads, return ALL products from session
+        if ($request->ajax() || $request->wantsJson()) {
+            // Only return new products
+            $data['products'] = $productsWithStock;
+            return view($this->view.'::sale_product_rows',$data);
+        } else {
+            // Load ALL products from session (for full page reload)
+            $allProductIds = Session::get('ss_sale_product', []);
+            $allProductVariantMap = [];
+            
+            foreach($allProductIds as $item) {
+                if(strpos($item, '_v') !== false) {
+                    $parts = explode('_v', $item);
+                    $productId = (int)$parts[0];
+                    $variantId = (int)$parts[1];
+                    $allProductVariantMap[$productId][] = $variantId;
+                } else {
+                    $productId = (int)$item;
+                    $allProductVariantMap[$productId] = [];
+                }
+            }
+            
+            // Load all products from session
+            $allProducts = Product::where('type','product')
+                ->whereIn('id', array_unique(array_keys($allProductVariantMap)))
+                ->with(['variants' => function($q) {
+                    $q->with(['color', 'size']);
+                }])
+                ->get();
+            
+            // Calculate stock for all products
+            $allProductsWithStock = $allProducts->map(function($product) use ($allProductVariantMap) {
+                if ($product->has_variants == 1 && $product->variants) {
+                    $selectedVariantIds = $allProductVariantMap[$product->id] ?? [];
+                    if (!empty($selectedVariantIds)) {
+                        $product->variants = $product->variants->filter(function($variant) use ($selectedVariantIds) {
+                            return in_array($variant->id, $selectedVariantIds);
+                        })->map(function($variant) use ($product) {
+                            $variant->actual_stock = $this->productStockValidator->getProductStock(
+                                $product->id,
+                                $variant->id
+                            );
+                            $variant->available_stock = $this->inventoryService->getAvailableStock(
+                                $product->id,
+                                $variant->id
+                            );
+                            return $variant;
+                        });
+                    } else {
+                        $product->variants = $product->variants->map(function($variant) use ($product) {
+                            $variant->actual_stock = $this->productStockValidator->getProductStock(
+                                $product->id,
+                                $variant->id
+                            );
+                            $variant->available_stock = $this->inventoryService->getAvailableStock(
+                                $product->id,
+                                $variant->id
+                            );
+                            return $variant;
+                        });
+                    }
+                } else {
+                    $product->actual_stock = $this->productStockValidator->getProductStock($product->id);
+                    $product->available_stock = $this->inventoryService->getAvailableStock($product->id);
+                }
+                return $product;
+            });
+            
+            $data['products'] = $allProductsWithStock;
+            return view($this->view.'::load_product',$data);
+        }
     }
 
     public function delProduct2(Request $request){
@@ -658,6 +1195,172 @@ class DealController extends Controller
             }
             Session::put('ss_sale_product',$ss_product);
         }
+    }
+
+    // Ajax Search - Use same logic as Flash Sale to get product info
+    public function searchProduct(Request $request)
+    {
+        $keyword = $request->get('keyword');
+        $type = $request->get('type', 'main'); // 'main' or 'sale'
+        $dealId = $request->get('deal_id', null); // Current deal ID (for edit)
+        
+        // Get excluded product IDs based on type
+        $excludedProductVariantPairs = [];
+        
+        if ($type === 'sale') {
+            // Rule 1: Sản phẩm phụ không thể là sản phẩm chính trong cùng deal
+            if ($dealId) {
+                $mainProducts = ProductDeal::where('deal_id', $dealId)
+                    ->get();
+                foreach ($mainProducts as $mainProduct) {
+                    $key = $mainProduct->product_id . ($mainProduct->variant_id ? '_v' . $mainProduct->variant_id : '');
+                    $excludedProductVariantPairs[] = $key;
+                }
+            }
+        } elseif ($type === 'main') {
+            // Rule 2: Sản phẩm chính không thể là sản phẩm chính của deal khác đang active
+            $currentTime = time();
+            $activeDeals = Deal::where('status', '1')
+                ->where(function($q) use ($currentTime) {
+                    $q->where('start', '<=', $currentTime)
+                      ->where('end', '>=', $currentTime);
+                })
+                ->when($dealId, function($q) use ($dealId) {
+                    // Exclude current deal when editing
+                    $q->where('id', '!=', $dealId);
+                })
+                ->pluck('id');
+            
+            if ($activeDeals->count() > 0) {
+                $conflictProducts = ProductDeal::whereIn('deal_id', $activeDeals)
+                    ->get();
+                foreach ($conflictProducts as $conflictProduct) {
+                    $key = $conflictProduct->product_id . ($conflictProduct->variant_id ? '_v' . $conflictProduct->variant_id : '');
+                    $excludedProductVariantPairs[] = $key;
+                }
+            }
+        }
+        
+        $products = Product::select('id', 'name', 'image', 'stock', 'has_variants')
+            ->where([['status', '1'], ['type', 'product']])
+            ->where('name', 'like', '%' . $keyword . '%')
+            ->with(['variants' => function($q) {
+                $q->select('id', 'product_id', 'option1_value', 'price', 'stock', 'sku');
+            }])
+            ->orderBy('id', 'desc')
+            ->paginate(50); 
+
+        $html = '';
+        foreach($products as $product) {
+            // Get actual stock from warehouse system (same as API)
+            $stock = $this->productStockValidator->getProductStock($product->id);
+            
+            // Filter out products with stock = 0
+            if ($stock <= 0) {
+                // Check if product has variants with stock > 0
+                if ($product->has_variants == 1 && $product->variants) {
+                    $hasStock = false;
+                    $totalVariantStock = 0;
+                    foreach ($product->variants as $variant) {
+                        $variantStock = $this->productStockValidator->getProductStock(
+                            $product->id,
+                            $variant->id
+                        );
+                        if ($variantStock > 0) {
+                            $hasStock = true;
+                            $totalVariantStock += $variantStock;
+                        }
+                    }
+                    // If no variants have stock, skip this product
+                    if (!$hasStock) {
+                        continue;
+                    }
+                    // Use total variant stock for display
+                    $stock = $totalVariantStock;
+                } else {
+                    // Product has no variants and stock = 0, skip it
+                    continue;
+                }
+            }
+            
+            $variant = $product->variant($product->id);
+            $price = $variant ? $variant->price : 0;
+            $image = getImage($product->image);
+            
+            if ($product->has_variants == 1 && $product->variants) {
+                // Product with variants - show each variant with stock > 0
+                foreach($product->variants as $v) {
+                    $variantStock = $this->productStockValidator->getProductStock($product->id, $v->id);
+                    if ($variantStock <= 0) {
+                        continue;
+                    }
+                    
+                    // Calculate available stock (S_phy - S_flash)
+                    $availableStock = $this->inventoryService->getAvailableStock($product->id, $v->id);
+                    
+                    $html .= '<tr>';
+                    $html .= '<td width="5%" style="text-align: center;">';
+                    $html .= '<input style="margin: 0px;display: inline-block;" type="checkbox" name="productid[]" class="checkbox wgr-checkbox" value="'.$product->id.'_v'.$v->id.'" data-product-id="'.$product->id.'" data-variant-id="'.$v->id.'" data-original-price="'.$v->price.'" data-stock="'.$variantStock.'" data-available-stock="'.$availableStock.'">';
+                    $html .= '</td>';
+                    $html .= '<td width="35%">';
+                    $html .= '<img src="'.$image.'" style="width:50px;height: 50px;float: left;margin-right: 5px;">';
+                    $html .= '<p><strong>'.$product->name.'</strong></p>';
+                    $html .= '<small class="text-muted">Phân loại: '.($v->option1_value ?? 'N/A').'</small>';
+                    $html .= '</td>';
+                    $html .= '<td width="12%">'.number_format($v->price).'đ</td>';
+                    $html .= '<td width="12%">-</td>';
+                    $html .= '<td width="12%" style="text-align: center;"><strong>'.number_format($variantStock).'</strong></td>';
+                    $html .= '<td width="12%" style="text-align: center;"><strong class="text-info">'.number_format($availableStock).'</strong></td>';
+                    $html .= '</tr>';
+                }
+            } else {
+                // Product without variants
+                // Calculate available stock (S_phy - S_flash)
+                $availableStock = $this->inventoryService->getAvailableStock($product->id);
+                
+                $html .= '<tr>';
+                $html .= '<td width="5%" style="text-align: center;">';
+                $html .= '<input style="margin: 0px;display: inline-block;" type="checkbox" name="productid[]" class="checkbox wgr-checkbox" value="'.$product->id.'" data-product-id="'.$product->id.'" data-variant-id="" data-original-price="'.$price.'" data-stock="'.$stock.'" data-available-stock="'.$availableStock.'">';
+                $html .= '</td>';
+                $html .= '<td width="35%">';
+                $html .= '<img src="'.$image.'" style="width:50px;height: 50px;float: left;margin-right: 5px;">';
+                $html .= '<p>'.$product->name.'</p>';
+                $html .= '</td>';
+                $html .= '<td width="12%">'.($price > 0 ? number_format($price).'đ' : '-').'</td>';
+                $html .= '<td width="12%">-</td>';
+                $html .= '<td width="12%" style="text-align: center;"><strong>'.number_format($stock).'</strong></td>';
+                $html .= '<td width="12%" style="text-align: center;"><strong class="text-info">'.number_format($availableStock).'</strong></td>';
+                $html .= '</tr>';
+            }
+        }
+        
+        // If no products found, show message
+        if (empty($html)) {
+            $html = '<tr><td colspan="6" class="text-center">Không tìm thấy sản phẩm có tồn kho</td></tr>';
+        }
+        
+        return response()->json(['html' => $html]);
+    }
+    
+    /**
+     * Helper method to get product name for error messages
+     */
+    private function getProductName($productId, $variantId = null)
+    {
+        $product = Product::find($productId);
+        if (!$product) {
+            return "ID: {$productId}";
+        }
+        
+        $name = $product->name;
+        if ($variantId) {
+            $variant = \App\Modules\Product\Models\Variant::find($variantId);
+            if ($variant && $variant->option1_value) {
+                $name .= ' - ' . $variant->option1_value;
+            }
+        }
+        
+        return $name;
     }
 
     

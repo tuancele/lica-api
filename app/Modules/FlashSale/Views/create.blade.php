@@ -73,9 +73,11 @@
                 <thead>
                     <tr>
                         <th width="5%" style="text-align: center;"><input style="margin-right: 0px;" type="checkbox" id="checkall" class="wgr-checkbox"></th>
-                        <th width="55%">Sản phẩm</th>
-                        <th width="20%">Giá gốc</th>
-                        <th width="20%">Giá khuyến mại</th>
+                        <th width="40%">Sản phẩm</th>
+                        <th width="12%">Giá gốc</th>
+                        <th width="12%">Giá khuyến mại</th>
+                        <th width="12%" style="text-align: center;">Tồn kho thực tế</th>
+                        <th width="12%" style="text-align: center;">Tồn kho khả dụng</th>
                     </tr>
                 </thead>
             </table>
@@ -122,13 +124,13 @@
                keyword: keyword
            },
            beforeSend: function() {
-               $('#product-list-body').html('<tr><td colspan="4" class="text-center">Đang tải...</td></tr>');
+               $('#product-list-body').html('<tr><td colspan="6" class="text-center">Đang tải...</td></tr>');
            },
            success: function(res) {
                $('#product-list-body').html(res.html);
            },
            error: function() {
-               $('#product-list-body').html('<tr><td colspan="4" class="text-center text-danger">Lỗi tải dữ liệu</td></tr>');
+               $('#product-list-body').html('<tr><td colspan="6" class="text-center text-danger">Lỗi tải dữ liệu</td></tr>');
            }
        });
    }
@@ -185,6 +187,9 @@
             // Append
             $('#main-product-body').append(res);
             $('.count_choose').html($('input[name="checklist[]"]:checked').length);
+            
+            // Initialize validation for newly added rows
+            initializeValidation();
         },error: function(xhr, status, error){
             alert('Có lỗi xảy ra, xin vui lòng thử lại');
             $('.choseProduct button[type="submit"]').html('Xác nhận');
@@ -192,5 +197,64 @@
          }
       })
     })
+    
+    // Initialize validation function
+    function initializeValidation() {
+        // Real-time validation for price sale
+        $('#main-product-body').off('keyup change', 'input.pricesale').on('keyup change', 'input.pricesale', function(){
+            var row = $(this).closest('tr');
+            var salePrice = parseFloat($(this).val().toString().replace(/,/g, '')) || 0;
+            var originalPrice = parseFloat(row.data('original-price')) || 0;
+            var errorMsg = row.find('.price-error');
+            
+            if (originalPrice > 0 && salePrice > originalPrice) {
+                errorMsg.text('Giá khuyến mại không thể lớn hơn giá gốc (' + number_format(originalPrice) + 'đ)').show();
+                $(this).addClass('has-error');
+            } else {
+                errorMsg.hide();
+                $(this).removeClass('has-error');
+            }
+        });
+        
+        // Real-time validation for number sale
+        $('#main-product-body').off('keyup change', 'input.number-sale').on('keyup change', 'input.number-sale', function(){
+            var row = $(this).closest('tr');
+            var numberValue = parseInt($(this).val()) || 0;
+            var stock = parseInt(row.data('stock')) || 0;
+            var availableStock = parseInt(row.data('available-stock')) || stock;
+            var errorMsg = row.find('.stock-error');
+            
+            // Validate: numberValue <= actual_stock (S_phy)
+            if (numberValue > stock) {
+                errorMsg.text('Số lượng khuyến mại không thể lớn hơn tồn kho thực tế (' + stock + ')').show();
+                errorMsg.removeClass('text-warning').addClass('text-danger');
+                $(this).addClass('has-error');
+            } else if (numberValue < 1) {
+                errorMsg.text('Số lượng khuyến mại phải lớn hơn 0').show();
+                errorMsg.removeClass('text-warning').addClass('text-danger');
+                $(this).addClass('has-error');
+            } else {
+                // Warning if numberValue > available_stock (but still allow, as this creates Flash Sale Virtual Stock)
+                if (numberValue > availableStock) {
+                    errorMsg.text('Cảnh báo: Số lượng này sẽ tạo Flash Sale Virtual Stock. Tồn kho khả dụng: ' + availableStock).show();
+                    errorMsg.removeClass('text-danger').addClass('text-warning');
+                } else {
+                    errorMsg.hide();
+                    errorMsg.removeClass('text-warning').addClass('text-danger');
+                }
+                $(this).removeClass('has-error');
+            }
+        });
+    }
+    
+    // Format number helper
+    function number_format(number) {
+        return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+    
+    // Initialize validation on page load
+    $(document).ready(function() {
+        initializeValidation();
+    });
 </script>
 @endsection

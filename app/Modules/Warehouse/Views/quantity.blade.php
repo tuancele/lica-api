@@ -29,8 +29,7 @@
                     <thead>
                         <tr>
                             <th width="30%" colspan="2">Sản phẩm</th>
-                            <th width="10%">Màu sắc</th>  
-                            <th width="10%">Size</th> 
+                            <th width="20%">Phân loại</th>  
                             <th width="10%">Tổng SL nhập</th> 
                             <th width="10%">Tổng SL xuất</th>  
                             <th width="10%">Tồn kho</th>    
@@ -46,10 +45,7 @@
                                <p>Sku: <strong>{{$value->sku}}</strong></p>
                             </td>
                             <td>
-                               {{$value->color->name??''}}
-                            </td>
-                            <td>
-                               {{$value->size->name??''}}{{$value->size->unit??''}}
+                               {{$value->option1_value ?? 'Mặc định'}}
                             </td>
                             <td>
                                 {{countProduct($value->id,'import')}}

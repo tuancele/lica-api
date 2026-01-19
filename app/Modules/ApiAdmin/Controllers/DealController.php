@@ -10,6 +10,7 @@ use App\Modules\Deal\Models\ProductDeal;
 use App\Modules\Deal\Models\SaleDeal;
 use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
+use App\Services\Promotion\ProductStockValidatorInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -25,6 +26,13 @@ use Illuminate\Support\Facades\Validator;
  */
 class DealController extends Controller
 {
+    protected ProductStockValidatorInterface $productStockValidator;
+
+    public function __construct(ProductStockValidatorInterface $productStockValidator)
+    {
+        $this->productStockValidator = $productStockValidator;
+    }
+
     /**
      * Get paginated list of Deals with filters
      * 
@@ -210,6 +218,20 @@ class DealController extends Controller
                 ], 409);
             }
 
+            // Validate product stock
+            $allProducts = array_merge(
+                $request->get('products', []),
+                $request->get('sale_products', [])
+            );
+            $stockErrors = $this->productStockValidator->validateProductsStock($allProducts);
+            if (!empty($stockErrors)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Một số sản phẩm không có tồn kho, không thể tham gia Deal',
+                    'errors' => $stockErrors
+                ], 422);
+            }
+
             // Start transaction
             DB::beginTransaction();
 
@@ -356,6 +378,24 @@ class DealController extends Controller
                         'message' => 'Một số sản phẩm đã thuộc Deal khác đang hoạt động',
                         'conflicts' => $conflicts
                     ], 409);
+                }
+            }
+
+            // Validate product stock (if products are being updated)
+            if ($request->has('products') || $request->has('sale_products')) {
+                $allProducts = array_merge(
+                    $request->get('products', []),
+                    $request->get('sale_products', [])
+                );
+                if (!empty($allProducts)) {
+                    $stockErrors = $this->productStockValidator->validateProductsStock($allProducts);
+                    if (!empty($stockErrors)) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Một số sản phẩm không có tồn kho, không thể tham gia Deal',
+                            'errors' => $stockErrors
+                        ], 422);
+                    }
                 }
             }
 

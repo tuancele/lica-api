@@ -19,8 +19,10 @@ Route::group(['middleware' => 'web'], function () {
 			Route::post('action','EgoodsController@action');
 			Route::post('getPrice','EgoodsController@getPrice');
 			Route::post('checkTotal','EgoodsController@checkTotal');
-			Route::get('size/{id}','EgoodsController@getSize');
-			Route::get('color/{id}','EgoodsController@getColor');
+			Route::get('getVariant/{id}','EgoodsController@getVariant');
+			Route::get('getVariants/{productId}','EgoodsController@getVariants');
+			Route::get('getVariantStock/{variantId}','EgoodsController@getVariantStock');
+			Route::get('searchProducts','EgoodsController@searchProducts');
 			Route::get('loadAdd','EgoodsController@loadAdd');
 		});
 		Route::group(['prefix' => 'import-goods'],function(){
@@ -34,8 +36,9 @@ Route::group(['middleware' => 'web'], function () {
 			Route::post('delete','IgoodsController@delete');
 			Route::post('status','IgoodsController@status');
 			Route::post('action','IgoodsController@action');
-			Route::get('size/{id}','IgoodsController@getSize');
-			Route::get('color/{id}','IgoodsController@getColor');
+			Route::get('getVariants/{productId}','IgoodsController@getVariants');
+			Route::get('getVariantStock/{variantId}','IgoodsController@getVariantStock');
+			Route::get('searchProducts','IgoodsController@searchProducts');
 			Route::get('loadAdd','IgoodsController@loadAdd');
 			
 			Route::group(['prefix' => 'product'],function(){
@@ -44,6 +47,11 @@ Route::group(['middleware' => 'web'], function () {
 				Route::post('export','IgoodsController@exportProduct');
 				Route::post('delete','IgoodsController@deleteProduct');
 			});
+		});
+		
+		// Warehouse API endpoints for web (session authentication)
+		Route::group(['prefix' => 'api/warehouse'],function(){
+			Route::get('variants/{variantId}/stock', 'WarehouseController@getVariantStockWeb');
 		});
 	});
 });

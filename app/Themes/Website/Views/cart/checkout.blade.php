@@ -181,7 +181,7 @@
                                     <img src="{{getImage($displayImage)}}" width="60" height="60" alt="{{$product->name}}" class="js-skeleton-img">
                                 </div>
                             </div>
-                            <div class="des-cart ms-2">
+                            <div class="des-cart ms-2" data-product-id="{{$product->id}}" data-variant-id="{{$variant['item']['id']}}">
                                 <div class="header-cart d-flex space-between">
                                     <div>
                                         <a class="product-name fw-600 fs-12 d-block" href="{{getSlug($product->slug)}}">
@@ -211,15 +211,49 @@
                                         @endif
                                     </div>
                                     <div class="price">
-                                        <span class="fw-600 price-item-{{$variant['item']['id']}}">{{number_format($variant['price'])}}đ</span>
+                                        @php
+                                            $variantId = $variant['item']['id'];
+                                            $priceData = $productsWithPrice[$variantId] ?? null;
+                                            $hasBreakdown = $priceData && isset($priceData['price_breakdown']) && count($priceData['price_breakdown']) > 1;
+                                            $totalPrice = $priceData['total_price'] ?? ($variant['price'] * $variant['qty']);
+                                        @endphp
+                                        <span class="fw-600 price-item-{{$variantId}}">{{number_format($totalPrice)}}đ</span>
+                                        @if($hasBreakdown)
+                                            <div class="fs-11 text-muted mt-1" style="cursor: pointer;" title="Click để xem chi tiết">
+                                                @foreach($priceData['price_breakdown'] as $bd)
+                                                    {{$bd['quantity']}}x{{number_format($bd['unit_price'])}}đ
+                                                    @if(!$loop->last) + @endif
+                                                @endforeach
+                                            </div>
+                                        @endif
                                     </div>
                                 </div>
+                            </div>
+                            <!-- Flash Sale Warning & Stock Error Container -->
+                            @php
+                                $variantId = $variant['item']['id'];
+                                $priceData = $productsWithPrice[$variantId] ?? null;
+                                $hasStockError = $priceData && isset($priceData['is_available']) && $priceData['is_available'] === false;
+                            @endphp
+                            <div class="flash-sale-warning-container-{{$variantId}}" style="margin-top: 8px;">
+                                @if($hasStockError)
+                                    <!-- Hiển thị lỗi tồn kho nếu có -->
+                                    <div class="stock-error alert alert-danger" style="padding: 10px; border-left: 3px solid #dc3545; border-radius: 4px; font-size: 12px;">
+                                        <i class="fa fa-exclamation-circle" style="color: #dc3545; margin-right: 5px;"></i>
+                                        <strong style="color: #dc3545;">{{$priceData['stock_error'] ?? 'Số lượng vượt quá tồn kho'}}</strong>
+                                    </div>
+                                @endif
                             </div>
                         </div>
                         @endif
                         @endforeach
                         @endif
                         <div class="divider-horizontal"></div>
+                        <!-- Stock Error Summary (sẽ hiển thị nếu có lỗi tồn kho) -->
+                        <div class="stock-error-summary" style="display: none; padding: 10px; background-color: #f8d7da; border-left: 3px solid #dc3545; border-radius: 4px; font-size: 12px; margin-bottom: 10px;">
+                            <i class="fa fa-exclamation-circle" style="color: #dc3545; margin-right: 5px;"></i>
+                            <strong style="color: #dc3545;">Có sản phẩm vượt quá tồn kho. Vui lòng điều chỉnh số lượng.</strong>
+                        </div>
                         <div class="align-center space-between mb-3 fs-14">
                             <span>Tổng giá trị đơn hàng</span>
                             <span class="subtotal-cart">{{number_format($totalPrice)}}đ</span>
@@ -800,4 +834,189 @@ $('body').on('click','.btn_cancel_promotion',function(){
         transition: background-color 5000s ease-in-out 0s;
     }
 </style>
+<script>
+    $(document).ready(function() {
+        // Function to check Flash Sale price when quantity changes in checkout
+        function checkFlashSalePriceCheckout(variantId, quantity) {
+            if (typeof FlashSaleMixedPrice === 'undefined') {
+                return; // FlashSaleMixedPrice not loaded
+            }
+            
+            // Get product_id from the item - try multiple ways
+            var $item = $('[data-variant-id="' + variantId + '"]');
+            if ($item.length === 0) {
+                // Try to find by closest parent with data attribute
+                $item = $('#quantity-' + variantId).closest('[data-product-id], .des-cart');
+            }
+            
+            var productId = $item.attr('data-product-id');
+            
+            if (!productId) {
+                // Try to get from cart API or reload
+                return;
+            }
+            
+            // Call FlashSaleMixedPrice to calculate price với callback để cập nhật tổng tiền
+            FlashSaleMixedPrice.calculatePriceWithQuantity(
+                parseInt(productId),
+                parseInt(variantId),
+                quantity,
+                '.price-item-' + variantId, // Price display selector
+                '.flash-sale-warning-container-' + variantId, // Warning container
+                function(priceData) {
+                    // Lưu price breakdown để tính tổng
+                    if (!window.checkoutPriceBreakdowns) {
+                        window.checkoutPriceBreakdowns = {};
+                    }
+                    window.checkoutPriceBreakdowns[variantId] = priceData;
+                    
+                    // Cập nhật giá hiển thị nếu có breakdown
+                    if (priceData.price_breakdown && priceData.price_breakdown.length > 1) {
+                        const $priceItem = $('.price-item-' + variantId);
+                        if ($priceItem.length) {
+                            $priceItem.text(FlashSaleMixedPrice.formatNumber(priceData.total_price) + 'đ');
+                        }
+                    }
+                    
+                    // Callback: Cập nhật tổng tiền đơn hàng sau khi tính giá thành công
+                    updateTotalOrderPriceCheckout();
+                    
+                    // Kiểm tra và xử lý lỗi tồn kho
+                    if (priceData.is_available === false) {
+                        // Vô hiệu hóa nút đặt hàng
+                        $('#place_order').prop('disabled', true).addClass('disabled');
+                        $('.stock-error-summary').show();
+                        
+                        // Tự động điều chỉnh số lượng về tồn kho thực tế
+                        if (priceData.total_physical_stock !== null && priceData.total_physical_stock !== undefined) {
+                            const maxStock = parseInt(priceData.total_physical_stock);
+                            const $quantityInput = $('#quantity-' + variantId);
+                            const currentVal = parseInt($quantityInput.val()) || 1;
+                            
+                            if (currentVal > maxStock) {
+                                $quantityInput.val(maxStock);
+                                // Tính lại giá với số lượng mới
+                                setTimeout(() => {
+                                    checkFlashSalePriceCheckout(variantId, maxStock);
+                                }, 100);
+                            }
+                        }
+                    } else {
+                        // Kiểm tra tất cả items xem còn lỗi tồn kho không
+                        let hasAnyStockError = false;
+                        if (window.checkoutPriceBreakdowns) {
+                            Object.keys(window.checkoutPriceBreakdowns).forEach(function(vId) {
+                                const pData = window.checkoutPriceBreakdowns[vId];
+                                if (pData && pData.is_available === false) {
+                                    hasAnyStockError = true;
+                                }
+                            });
+                        }
+                        
+                        if (!hasAnyStockError) {
+                            // Kích hoạt lại nút đặt hàng nếu tất cả items đều hợp lệ
+                            $('#place_order').prop('disabled', false).removeClass('disabled');
+                            $('.stock-error-summary').hide();
+                        }
+                    }
+                }
+            );
+        }
+        
+        // Store price breakdown data for each item
+        window.checkoutPriceBreakdowns = window.checkoutPriceBreakdowns || {};
+        
+        // Function to cập nhật tổng giá trị đơn hàng trong checkout
+        function updateTotalOrderPriceCheckout() {
+            let totalPrice = 0;
+            
+            // Tính tổng từ price breakdowns đã lưu (nếu có)
+            // Hoặc tính từ giá hiện tại × quantity
+            Object.keys(window.checkoutPriceBreakdowns).forEach(function(variantId) {
+                const breakdown = window.checkoutPriceBreakdowns[variantId];
+                if (breakdown && breakdown.total_price) {
+                    totalPrice += breakdown.total_price;
+                } else {
+                    // Fallback: tính từ giá hiện tại × quantity
+                    const $priceItem = $('.price-item-' + variantId);
+                    const $quantityInput = $('#quantity-' + variantId);
+                    
+                    if ($priceItem.length && $quantityInput.length) {
+                        const priceText = $priceItem.text().replace(/[^\d]/g, '');
+                        const unitPrice = parseInt(priceText) || 0;
+                        const quantity = parseInt($quantityInput.val()) || 1;
+                        totalPrice += (unitPrice * quantity);
+                    }
+                }
+            });
+            
+            // Nếu không có breakdown data, tính từ tất cả price-item
+            if (totalPrice === 0) {
+                $('[class*="price-item-"]').each(function() {
+                    const $item = $(this);
+                    const priceText = $item.text().replace(/[^\d]/g, '');
+                    const unitPrice = parseInt(priceText) || 0;
+                    
+                    const itemId = $item.attr('class').match(/price-item-(\d+)/);
+                    if (itemId && itemId[1]) {
+                        const variantId = itemId[1];
+                        const $quantityInput = $('#quantity-' + variantId);
+                        const quantity = parseInt($quantityInput.val()) || 1;
+                        totalPrice += (unitPrice * quantity);
+                    }
+                });
+            }
+            
+            // Lấy giá trị giảm giá và phí ship hiện tại
+            const saleText = $('.sale-promotion').text().replace(/[^\d-]/g, '');
+            const sale = parseInt(saleText) || 0;
+            const feeShipText = $('.fee_ship').text().replace(/[^\d]/g, '');
+            const feeShip = parseInt(feeShipText) || 0;
+            
+            // Tính tổng cuối cùng
+            const finalTotal = totalPrice - sale + feeShip;
+            
+            // Cập nhật subtotal và total
+            if (typeof FlashSaleMixedPrice !== 'undefined') {
+                $('.subtotal-cart').text(FlashSaleMixedPrice.formatNumber(totalPrice) + 'đ');
+                $('.total-order').text(FlashSaleMixedPrice.formatNumber(finalTotal) + 'đ');
+            } else {
+                // Fallback nếu FlashSaleMixedPrice chưa load
+                $('.subtotal-cart').text(new Intl.NumberFormat('vi-VN').format(totalPrice) + 'đ');
+                $('.total-order').text(new Intl.NumberFormat('vi-VN').format(finalTotal) + 'đ');
+            }
+            
+            return finalTotal;
+        }
+        
+        // Handle quantity change in checkout (qtyplus/qtyminus buttons)
+        $('body').on('click', '.qtyplus, .qtyminus', function() {
+            var variantId = $(this).attr('data-id');
+            var $input = $('#quantity-' + variantId);
+            var quantity = parseInt($input.val()) || 1;
+            
+            // Debounce to avoid too many calls
+            clearTimeout(window.checkoutPriceTimeout);
+            window.checkoutPriceTimeout = setTimeout(function() {
+                checkFlashSalePriceCheckout(variantId, quantity);
+            }, 300);
+        });
+        
+        // Handle manual input change
+        $('body').on('change input', '.form-quatity', function() {
+            var inputId = $(this).attr('id');
+            if (!inputId || !inputId.startsWith('quantity-')) {
+                return;
+            }
+            var variantId = inputId.replace('quantity-', '');
+            var quantity = parseInt($(this).val()) || 1;
+            
+            // Debounce
+            clearTimeout(window.checkoutPriceTimeout);
+            window.checkoutPriceTimeout = setTimeout(function() {
+                checkFlashSalePriceCheckout(variantId, quantity);
+            }, 500);
+        });
+    });
+</script>
 @endsection

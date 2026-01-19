@@ -30,10 +30,30 @@ use App\Modules\FlashSale\Models\FlashSale;
 use App\Modules\Deal\Models\Deal;
 use App\Modules\Deal\Models\SaleDeal;
 use App\Themes\Website\Models\Facebook;
+use App\Modules\Warehouse\Models\Warehouse;
+use App\Modules\Warehouse\Models\ProductWarehouse;
+use App\Services\Pricing\PriceEngineServiceInterface;
+use App\Services\Warehouse\WarehouseServiceInterface;
 
 class CartController extends Controller
 {
     use Location, Sendmail;
+    
+    protected PriceEngineServiceInterface $priceEngine;
+    protected WarehouseServiceInterface $warehouseService;
+    
+    public function __construct(
+        PriceEngineServiceInterface $priceEngine,
+        WarehouseServiceInterface $warehouseService
+    ) {
+        $this->priceEngine = $priceEngine;
+        $this->warehouseService = $warehouseService;
+        
+        // Inject WarehouseService vào PriceEngineService
+        if (method_exists($this->priceEngine, 'setWarehouseService')) {
+            $this->priceEngine->setWarehouseService($warehouseService);
+        }
+    }
 
     public function district($id)
     {
@@ -49,12 +69,49 @@ class CartController extends Controller
     {
         $data['products'] = null;
         $data['totalPrice'] = 0;
+        $data['productsWithPrice'] = []; // Mảng chứa sản phẩm với giá đã tính lại
 
         if (Session::has('cart')) {
             $oldCart = Session::get('cart');
             $cart = new Cart($oldCart);
             $data['products'] = $cart->items;
-            $data['totalPrice'] = $cart->totalPrice;
+            
+            // QUAN TRỌNG: Tính lại giá cho từng item với số lượng thực tế
+            $recalculatedTotal = 0;
+            foreach ($cart->items as $variantId => $item) {
+                $variant = Variant::with('product')->find($variantId);
+                if (!$variant || !$variant->product) {
+                    continue;
+                }
+                
+                $quantity = (int)($item['qty'] ?? 1);
+                
+                // Tính lại giá với PriceEngineService
+                $priceWithQuantity = $this->priceEngine->calculatePriceWithQuantity(
+                    $variant->product->id,
+                    $variantId,
+                    $quantity
+                );
+                
+                $recalculatedTotal += $priceWithQuantity['total_price'];
+                
+                // Lưu thông tin giá đã tính lại
+                $data['productsWithPrice'][$variantId] = [
+                    'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
+                    'total_price' => $priceWithQuantity['total_price'],
+                    'warning' => $priceWithQuantity['warning'] ?? null,
+                    'flash_sale_remaining' => $priceWithQuantity['flash_sale_remaining'] ?? 0,
+                ];
+            }
+            
+            // Log để kiểm tra
+            Log::info('[CartController::index] Price recalculated', [
+                'old_total' => $cart->totalPrice,
+                'new_total' => $recalculatedTotal,
+                'difference' => abs($cart->totalPrice - $recalculatedTotal),
+            ]);
+            
+            $data['totalPrice'] = $recalculatedTotal; // Sử dụng tổng đã tính lại
 
             // Đếm số lượng deal hiện có trong giỏ hàng theo từng deal_id
             $deal_counts = [];
@@ -122,7 +179,45 @@ class CartController extends Controller
         $cart = new Cart($oldCart);
         $data['products'] = $cart->items;
         $data['cart'] = $cart;
-        $data['totalPrice'] = $cart->totalPrice;
+        
+        // QUAN TRỌNG: Tính lại giá cho từng item với số lượng thực tế
+        $recalculatedTotal = 0;
+        $data['productsWithPrice'] = [];
+        
+        foreach ($cart->items as $variantId => $item) {
+            $variant = Variant::with('product')->find($variantId);
+            if (!$variant || !$variant->product) {
+                continue;
+            }
+            
+            $quantity = (int)($item['qty'] ?? 1);
+            
+            // Tính lại giá với PriceEngineService
+            $priceWithQuantity = $this->priceEngine->calculatePriceWithQuantity(
+                $variant->product->id,
+                $variantId,
+                $quantity
+            );
+            
+            $recalculatedTotal += $priceWithQuantity['total_price'];
+            
+            // Lưu thông tin giá đã tính lại
+            $data['productsWithPrice'][$variantId] = [
+                'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
+                'total_price' => $priceWithQuantity['total_price'],
+                'warning' => $priceWithQuantity['warning'] ?? null,
+                'flash_sale_remaining' => $priceWithQuantity['flash_sale_remaining'] ?? 0,
+            ];
+        }
+        
+        // Log để kiểm tra
+        Log::info('[CartController::checkout] Price recalculated', [
+            'old_total' => $cart->totalPrice,
+            'new_total' => $recalculatedTotal,
+            'difference' => abs($cart->totalPrice - $recalculatedTotal),
+        ]);
+        
+        $data['totalPrice'] = $recalculatedTotal; // Sử dụng tổng đã tính lại
         $data['province'] = $this->getProvince();
         $data['promotions'] = Promotion::where([['status', '1'], ['end', '>=', date('Y-m-d')], ['order_sale', '<=', $cart->totalPrice]])->limit('8')->get();
         
@@ -285,6 +380,46 @@ class CartController extends Controller
             $promotion = 0;
             $oldCart = Session::get('cart');
             $cart = new Cart($oldCart);
+            
+            // QUAN TRỌNG: Tính lại tổng tiền tại Backend để đảm bảo tính chính xác
+            $backendTotal = 0;
+            foreach ($cart->items as $variantId => $item) {
+                $variant = Variant::with('product')->find($variantId);
+                if (!$variant || !$variant->product) {
+                    continue;
+                }
+                
+                $quantity = (int)($item['qty'] ?? 1);
+                
+                // Tính lại giá với PriceEngineService
+                $priceWithQuantity = $this->priceEngine->calculatePriceWithQuantity(
+                    $variant->product->id,
+                    $variantId,
+                    $quantity
+                );
+                
+                $backendTotal += $priceWithQuantity['total_price'];
+            }
+            
+            // Log để kiểm tra
+            Log::info('[CartController::postCheckout] Price validation', [
+                'session_total' => $cart->totalPrice,
+                'backend_calculated_total' => $backendTotal,
+                'difference' => abs($cart->totalPrice - $backendTotal),
+                'frontend_total' => $req->total ?? 'not_provided',
+            ]);
+            
+            // Nếu tổng tiền tính lại khác với tổng tiền trong session, sử dụng giá Backend
+            if (abs($cart->totalPrice - $backendTotal) > 0.01) {
+                Log::warning('[CartController::postCheckout] Price mismatch detected', [
+                    'session_total' => $cart->totalPrice,
+                    'backend_total' => $backendTotal,
+                    'difference' => abs($cart->totalPrice - $backendTotal),
+                ]);
+                
+                // Cập nhật lại tổng tiền trong cart để đảm bảo tính chính xác
+                $cart->totalPrice = $backendTotal;
+            }
 
             if (Session::has('ss_counpon')) {
                 $ss_counpon = Session::get('ss_counpon');
@@ -516,6 +651,17 @@ class CartController extends Controller
                                 Facebook::track($dataf);
                             }
                         }
+
+                // Auto create export receipt for the order
+                try {
+                    $this->createExportReceiptFromOrder($order_id, $code);
+                } catch (\Exception $exportException) {
+                    // Log export receipt error but don't fail the order
+                    Log::error('Auto create export receipt failed: ' . $exportException->getMessage());
+                    Log::error('Order code: ' . $code);
+                    Log::error('Export error trace: ' . $exportException->getTraceAsString());
+                    // Continue with order success even if export receipt creation fails
+                }
 
                 // Send email notification (non-blocking - don't fail order if email fails)
                 try {
@@ -1057,5 +1203,111 @@ class CartController extends Controller
         }
 
         return response()->json(['results' => $results]);
+    }
+
+    /**
+     * Auto create export receipt when order is created
+     * @param int $orderId
+     * @param string $orderCode
+     * @return bool
+     */
+    private function createExportReceiptFromOrder($orderId, $orderCode): bool
+    {
+        // Check if export receipt already exists for this order
+        $existingReceipt = Warehouse::where('content', 'like', '%Xuất hàng cho đơn hàng ' . $orderCode . '%')
+            ->orWhere('content', 'like', '%Đơn hàng ' . $orderCode . '%')
+            ->where('type', 'export')
+            ->first();
+        
+        if ($existingReceipt) {
+            Log::info("Export receipt already exists for order: " . $orderCode);
+            return false;
+        }
+        
+        // Get order details
+        $orderDetails = OrderDetail::where('order_id', $orderId)->get();
+        
+        if ($orderDetails->count() == 0) {
+            Log::warning("No order details found for order: " . $orderCode);
+            return false;
+        }
+        
+        // Check stock availability for all items
+        $hasStock = true;
+        $stockErrors = [];
+        foreach ($orderDetails as $detail) {
+            if ($detail->variant_id) {
+                $import = countProduct($detail->variant_id, 'import');
+                $export = countProduct($detail->variant_id, 'export');
+                $availableStock = $import - $export;
+                
+                if ($availableStock < $detail->qty) {
+                    $hasStock = false;
+                    $stockErrors[] = "Sản phẩm ID {$detail->variant_id}: Cần {$detail->qty}, chỉ có {$availableStock}";
+                }
+            }
+        }
+        
+        // If stock is insufficient, log warning but still create export receipt
+        // (Admin can handle stock issues manually)
+        if (!$hasStock) {
+            Log::warning("Insufficient stock for order {$orderCode}: " . implode(', ', $stockErrors));
+        }
+        
+        // Generate unique code for export receipt
+        $exportCode = 'PX-' . $orderCode . '-' . time();
+        
+        // Check if code already exists
+        while (Warehouse::where('code', $exportCode)->exists()) {
+            $exportCode = 'PX-' . $orderCode . '-' . time() . '-' . rand(1000, 9999);
+        }
+        
+        // Create warehouse entry
+        $warehouseId = Warehouse::insertGetId([
+            'code' => $exportCode,
+            'subject' => 'Đơn hàng ' . $orderCode,
+            'content' => 'Xuất hàng cho đơn hàng ' . $orderCode,
+            'type' => 'export',
+            'created_at' => date('Y-m-d H:i:s'),
+            'user_id' => Auth::guard('member')->id() ?? 1, // Use member ID or default to 1
+        ]);
+        
+        if ($warehouseId > 0) {
+            // Create ProductWarehouse entries
+            foreach ($orderDetails as $detail) {
+                if ($detail->variant_id) {
+                    // Only export if stock is available
+                    $import = countProduct($detail->variant_id, 'import');
+                    $export = countProduct($detail->variant_id, 'export');
+                    $availableStock = $import - $export;
+                    
+                    // Export only available stock (or full qty if enough stock)
+                    $exportQty = min($detail->qty, $availableStock);
+                    
+                    if ($exportQty > 0) {
+                        ProductWarehouse::insert([
+                            'variant_id' => $detail->variant_id,
+                            'price' => $detail->price ?? 0,
+                            'qty' => $exportQty,
+                            'type' => 'export',
+                            'warehouse_id' => $warehouseId,
+                            'created_at' => date('Y-m-d H:i:s'),
+                        ]);
+                        
+                        // Log if partial export
+                        if ($exportQty < $detail->qty) {
+                            Log::warning("Partial export for variant {$detail->variant_id}: Requested {$detail->qty}, exported {$exportQty}");
+                        }
+                    } else {
+                        Log::warning("Cannot export variant {$detail->variant_id}: No stock available");
+                    }
+                }
+            }
+            
+            Log::info("Auto created export receipt: " . $exportCode . " for order: " . $orderCode);
+            return true;
+        }
+        
+        return false;
     }
 }

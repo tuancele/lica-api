@@ -39,6 +39,8 @@
     <script src="/public/js/product-recommendation.js" defer></script>
     <script src="/public/js/product-home-optimizer.js" defer></script>
     <script src="/public/website/js/skeleton-optimizer.js" defer></script>
+    <!-- Flash Sale Mixed Price Handler -->
+    <script src="/public/js/flash-sale-mixed-price.js"></script>
 
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @yield('header')

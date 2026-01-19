@@ -3,6 +3,8 @@
 namespace App\Services\Cart;
 
 use App\Services\PriceCalculationService;
+use App\Services\Pricing\PriceEngineServiceInterface;
+use App\Services\Warehouse\WarehouseServiceInterface;
 use App\Modules\Product\Models\Variant;
 use App\Modules\Product\Models\Product;
 use App\Modules\Promotion\Models\Promotion;
@@ -14,6 +16,7 @@ use App\Modules\Order\Models\OrderDetail;
 use App\Modules\Address\Models\Address;
 use App\Modules\FlashSale\Models\FlashSale;
 use App\Modules\FlashSale\Models\ProductSale;
+use App\Services\FlashSale\FlashSaleStockService;
 use App\Modules\Pick\Models\Pick;
 use App\Modules\Location\Models\Province;
 use App\Modules\Location\Models\District;
@@ -34,10 +37,25 @@ use App\Modules\Config\Models\Config;
 class CartService
 {
     protected PriceCalculationService $priceService;
+    protected FlashSaleStockService $flashSaleStockService;
+    protected PriceEngineServiceInterface $priceEngine;
+    protected WarehouseServiceInterface $warehouseService;
 
-    public function __construct(PriceCalculationService $priceService)
-    {
+    public function __construct(
+        PriceCalculationService $priceService,
+        FlashSaleStockService $flashSaleStockService,
+        PriceEngineServiceInterface $priceEngine,
+        WarehouseServiceInterface $warehouseService
+    ) {
         $this->priceService = $priceService;
+        $this->flashSaleStockService = $flashSaleStockService;
+        $this->priceEngine = $priceEngine;
+        $this->warehouseService = $warehouseService;
+        
+        // Inject WarehouseService vào PriceEngineService
+        if (method_exists($this->priceEngine, 'setWarehouseService')) {
+            $this->priceEngine->setWarehouseService($warehouseService);
+        }
     }
 
     /**
@@ -62,12 +80,46 @@ class CartService
             }
             
             $product = $variant->product;
-            $priceInfo = $this->priceService->calculateVariantPrice($variant);
+            $quantity = (int)($item['qty'] ?? 1);
+            
+            // QUAN TRỌNG: Tính lại giá với số lượng thực tế từ PriceEngineService
+            // Không tin tưởng vào giá lưu sẵn trong Session
+            $priceWithQuantity = $this->priceEngine->calculatePriceWithQuantity(
+                $product->id,
+                $variantId,
+                $quantity
+            );
+            
+            // Lấy giá cũ từ session để so sánh (logging)
+            $oldPrice = (float)($item['price'] ?? 0);
+            $oldSubtotal = $oldPrice * $quantity;
+            
+            // Sử dụng giá mới từ PriceEngineService
+            $newPrice = $priceWithQuantity['total_price'] / $quantity; // Giá trung bình
+            $newSubtotal = (float)$priceWithQuantity['total_price'];
+            
+            // Log nếu giá thay đổi
+            if (abs($oldSubtotal - $newSubtotal) > 0.01) {
+                Log::info('[CartService] Price recalculated for cart item', [
+                    'variant_id' => $variantId,
+                    'product_id' => $product->id,
+                    'quantity' => $quantity,
+                    'old_price' => $oldPrice,
+                    'old_subtotal' => $oldSubtotal,
+                    'new_price' => $newPrice,
+                    'new_subtotal' => $newSubtotal,
+                    'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
+                    'warning' => $priceWithQuantity['warning'] ?? null,
+                ]);
+            }
             
             // Get stock
             $stock = isset($variant->stock) && $variant->stock !== null 
                 ? (int)$variant->stock 
                 : (isset($product->stock) && $product->stock == 1 ? 999 : 0);
+            
+            // Lấy price info cơ bản để hiển thị
+            $priceInfo = $this->priceService->calculateVariantPrice($variant);
             
             $items[] = [
                 'variant_id' => (int)$variantId,
@@ -89,10 +141,10 @@ class CartService
                         'unit' => $variant->size->unit ?? '',
                     ] : null,
                 ],
-                'qty' => $item['qty'],
-                'price' => (float)$item['price'],
+                'qty' => $quantity,
+                'price' => $newPrice, // Giá trung bình (để hiển thị)
                 'original_price' => (float)$priceInfo->original_price,
-                'subtotal' => (float)($item['price'] * $item['qty']),
+                'subtotal' => $newSubtotal, // Tổng giá đã tính lại
                 'is_deal' => isset($item['is_deal']) ? (int)$item['is_deal'] : 0,
                 'price_info' => [
                     'price' => (float)$priceInfo->price,
@@ -101,12 +153,16 @@ class CartService
                     'label' => $priceInfo->label,
                     'discount_percent' => $priceInfo->discount_percent ?? 0,
                 ],
+                // Thêm thông tin Mixed Price từ PriceEngineService
+                'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
+                'flash_sale_remaining' => $priceWithQuantity['flash_sale_remaining'] ?? 0,
+                'warning' => $priceWithQuantity['warning'] ?? null,
                 'stock' => $stock,
                 'available' => $stock > 0,
             ];
             
-            $totalQty += $item['qty'];
-            $subtotal += ($item['price'] * $item['qty']);
+            $totalQty += $quantity;
+            $subtotal += $newSubtotal; // Sử dụng subtotal mới
         }
         
         // Get coupon info
@@ -230,16 +286,31 @@ class CartService
             throw new \Exception('Sản phẩm không tồn tại trong giỏ hàng');
         }
         
-        // Validate stock
+        // QUAN TRỌNG: Kiểm tra tồn kho thực tế từ Warehouse API
         $variant = Variant::with('product')->find($variantId);
         if ($variant) {
-            $product = $variant->product;
-            $variantStock = isset($variant->stock) && $variant->stock !== null 
-                ? (int)$variant->stock 
-                : (isset($product->stock) && $product->stock == 1 ? 999 : 0);
-            
-            if ($variantStock > 0 && $qty > $variantStock) {
-                throw new \Exception('Số lượng vượt quá tồn kho');
+            try {
+                $stockInfo = $this->warehouseService->getVariantStock($variantId);
+                $physicalStock = (int)($stockInfo['current_stock'] ?? 0);
+                
+                if ($qty > $physicalStock) {
+                    throw new \Exception("Rất tiếc, sản phẩm này chỉ còn tối đa {$physicalStock} sản phẩm trong kho. Vui lòng điều chỉnh lại số lượng.");
+                }
+            } catch (\Exception $e) {
+                // Nếu lỗi từ WarehouseService, fallback về kiểm tra stock cũ
+                $product = $variant->product;
+                $variantStock = isset($variant->stock) && $variant->stock !== null 
+                    ? (int)$variant->stock 
+                    : (isset($product->stock) && $product->stock == 1 ? 999 : 0);
+                
+                if ($variantStock > 0 && $qty > $variantStock) {
+                    throw new \Exception('Số lượng vượt quá tồn kho');
+                }
+                
+                // Nếu là lỗi từ WarehouseService về tồn kho, throw lại
+                if (strpos($e->getMessage(), 'chỉ còn tối đa') !== false) {
+                    throw $e;
+                }
             }
         }
         
@@ -692,15 +763,36 @@ class CartService
                 'created_at' => date('Y-m-d H:i:s'),
             ]);
             
-            // Update Flash Sale stock
+            // Update Flash Sale stock with race condition protection
             if ($flash) {
-                $productSale = ProductSale::where([
-                    ['flashsale_id', $flash->id],
-                    ['product_id', $product->id],
-                ])->first();
-                
-                if ($productSale) {
-                    $productSale->increment('buy', $item['qty']);
+                try {
+                    // Check if this is variant-specific Flash Sale first
+                    $variantProductSale = ProductSale::where([
+                        ['flashsale_id', $flash->id],
+                        ['product_id', $product->id],
+                        ['variant_id', $variant->id],
+                    ])->first();
+                    
+                    $variantId = $variantProductSale ? $variant->id : null;
+                    
+                    // Use FlashSaleStockService to safely increment buy count
+                    $this->flashSaleStockService->incrementBuy(
+                        $flash->id,
+                        $product->id,
+                        $variantId,
+                        $item['qty']
+                    );
+                } catch (\Exception $e) {
+                    // Log error but don't fail the order creation
+                    // The order is already created, but Flash Sale stock wasn't updated
+                    Log::error('Failed to update Flash Sale stock during checkout', [
+                        'flash_sale_id' => $flash->id,
+                        'product_id' => $product->id,
+                        'variant_id' => $variant->id,
+                        'qty' => $item['qty'],
+                        'error' => $e->getMessage(),
+                    ]);
+                    // Note: In production, you might want to rollback the order or handle this differently
                 }
             }
         }

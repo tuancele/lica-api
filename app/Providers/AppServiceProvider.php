@@ -32,6 +32,26 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\Product\ProductServiceInterface::class,
             \App\Services\Product\ProductService::class
         );
+
+        $this->app->bind(
+            \App\Services\Warehouse\WarehouseServiceInterface::class,
+            \App\Services\Warehouse\WarehouseService::class
+        );
+
+        $this->app->bind(
+            \App\Services\Promotion\ProductStockValidatorInterface::class,
+            \App\Services\Promotion\ProductStockValidator::class
+        );
+
+        $this->app->bind(
+            \App\Services\Pricing\PriceEngineServiceInterface::class,
+            \App\Services\Pricing\PriceEngineService::class
+        );
+
+        $this->app->bind(
+            \App\Services\Inventory\InventoryServiceInterface::class,
+            \App\Services\Inventory\InventoryService::class
+        );
     }
     /**
      * Bootstrap any application services.
@@ -41,5 +61,10 @@ class AppServiceProvider extends ServiceProvider
     public function boot()
     {
         Paginator::defaultView('pagination.default');
+        
+        // Load Warehouse helper functions
+        if (file_exists($helperPath = app_path('Modules/Warehouse/Helpers/helper.php'))) {
+            require_once $helperPath;
+        }
     }
 }

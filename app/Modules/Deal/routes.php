@@ -12,13 +12,14 @@ Route::group(['middleware' => 'web'], function () {
 	        Route::post('status','DealController@status')->name('deal.status');
 	        Route::post('action','DealController@action')->name('deal.action');
 	        Route::post('sort','DealController@sort')->name('deal.sort');
-	        Route::post('chose-product','DealController@choseProduct');
+	        Route::post('chose-product','DealController@choseProduct')->name('deal.chose_product');
+	        Route::post('search-product', 'DealController@searchProduct')->name('deal.search_product');
 	        Route::post('load-product','DealController@loadProduct');
 	        Route::post('del-product','DealController@delProduct');
 	        Route::get('show-product','DealController@showProduct');
 	        
 	        Route::post('load-product2','DealController@loadProduct2');
-	        Route::post('chose-product2','DealController@choseProduct2');
+	        Route::post('chose-product2','DealController@choseProduct2')->name('deal.chose_product2');
 	        Route::post('del-product2','DealController@delProduct2');
 
 	        Route::post('add-session','DealController@addSession');

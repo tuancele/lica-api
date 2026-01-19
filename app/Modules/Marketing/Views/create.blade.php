@@ -77,9 +77,10 @@
                 <thead>
                     <tr>
                         <th width="5%" style="text-align: center;"><input style="margin-right: 0px;" type="checkbox" id="checkall" class="wgr-checkbox"></th>
-                        <th width="55%">Sản phẩm</th>
-                        <th width="20%">Giá gốc</th>
-                        <th width="20%">Giá khuyến mại</th>
+                        <th width="40%">Sản phẩm</th>
+                        <th width="15%">Giá gốc</th>
+                        <th width="15%">Giá khuyến mại</th>
+                        <th width="15%" style="text-align: center;">Tồn kho thực tế</th>
                     </tr>
                 </thead>
             </table>
@@ -127,13 +128,13 @@
                keyword: keyword
            },
            beforeSend: function() {
-               $('#product-list-body').html('<tr><td colspan="4" class="text-center">Đang tải...</td></tr>');
+               $('#product-list-body').html('<tr><td colspan="5" class="text-center">Đang tải...</td></tr>');
            },
            success: function(res) {
                $('#product-list-body').html(res.html);
            },
            error: function() {
-               $('#product-list-body').html('<tr><td colspan="4" class="text-center text-danger">Lỗi tải dữ liệu</td></tr>');
+               $('#product-list-body').html('<tr><td colspan="5" class="text-center text-danger">Lỗi tải dữ liệu</td></tr>');
            }
        });
    }

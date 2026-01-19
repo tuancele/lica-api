@@ -34,8 +34,7 @@
                 <table class="table table-bordered table-striped" id="listProduct" number="{{$list->count()}}">
                     <tr>
                     <th width="30%"><label class="control-label">Mã sản phẩm</label></th>
-                        <th width="15%"><label class="control-label">Màu sắc</label></th>
-                        <th width="15%"><label class="control-label">Size</label></th>
+                        <th width="30%"><label class="control-label">Phân loại</label></th>
                         <th width="20%"><label class="control-label">Giá nhập (đ)</label></th>
                         <th width="20%"><label class="control-label">Số lượng</label></th>
                     </tr>
@@ -43,23 +42,18 @@
                     @foreach($list as $key => $value)
                     <tr class="item-{{$key+1}}" item="{{$key+1}}">
                         <td>
-                            <select class="form-control select_product select" name="product_id[]" required="">
-                                <option value="0">Không</option>
+                            <select class="form-control select_product select" name="product_id[]" required="" data-variant-id="{{$value->variant_id}}" data-product-id="{{$value->variant->product_id ?? ''}}">
+                                <option value="0">-- Chọn sản phẩm --</option>
                                 @if($products->count() > 0)
-                                @foreach($products as $variant)
-                                <option value="{{$variant->id}}" @if($variant->id == $value->variant_id) selected="" @endif>{{$variant->sku}} - {{$variant->product->name??''}}</option>
+                                @foreach($products as $product)
+                                <option value="{{$product->id}}" @if($product->id == ($value->variant->product_id ?? 0)) selected="" @endif>{{$product->name}}</option>
                                 @endforeach
                                 @endif
                             </select>
                         </td>
                         <td>
-                            <select class="form-control select_color" name="color_id[]" >
-                                <option value="{{$value->variant->color_id}}" selected>{{$value->variant->color->name}}</option>
-                            </select>
-                        </td>
-                        <td>
-                            <select class="form-control select_size" name="size_id[]">
-                            <option value="{{$value->variant->size_id}}" selected>{{$value->variant->size->name}}{{$value->variant->size->unit}}</option>
+                            <select class="form-control select_variant" name="variant_id[]" required="">
+                                <option value="">-- Chọn phân loại --</option>
                             </select>
                         </td>
                         <td>
@@ -132,11 +126,49 @@
     });
 </script>
 <script type="text/javascript">
+    // Load variants for existing rows on page load
+    $(document).ready(function(){
+        $('#listProduct .select_product').each(function(){
+            var $this = $(this);
+            var productId = $this.val();
+            var item = $this.parent().parent().attr('item');
+            var savedVariantId = $this.attr('data-variant-id');
+            
+            if(productId && productId != '0'){
+                $.ajax({
+                    type: 'get',
+                    url: '/admin/import-goods/getVariants/'+productId,
+                    success: function (res) {
+                        var $variantSelect = $(".item-"+item+" .select_variant");
+                        $variantSelect.html(res.variants);
+                        if(savedVariantId){
+                            $variantSelect.val(savedVariantId);
+                        }
+                    }
+                });
+            }
+        });
+    });
+    
     $('#listProduct').on('change','.select_product',function(){
         var item = $(this).parent().parent().attr('item');
-        var id = $(this).val();
-        $(".item-"+item+" .select_size").load("/admin/import-goods/size/"+id);
-        $(".item-"+item+" .select_color").load("/admin/import-goods/color/"+id);
+        var productId = $(this).val();
+        var $variantSelect = $(".item-"+item+" .select_variant");
+        
+        if(productId && productId != '0'){
+            $.ajax({
+                type: 'get',
+                url: '/admin/import-goods/getVariants/'+productId,
+                success: function (res) {
+                    $variantSelect.html(res.variants);
+                },
+                error: function() {
+                    $variantSelect.html('<option value="">-- Không có phân loại --</option>');
+                }
+            });
+        } else {
+            $variantSelect.html('<option value="">-- Chọn phân loại --</option>');
+        }
     }); 
     $('#listProduct').on('click','.btnDelete',function(){
         var item = $(this).parent().parent().attr('item');

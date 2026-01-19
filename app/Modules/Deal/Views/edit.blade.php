@@ -59,7 +59,7 @@
                             <div class="col-md-12">
                                 <div class="form-group">
                                     <h4 class="pull-left">Sản phẩm chính</h4>
-                                    <button type="button" class="pull-right button add btn btn-info btn_showproduct"><i class="fa fa-plus" aria-hidden="true"></i> Thêm sản phẩm</button>
+                                    <button type="button" class="pull-right button add btn btn-info" data-toggle="modal" data-target="#myModal"><i class="fa fa-plus" aria-hidden="true"></i> Thêm sản phẩm</button>
                                 </div>
                             </div>
                         </div>
@@ -199,7 +199,7 @@
                             <div class="col-md-12">
                                 <div class="form-group">
                                     <h4 class="pull-left">Sản phẩm mua kèm</h4>
-                                    <button type="button" class="pull-right button add btn btn-info btn_showproduct2"><i class="fa fa-plus" aria-hidden="true"></i> Thêm sản phẩm</button>
+                                    <button type="button" class="pull-right button add btn btn-info" data-toggle="modal" data-target="#myModal2"><i class="fa fa-plus" aria-hidden="true"></i> Thêm sản phẩm</button>
                                 </div>
                             </div>
                         </div>
@@ -398,149 +398,108 @@
       <div class="modal-header">
         <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
         <h4 class="modal-title" id="myModalLabel">Chọn sản phẩm</h4>
+        <input type="text" id="modalSearch" class="form-control" placeholder="Tìm kiếm sản phẩm..." style="margin-top: 10px;">
       </div>
-      <form class="choseProduct" method="post">
+      <form class="choseProduct" method="post" onsubmit="return false;">
+        @csrf
+      <div class="modal-body">
+        <div style="padding-right: 17px;">
+            <table class="table table-bordered table-striped" style="margin-bottom: 0px;">
+                <thead>
+                    <tr>
+                        <th width="5%" style="text-align: center;"><input style="margin-right: 0px;" type="checkbox" id="checkall" class="wgr-checkbox"></th>
+                        <th width="40%">Sản phẩm</th>
+                        <th width="12%">Giá gốc</th>
+                        <th width="12%">Giá khuyến mại</th>
+                        <th width="12%" style="text-align: center;">Tồn kho thực tế</th>
+                        <th width="12%" style="text-align: center;">Tồn kho khả dụng</th>
+                    </tr>
+                </thead>
+            </table>
+        </div>
+        <div class="scroll-table" style="height: 400px;overflow-y: scroll;">
+            <table class="table table-bordered table-striped" id="productTable">
+                <tbody id="product-list-body">
+                    <!-- Ajax loaded -->
+                </tbody>
+            </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Hủy</button>
+        <button type="submit" class="btn btn-primary" style="height:32px">Xác nhận</button>
+      </div>
         </form>
     </div>
   </div>
 </div>
-<div class="modal fade box-body" id="myModal2" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+<div class="modal fade box-body" id="myModal2" tabindex="-1" role="dialog" aria-labelledby="myModalLabel2">
   <div class="modal-dialog modal-lg" role="document">
     <div class="modal-content">
       <div class="modal-header">
         <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-        <h4 class="modal-title" id="myModalLabel">Chọn sản mua kèm</h4>
+        <h4 class="modal-title" id="myModalLabel2">Chọn sản phẩm mua kèm</h4>
+        <input type="text" id="modalSearch2" class="form-control" placeholder="Tìm kiếm sản phẩm..." style="margin-top: 10px;">
       </div>
-      <form class="choseProduct2" method="post">
+      <form class="choseProduct2" method="post" onsubmit="return false;">
+        @csrf
+      <div class="modal-body">
+        <div style="padding-right: 17px;">
+            <table class="table table-bordered table-striped" style="margin-bottom: 0px;">
+                <thead>
+                    <tr>
+                        <th width="5%" style="text-align: center;"><input style="margin-right: 0px;" type="checkbox" id="checkall2" class="wgr-checkbox"></th>
+                        <th width="40%">Sản phẩm</th>
+                        <th width="12%">Giá gốc</th>
+                        <th width="12%">Giá khuyến mại</th>
+                        <th width="12%" style="text-align: center;">Tồn kho thực tế</th>
+                        <th width="12%" style="text-align: center;">Tồn kho khả dụng</th>
+                    </tr>
+                </thead>
+            </table>
+        </div>
+        <div class="scroll-table" style="height: 400px;overflow-y: scroll;">
+            <table class="table table-bordered table-striped" id="productTable2">
+                <tbody id="product-list-body2">
+                    <!-- Ajax loaded -->
+                </tbody>
+            </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Hủy</button>
+        <button type="submit" class="btn btn-primary" style="height:32px">Xác nhận</button>
+      </div>
         </form>
     </div>
   </div>
 </div>
+<script src="/public/js/marketing-product-search.js"></script>
 <script>
-    $('#myModal').on('click','.page-link',function(){
-        var page = $(this).attr('data-page');
-        var search = $('input[name="search"]').val();
-        var brand = $('select[name="brand"]').val();
-        $.ajax({
-            type: 'post',
-            url: '/admin/deal/load-product',
-            data:  {page:page,search:search,brand:brand,deal_id:'{{$detail->id}}'},
-            headers:
-            {
-                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-            },
-            success: function (res) {
-                $('#myModal .choseProduct').html(res.html);
-                $('#myModal .choseProduct input[name="search"]').val(res.search);
-                $('#myModal .choseProduct select[name="brand"]').val(res.brand);
-                $('body #myModal .page-item').removeClass('active');
-                $('body #myModal .page-item-'+res.page+'').addClass('active');
-            },error: function(xhr, status, error){
-                alert('Có lỗi xảy ra, xin vui lòng thử lại');
-            }
-         })
-   })
-$('.btn_showproduct').click(function(){
-    $.ajax({
-        type: 'post',
-        url: '/admin/deal/load-product',
-        data:  {page:1,search:'',brand:'',deal_id:'{{$detail->id}}'},
-        headers:
-        {
-            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-        },
-        success: function (res) {
-            $('#myModal').modal('show');
-            $('#myModal .choseProduct').html(res.html);
-            $('#myModal .choseProduct input[name="search"]').val(res.search);
-            $('#myModal .choseProduct select[name="brand"]').val(res.brand);
-        },error: function(xhr, status, error){
-            alert('Có lỗi xảy ra, xin vui lòng thử lại');
-        }
-     })
-});
-   $(".choseProduct").on("submit", function (e) {
-     e.preventDefault();
-      $.ajax({
-        type: 'post',
-        url: '/admin/deal/chose-product',
-        data:  $('.choseProduct').serialize(),
-        beforeSend: function () {
-            $('.choseProduct button[type="submit"]').html('<img src="/public/image/load.gif" style="height:100%;">');
-            $('.choseProduct button[type="submit"]').prop('disabled',true);
-        },
-        success: function (res) {
-          $('.choseProduct button[type="submit"]').html('Xác nhận');
-          $('.choseProduct button[type="submit"]').prop('disabled',false);
-            $('#myModal').modal('hide');
-            $('.load-product').html(res);
-        },error: function(xhr, status, error){
-            alert('Có lỗi xảy ra, xin vui lòng thử lại');
-         }
-      })
-    })
-   $('.btn_showproduct2').click(function(){
-    $.ajax({
-        type: 'post',
-        url: '/admin/deal/load-product2',
-        data:  {page:1,search:'',brand:'',deal_id:'{{$detail->id}}'},
-        headers:
-        {
-            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-        },
-        success: function (res) {
-            $('#myModal2').modal('show');
-            $('#myModal2 .choseProduct2').html(res.html);
-            $('#myModal2 .choseProduct2 input[name="search"]').val(res.search);
-            $('#myModal2 .choseProduct2 select[name="brand"]').val(res.brand);
-        },error: function(xhr, status, error){
-            alert('Có lỗi xảy ra, xin vui lòng thử lại');
-        }
-     })
-});
-
-   $('#myModal2').on('click','.page-link',function(){
-        var page = $(this).attr('data-page');
-        var search = $('input[name="search"]').val();
-        var brand = $('select[name="brand"]').val();
-        $.ajax({
-            type: 'post',
-            url: '/admin/deal/load-product2',
-            data:  {page:page,search:search,brand:brand,deal_id:'{{$detail->id}}'},
-            headers:
-            {
-                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-            },
-            success: function (res) {
-                $('#myModal2 .choseProduct2').html(res.html);
-                $('#myModal2 .choseProduct2 input[name="search"]').val(res.search);
-                $('#myModal2 .choseProduct2 select[name="brand"]').val(res.brand);
-                $('body #myModal2 .page-item').removeClass('active');
-                $('body #myModal2 .page-item-'+res.page+'').addClass('active');
-            },error: function(xhr, status, error){
-                alert('Có lỗi xảy ra, xin vui lòng thử lại');
-            }
-         })
-   })
-   $(".choseProduct2").on("submit", function (e) {
-     e.preventDefault();
-      $.ajax({
-        type: 'post',
-        url: '/admin/deal/chose-product2',
-        data:  $('.choseProduct2').serialize(),
-        beforeSend: function () {
-            $('.choseProduct2 button[type="submit"]').html('<img src="/public/image/load.gif" style="height:100%;">');
-            $('.choseProduct2 button[type="submit"]').prop('disabled',true);
-        },
-        success: function (res) {
-          $('.choseProduct2 button[type="submit"]').html('Xác nhận');
-          $('.choseProduct2 button[type="submit"]').prop('disabled',false);
-            $('#myModal2').modal('hide');
-            $('.load-product2').html(res);
-        },error: function(xhr, status, error){
-            alert('Có lỗi xảy ra, xin vui lòng thử lại');
-         }
-      })
-    })
+   // Initialize Marketing Product Search for Deal Edit - Sản phẩm chính
+   $(document).ready(function() {
+       MarketingProductSearch.init({
+           modalId: '#myModal',
+           searchInputId: '#modalSearch',
+           productListBodyId: '#product-list-body',
+           searchRoute: '{{route("deal.search_product")}}?type=main&deal_id={{$detail->id}}',
+           choseRoute: '{{route("deal.chose_product")}}',
+           mainProductBodyId: '.updateSale tbody',
+           appendToSelector: '.updateSale tbody',
+           checkAllId: '#checkall'
+       });
+       
+       // Initialize Marketing Product Search for Deal Edit - Sản phẩm mua kèm
+       MarketingProductSearch.init({
+           modalId: '#myModal2',
+           searchInputId: '#modalSearch2',
+           productListBodyId: '#product-list-body2',
+           searchRoute: '{{route("deal.search_product")}}?type=sale&deal_id={{$detail->id}}',
+           choseRoute: '{{route("deal.chose_product2")}}',
+           mainProductBodyId: '.updateSale2 tbody',
+           appendToSelector: '.updateSale2 tbody',
+           checkAllId: '#checkall2'
+       });
+   });
 </script>
 @endsection

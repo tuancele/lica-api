@@ -102,4 +102,44 @@ Route::group([
         // Status update
         Route::patch('/{id}/status', 'DealController@updateStatus');
     });
+
+    // Warehouse Management Routes (V1)
+    Route::prefix('v1/warehouse')->group(function () {
+        // Inventory Management
+        Route::get('/inventory', 'WarehouseController@getInventory');
+        Route::get('/inventory/{variantId}', 'WarehouseController@getVariantInventory');
+        
+        // Import Receipts Management
+        Route::prefix('import-receipts')->group(function () {
+            Route::get('/', 'WarehouseController@getImportReceipts');
+            Route::get('/{id}', 'WarehouseController@getImportReceipt');
+            Route::post('/', 'WarehouseController@createImportReceipt');
+            Route::put('/{id}', 'WarehouseController@updateImportReceipt');
+            Route::delete('/{id}', 'WarehouseController@deleteImportReceipt');
+            Route::get('/{id}/print', 'WarehouseController@getImportReceiptPrint');
+        });
+        
+        // Export Receipts Management
+        Route::prefix('export-receipts')->group(function () {
+            Route::get('/', 'WarehouseController@getExportReceipts');
+            Route::get('/{id}', 'WarehouseController@getExportReceipt');
+            Route::post('/', 'WarehouseController@createExportReceipt');
+            Route::put('/{id}', 'WarehouseController@updateExportReceipt');
+            Route::delete('/{id}', 'WarehouseController@deleteExportReceipt');
+            Route::get('/{id}/print', 'WarehouseController@getExportReceiptPrint');
+        });
+        
+        // Supporting Endpoints
+        Route::get('/products/search', 'WarehouseController@searchProducts');
+        Route::get('/products/{productId}/variants', 'WarehouseController@getProductVariants');
+        Route::get('/variants/{variantId}/stock', 'WarehouseController@getVariantStock');
+        Route::get('/variants/{variantId}/price', 'WarehouseController@getVariantPrice');
+        
+        // Statistics
+        Route::prefix('statistics')->group(function () {
+            Route::get('/quantity', 'WarehouseController@getQuantityStatistics');
+            Route::get('/revenue', 'WarehouseController@getRevenueStatistics');
+            Route::get('/summary', 'WarehouseController@getSummaryStatistics');
+        });
+    });
 });

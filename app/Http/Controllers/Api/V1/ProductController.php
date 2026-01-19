@@ -15,6 +15,7 @@ use App\Modules\Deal\Models\ProductDeal;
 use App\Modules\Deal\Models\SaleDeal;
 use App\Services\Product\IngredientService;
 use App\Services\PriceCalculationService;
+use App\Services\Warehouse\WarehouseServiceInterface;
 use App\Enums\ProductType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
@@ -31,13 +32,16 @@ class ProductController extends Controller
 {
     protected IngredientService $ingredientService;
     protected PriceCalculationService $priceService;
+    protected WarehouseServiceInterface $warehouseService;
 
     public function __construct(
         IngredientService $ingredientService,
-        PriceCalculationService $priceService
+        PriceCalculationService $priceService,
+        WarehouseServiceInterface $warehouseService
     ) {
         $this->ingredientService = $ingredientService;
         $this->priceService = $priceService;
+        $this->warehouseService = $warehouseService;
     }
 
     /**
@@ -194,9 +198,22 @@ class ProductController extends Controller
             // Process ingredients
             $ingredientData = $this->ingredientService->processIngredient($product->ingredient);
             
-            // Get variants with price info
+            // Get variants with price info and warehouse stock
             $variants = $product->variants->map(function($variant) use ($product) {
                 $variantPriceInfo = $this->getVariantPriceInfo($variant->id, $product->id);
+                
+                // Get warehouse stock
+                $warehouseStock = 0;
+                try {
+                    $stockData = $this->warehouseService->getVariantStock($variant->id);
+                    $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
+                } catch (\Exception $e) {
+                    Log::warning('Failed to get warehouse stock for variant: ' . $variant->id, [
+                        'error' => $e->getMessage()
+                    ]);
+                    // Fallback to variant stock if warehouse service fails
+                    $warehouseStock = (int) ($variant->stock ?? 0);
+                }
                 
                 // Build option label
                 $optLabel = $variant->option1_value;
@@ -216,7 +233,8 @@ class ProductController extends Controller
                     'image' => $this->formatImageUrl($variant->image ?? null),
                     'price' => (float) $variant->price,
                     'sale' => (float) $variant->sale,
-                    'stock' => (int) ($variant->stock ?? 0),
+                    'stock' => (int) ($variant->stock ?? 0), // Original stock from variants table
+                    'warehouse_stock' => $warehouseStock, // Current stock from warehouse (import - export)
                     'weight' => (float) $variant->weight,
                     'size_id' => $variant->size_id,
                     'color_id' => $variant->color_id,

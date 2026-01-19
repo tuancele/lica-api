@@ -8,8 +8,6 @@ use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
 use Validator;
 use Illuminate\Support\Facades\Auth;
-use App\Modules\Color\Models\Color;
-use App\Modules\Size\Models\Size;
 use App\Modules\Order\Models\OrderDetail;
 use App\Modules\Warehouse\Models\Warehouse;
 
@@ -45,5 +43,37 @@ class WarehouseController extends Controller
             }
         })->orderBy('variants.created_at','desc')->paginate(10);
         return view('Warehouse::quantity',$data);
+    }
+    
+    /**
+     * Get variant stock for web (session authentication)
+     * Used in product edit page
+     * 
+     * @param int $variantId
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getVariantStockWeb($variantId)
+    {
+        try {
+            $importTotal = countProduct($variantId, 'import');
+            $exportTotal = countProduct($variantId, 'export');
+            $currentStock = max(0, $importTotal - $exportTotal);
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'variant_id' => (int) $variantId,
+                    'current_stock' => $currentStock,
+                    'import_total' => $importTotal,
+                    'export_total' => $exportTotal,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lấy thông tin tồn kho thất bại',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

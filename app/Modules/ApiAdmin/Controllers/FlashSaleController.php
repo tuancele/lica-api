@@ -9,6 +9,8 @@ use App\Modules\FlashSale\Models\FlashSale;
 use App\Modules\FlashSale\Models\ProductSale;
 use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
+use App\Services\Promotion\ProductStockValidatorInterface;
+use App\Services\Inventory\InventoryServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -24,6 +26,17 @@ use Illuminate\Support\Facades\Validator;
  */
 class FlashSaleController extends Controller
 {
+    protected ProductStockValidatorInterface $productStockValidator;
+    protected InventoryServiceInterface $inventoryService;
+
+    public function __construct(
+        ProductStockValidatorInterface $productStockValidator,
+        InventoryServiceInterface $inventoryService
+    ) {
+        $this->productStockValidator = $productStockValidator;
+        $this->inventoryService = $inventoryService;
+    }
+
     /**
      * Get paginated list of Flash Sales with filters
      * 
@@ -185,7 +198,7 @@ class FlashSaleController extends Controller
 
             // Add products
             if ($request->has('products') && is_array($request->products)) {
-                foreach ($request->products as $productData) {
+                foreach ($request->products as $index => $productData) {
                     // Validate variant belongs to product
                     if (!empty($productData['variant_id'])) {
                         $variant = Variant::where('id', $productData['variant_id'])
@@ -198,6 +211,46 @@ class FlashSaleController extends Controller
                                 'message' => "Phân loại không thuộc sản phẩm ID {$productData['product_id']}"
                             ], 422);
                         }
+                    }
+
+                    // Validate product stock > 0
+                    $stock = $this->productStockValidator->getProductStock(
+                        $productData['product_id'],
+                        $productData['variant_id'] ?? null
+                    );
+
+                    if ($stock <= 0) {
+                        $productName = Product::find($productData['product_id'])->name ?? "ID {$productData['product_id']}";
+                        $variantInfo = !empty($productData['variant_id']) ? " (Variant ID {$productData['variant_id']})" : '';
+                        
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Sản phẩm \"{$productName}\"{$variantInfo} không có tồn kho, không thể tham gia Flash Sale",
+                            'errors' => [
+                                "products.{$index}.stock" => ["Tồn kho phải lớn hơn 0"]
+                            ]
+                        ], 422);
+                    }
+                    
+                    // Validate: total_stock >= flash_stock_limit (number)
+                    $flashStockLimit = $productData['number'];
+                    $stockValidation = $this->inventoryService->validateFlashSaleStock(
+                        $productData['product_id'],
+                        $productData['variant_id'] ?? null,
+                        $flashStockLimit
+                    );
+                    
+                    if (!$stockValidation['valid']) {
+                        $productName = Product::find($productData['product_id'])->name ?? "ID {$productData['product_id']}";
+                        $variantInfo = !empty($productData['variant_id']) ? " (Variant ID {$productData['variant_id']})" : '';
+                        
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Sản phẩm \"{$productName}\"{$variantInfo}: " . $stockValidation['message'],
+                            'errors' => [
+                                "products.{$index}.number" => [$stockValidation['message']]
+                            ]
+                        ], 422);
                     }
 
                     ProductSale::create([
@@ -322,7 +375,7 @@ class FlashSaleController extends Controller
 
                 // Update or create products
                 if (is_array($request->products)) {
-                    foreach ($request->products as $productData) {
+                    foreach ($request->products as $index => $productData) {
                         // Validate variant belongs to product
                         if (!empty($productData['variant_id'])) {
                             $variant = Variant::where('id', $productData['variant_id'])
@@ -331,6 +384,48 @@ class FlashSaleController extends Controller
                             
                             if (!$variant) {
                                 continue; // Skip invalid variant
+                            }
+                        }
+
+                        // Validate product stock > 0
+                        $stock = $this->productStockValidator->getProductStock(
+                            $productData['product_id'],
+                            $productData['variant_id'] ?? null
+                        );
+
+                        if ($stock <= 0) {
+                            $productName = Product::find($productData['product_id'])->name ?? "ID {$productData['product_id']}";
+                            $variantInfo = !empty($productData['variant_id']) ? " (Variant ID {$productData['variant_id']})" : '';
+                            
+                            return response()->json([
+                                'success' => false,
+                                'message' => "Sản phẩm \"{$productName}\"{$variantInfo} không có tồn kho, không thể tham gia Flash Sale",
+                                'errors' => [
+                                    "products.{$index}.stock" => ["Tồn kho phải lớn hơn 0"]
+                                ]
+                            ], 422);
+                        }
+                        
+                        // Validate: total_stock >= flash_stock_limit (number) - only for new or updated number
+                        if (isset($productData['number'])) {
+                            $flashStockLimit = $productData['number'];
+                            $stockValidation = $this->inventoryService->validateFlashSaleStock(
+                                $productData['product_id'],
+                                $productData['variant_id'] ?? null,
+                                $flashStockLimit
+                            );
+                            
+                            if (!$stockValidation['valid']) {
+                                $productName = Product::find($productData['product_id'])->name ?? "ID {$productData['product_id']}";
+                                $variantInfo = !empty($productData['variant_id']) ? " (Variant ID {$productData['variant_id']})" : '';
+                                
+                                return response()->json([
+                                    'success' => false,
+                                    'message' => "Sản phẩm \"{$productName}\"{$variantInfo}: " . $stockValidation['message'],
+                                    'errors' => [
+                                        "products.{$index}.number" => [$stockValidation['message']]
+                                    ]
+                                ], 422);
                             }
                         }
 
@@ -535,28 +630,81 @@ class FlashSaleController extends Controller
                 ->orderBy('id', 'desc')
                 ->paginate($limit, ['*'], 'page', $page);
 
+            // Filter products with stock > 0 and format response
             $formattedProducts = $products->map(function($product) {
-                $variant = $product->variant($product->id);
-                $price = $variant ? $variant->price : 0;
-
-                return [
-                    'id' => $product->id,
-                    'name' => $product->name,
-                    'image' => getImage($product->image),
-                    'has_variants' => (bool) $product->has_variants,
-                    'price' => (float) $price,
-                    'stock' => (int) $product->stock,
-                    'variants' => $product->has_variants ? $product->variants->map(function($v) {
+                // Get actual stock from warehouse system
+                $stock = $this->productStockValidator->getProductStock($product->id);
+                
+                // If product has no variants, check product stock
+                if ($product->has_variants == 0) {
+                    // Filter out products with stock = 0
+                    if ($stock <= 0) {
+                        return null;
+                    }
+                    
+                    $variant = $product->variant($product->id);
+                    $price = $variant ? $variant->price : 0;
+                    
+                    return [
+                        'id' => $product->id,
+                        'name' => $product->name,
+                        'image' => getImage($product->image),
+                        'has_variants' => false,
+                        'price' => (float) $price,
+                        'stock' => $stock,
+                        'variants' => [],
+                    ];
+                } else {
+                    // Product has variants: filter variants with stock > 0
+                    $productId = $product->id; // Capture for use in closure
+                    $variantsWithStock = $product->variants->map(function($v) use ($productId) {
+                        // Get stock once and store it
+                        $variantStock = $this->productStockValidator->getProductStock(
+                            $productId,
+                            $v->id
+                        );
+                        return [
+                            'variant' => $v,
+                            'stock' => $variantStock,
+                        ];
+                    })->filter(function($item) {
+                        // Filter out variants with stock <= 0
+                        return $item['stock'] > 0;
+                    })->map(function($item) {
+                        // Format variant data
+                        $v = $item['variant'];
                         return [
                             'id' => $v->id,
                             'sku' => $v->sku,
                             'option1_value' => $v->option1_value,
                             'price' => (float) $v->price,
-                            'stock' => (int) $v->stock,
+                            'stock' => $item['stock'],
                         ];
-                    }) : [],
-                ];
-            });
+                    });
+                    
+                    // If no variants have stock, filter out the product
+                    if ($variantsWithStock->isEmpty()) {
+                        return null;
+                    }
+                    
+                    // Get default variant for price display
+                    $variant = $product->variant($product->id);
+                    $price = $variant ? $variant->price : ($variantsWithStock->first()['price'] ?? 0);
+                    
+                    return [
+                        'id' => $product->id,
+                        'name' => $product->name,
+                        'image' => getImage($product->image),
+                        'has_variants' => true,
+                        'price' => (float) $price,
+                        'stock' => $variantsWithStock->sum('stock'), // Total stock of all variants
+                        'variants' => $variantsWithStock->values()->all(),
+                    ];
+                }
+            })->filter(function($product) {
+                // Remove null products (filtered out due to zero stock)
+                return $product !== null;
+            })->values();
 
             return response()->json([
                 'success' => true,

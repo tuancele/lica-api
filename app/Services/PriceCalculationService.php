@@ -7,6 +7,7 @@ use App\Modules\FlashSale\Models\ProductSale;
 use App\Modules\Marketing\Models\MarketingCampaignProduct;
 use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
+use App\Services\Warehouse\WarehouseServiceInterface;
 use Carbon\Carbon;
 
 /**
@@ -20,6 +21,43 @@ use Carbon\Carbon;
  */
 class PriceCalculationService
 {
+    protected ?WarehouseServiceInterface $warehouseService;
+
+    public function __construct(?WarehouseServiceInterface $warehouseService = null)
+    {
+        $this->warehouseService = $warehouseService;
+    }
+
+    /**
+     * Set warehouse service (for dependency injection after construction)
+     * 
+     * @param WarehouseServiceInterface $warehouseService
+     * @return void
+     */
+    public function setWarehouseService(WarehouseServiceInterface $warehouseService): void
+    {
+        $this->warehouseService = $warehouseService;
+    }
+
+    /**
+     * Calculate effective stock (min of Flash Sale remaining and warehouse stock)
+     * 
+     * Formula: min(flash_sale_remaining, warehouse_stock)
+     * 
+     * @param int|null $flashSaleRemaining Flash Sale remaining quantity
+     * @param int $warehouseStock Warehouse stock quantity
+     * @return int Effective stock
+     */
+    public function calculateEffectiveStock(?int $flashSaleRemaining, int $warehouseStock): int
+    {
+        // If no Flash Sale, use warehouse stock
+        if ($flashSaleRemaining === null) {
+            return $warehouseStock;
+        }
+        
+        // Return minimum of Flash Sale remaining and warehouse stock
+        return min($flashSaleRemaining, $warehouseStock);
+    }
     /**
      * Calculate price for a Product
      * 
@@ -49,6 +87,26 @@ class PriceCalculationService
             ->first();
 
         if ($flashSaleProduct && $flashSaleProduct->is_available) {
+            // Get warehouse stock for effective stock calculation
+            // For product-level Flash Sale, use first variant's stock or product stock
+            $warehouseStock = 0;
+            if ($variant && $this->warehouseService) {
+                try {
+                    $stockData = $this->warehouseService->getVariantStock($variant->id);
+                    $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
+                } catch (\Exception $e) {
+                    // Fallback to variant stock
+                    $warehouseStock = (int) ($variant->stock ?? 0);
+                }
+            } else {
+                // Fallback to variant stock or product stock
+                $warehouseStock = $variant ? (int) ($variant->stock ?? 0) : 0;
+            }
+            
+            // Calculate effective stock: min(flash_sale_remaining, warehouse_stock)
+            $flashSaleRemaining = $flashSaleProduct->remaining;
+            $effectiveStock = $this->calculateEffectiveStock($flashSaleRemaining, $warehouseStock);
+            
             return (object) [
                 'price' => $flashSaleProduct->price_sale,
                 'original_price' => $originalPrice,
@@ -62,7 +120,9 @@ class PriceCalculationService
                     'price_sale' => $flashSaleProduct->price_sale,
                     'number' => $flashSaleProduct->number,
                     'buy' => $flashSaleProduct->buy,
-                    'remaining' => $flashSaleProduct->remaining,
+                    'remaining' => $flashSaleRemaining,
+                    'effective_stock' => $effectiveStock, // ← Effective stock (min of Flash Sale and warehouse)
+                    'warehouse_stock' => $warehouseStock, // ← Warehouse stock for reference
                 ],
                 'variant_id' => null,
             ];
@@ -143,6 +203,25 @@ class PriceCalculationService
             ->first();
 
         if ($productSale && $productSale->is_available) {
+            // Get warehouse stock for effective stock calculation
+            $warehouseStock = 0;
+            if ($this->warehouseService) {
+                try {
+                    $stockData = $this->warehouseService->getVariantStock($variant->id);
+                    $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
+                } catch (\Exception $e) {
+                    // Fallback to variant stock
+                    $warehouseStock = (int) ($variant->stock ?? 0);
+                }
+            } else {
+                // Fallback to variant stock if no warehouse service
+                $warehouseStock = (int) ($variant->stock ?? 0);
+            }
+            
+            // Calculate effective stock: min(flash_sale_remaining, warehouse_stock)
+            $flashSaleRemaining = $productSale->remaining;
+            $effectiveStock = $this->calculateEffectiveStock($flashSaleRemaining, $warehouseStock);
+            
             return (object) [
                 'price' => $productSale->price_sale,
                 'original_price' => $originalPrice,
@@ -156,7 +235,9 @@ class PriceCalculationService
                     'price_sale' => $productSale->price_sale,
                     'number' => $productSale->number,
                     'buy' => $productSale->buy,
-                    'remaining' => $productSale->remaining,
+                    'remaining' => $flashSaleRemaining,
+                    'effective_stock' => $effectiveStock, // ← Effective stock (min of Flash Sale and warehouse)
+                    'warehouse_stock' => $warehouseStock, // ← Warehouse stock for reference
                 ],
                 'variant_id' => $variant->id,
             ];
@@ -176,6 +257,25 @@ class PriceCalculationService
             ->first();
 
         if ($productSaleFallback && $productSaleFallback->is_available) {
+            // Get warehouse stock for effective stock calculation
+            $warehouseStock = 0;
+            if ($this->warehouseService) {
+                try {
+                    $stockData = $this->warehouseService->getVariantStock($variant->id);
+                    $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
+                } catch (\Exception $e) {
+                    // Fallback to variant stock
+                    $warehouseStock = (int) ($variant->stock ?? 0);
+                }
+            } else {
+                // Fallback to variant stock if no warehouse service
+                $warehouseStock = (int) ($variant->stock ?? 0);
+            }
+            
+            // Calculate effective stock: min(flash_sale_remaining, warehouse_stock)
+            $flashSaleRemaining = $productSaleFallback->remaining;
+            $effectiveStock = $this->calculateEffectiveStock($flashSaleRemaining, $warehouseStock);
+            
             return (object) [
                 'price' => $productSaleFallback->price_sale,
                 'original_price' => $originalPrice,
@@ -189,7 +289,9 @@ class PriceCalculationService
                     'price_sale' => $productSaleFallback->price_sale,
                     'number' => $productSaleFallback->number,
                     'buy' => $productSaleFallback->buy,
-                    'remaining' => $productSaleFallback->remaining,
+                    'remaining' => $flashSaleRemaining,
+                    'effective_stock' => $effectiveStock, // ← Effective stock (min of Flash Sale and warehouse)
+                    'warehouse_stock' => $warehouseStock, // ← Warehouse stock for reference
                 ],
                 'variant_id' => $variant->id,
             ];

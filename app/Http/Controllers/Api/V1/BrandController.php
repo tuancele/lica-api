@@ -7,6 +7,7 @@ use App\Http\Resources\Brand\BrandResource;
 use App\Http\Resources\Product\ProductResource;
 use App\Modules\Brand\Models\Brand;
 use App\Modules\Product\Models\Product;
+use App\Services\Warehouse\WarehouseServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -20,6 +21,13 @@ use Illuminate\Support\Facades\DB;
  */
 class BrandController extends Controller
 {
+    protected WarehouseServiceInterface $warehouseService;
+
+    public function __construct(WarehouseServiceInterface $warehouseService)
+    {
+        $this->warehouseService = $warehouseService;
+    }
+
     /**
      * Get list of all brands
      * 
@@ -267,6 +275,50 @@ class BrandController extends Controller
                 $products->setCollection(collect($items));
             }
 
+            // Add warehouse_stock to products before formatting with ProductResource
+            $products->getCollection()->transform(function($product) {
+                // Get warehouse stock for first variant
+                $warehouseStock = 0;
+                $isOutOfStock = false;
+                try {
+                    $firstVariant = $product->variants->first();
+                    if ($firstVariant) {
+                        $stockData = $this->warehouseService->getVariantStock($firstVariant->id);
+                        $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
+                        $isOutOfStock = $warehouseStock <= 0;
+                        
+                        // Add warehouse_stock to variant
+                        $firstVariant->warehouse_stock = $warehouseStock;
+                        $firstVariant->is_out_of_stock = $isOutOfStock;
+                    } else {
+                        $warehouseStock = (int) ($product->stock ?? 0);
+                        $isOutOfStock = $warehouseStock <= 0;
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Failed to get warehouse stock for product: ' . $product->id);
+                    $warehouseStock = (int) ($product->stock ?? 0);
+                    $isOutOfStock = $warehouseStock <= 0;
+                }
+                
+                // Add warehouse_stock to product
+                $product->warehouse_stock = $warehouseStock;
+                $product->is_out_of_stock = $isOutOfStock;
+                
+                // Add warehouse_stock to all variants
+                $product->variants->each(function($variant) {
+                    try {
+                        $stockData = $this->warehouseService->getVariantStock($variant->id);
+                        $variant->warehouse_stock = (int) ($stockData['current_stock'] ?? 0);
+                        $variant->is_out_of_stock = $variant->warehouse_stock <= 0;
+                    } catch (\Exception $e) {
+                        $variant->warehouse_stock = (int) ($variant->stock ?? 0);
+                        $variant->is_out_of_stock = $variant->warehouse_stock <= 0;
+                    }
+                });
+                
+                return $product;
+            });
+            
             // Format response with ProductResource
             $formattedProducts = ProductResource::collection($products->items());
 

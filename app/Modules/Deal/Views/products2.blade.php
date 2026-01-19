@@ -17,10 +17,11 @@
             <thead>
                 <tr>
                     <th width="5%" style="text-align: center;"><input style="margin-right: 0px;" type="checkbox" id="checkall" class="wgr-checkbox"></th>
-                    <th width="50%">Sản phẩm</th>
-                    <th width="15%">Giá gốc</th>
-                    <th width="15%">Giá khuyến mại</th>
-                    <th width="15%">Số lượng</th>
+                    <th width="40%">Sản phẩm</th>
+                    <th width="12%">Giá gốc</th>
+                    <th width="12%">Giá khuyến mại</th>
+                    <th width="12%" style="text-align: center;">Tồn kho thực tế</th>
+                    <th width="12%">Số lượng</th>
                 </tr>
             </thead>
         </table>
@@ -56,14 +57,12 @@
                                     @if($variant->sku) <br>SKU: {{$variant->sku}} @endif
                                 </small>
                             </td>
-                            <td width="15%">{{number_format($variant->price)}}đ</td>
-                            <td width="15%">{{number_format($variant->sale)}}đ</td>
-                            <td width="15%">
-                                @php 
-                                $total1 = countProductWarehouse($product->id,'import');
-                                $total2 = countProductWarehouse($product->id,'export'); @endphp
-                                {{$total1-$total2}}
+                            <td width="12%">{{number_format($variant->price)}}đ</td>
+                            <td width="12%">{{number_format($variant->sale)}}đ</td>
+                            <td width="12%" style="text-align: center;">
+                                <strong>{{number_format($variant->actual_stock ?? 0)}}</strong>
                             </td>
+                            <td width="12%">-</td>
                         </tr>
                         @endforeach
                     @else
@@ -77,14 +76,12 @@
                                 <img src="{{$product->image}}" style="width:50px;height: 50px;float: left;margin-right: 5px;">
                                 <p>{{$product->name}}</p>
                             </td>
-                            <td width="15%">@if(!empty($variant)){{number_format($variant->price)}}đ @endif</td>
-                            <td width="15%">@if(!empty($variant)){{number_format($variant->sale)}}đ @endif</td>
-                            <td width="15%">
-                                @php 
-                                $total1 = countProductWarehouse($product->id,'import');
-                                $total2 = countProductWarehouse($product->id,'export'); @endphp
-                                {{$total1-$total2}}
+                            <td width="12%">@if(!empty($variant)){{number_format($variant->price)}}đ @endif</td>
+                            <td width="12%">@if(!empty($variant)){{number_format($variant->sale)}}đ @endif</td>
+                            <td width="12%" style="text-align: center;">
+                                <strong>{{number_format($product->actual_stock ?? 0)}}</strong>
                             </td>
+                            <td width="12%">-</td>
                         </tr>
                     @endif
                     @endforeach

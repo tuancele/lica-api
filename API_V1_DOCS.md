@@ -384,9 +384,15 @@ Product::with([
   "data": {
     "flash_sale": {
       "id": 1,
+      "name": "Flash Sale Tháng 1",
       "start": "2024-01-15T00:00:00.000000Z",
       "end": "2024-01-20T23:59:59.000000Z",
-      "countdown_seconds": 432000
+      "start_timestamp": 1705276800,
+      "end_timestamp": 1705708799,
+      "status": "1",
+      "is_active": true,
+      "countdown_seconds": 432000,
+      "total_products": 25
     },
     "products": [
       {
@@ -443,7 +449,8 @@ Product::with([
       "per_page": 20,
       "total": 25,
       "last_page": 2
-    }
+    },
+    "total_unique_products": 20
   }
 }
 ```

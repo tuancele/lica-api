@@ -53,12 +53,11 @@
                             </div>
                         </div>
                         <div class="load-sale">
-                             @php
-                                // Pre-load products in the campaign
-                                $existing_product_ids = $campaign_products->pluck('product_id')->toArray();
-                                $existing_products = \App\Modules\Product\Models\Product::whereIn('id', $existing_product_ids)->get();
-                            @endphp
-                            @include('Marketing::load_product', ['products' => $existing_products, 'campaign_products' => $campaign_products])
+                            @if(isset($products))
+                                @include('Marketing::load_product', ['products' => $products, 'campaign_products' => $campaign_products])
+                            @else
+                                @include('Marketing::load_product', ['products' => null, 'campaign_products' => $campaign_products])
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -83,9 +82,10 @@
                 <thead>
                     <tr>
                         <th width="5%" style="text-align: center;"><input style="margin-right: 0px;" type="checkbox" id="checkall" class="wgr-checkbox"></th>
-                        <th width="55%">Sản phẩm</th>
-                        <th width="20%">Giá gốc</th>
-                        <th width="20%">Giá khuyến mại</th>
+                        <th width="40%">Sản phẩm</th>
+                        <th width="15%">Giá gốc</th>
+                        <th width="15%">Giá khuyến mại</th>
+                        <th width="15%" style="text-align: center;">Tồn kho thực tế</th>
                     </tr>
                 </thead>
             </table>
@@ -133,13 +133,13 @@
                keyword: keyword
            },
            beforeSend: function() {
-               $('#product-list-body').html('<tr><td colspan="4" class="text-center">Đang tải...</td></tr>');
+               $('#product-list-body').html('<tr><td colspan="5" class="text-center">Đang tải...</td></tr>');
            },
            success: function(res) {
                $('#product-list-body').html(res.html);
            },
            error: function() {
-               $('#product-list-body').html('<tr><td colspan="4" class="text-center text-danger">Lỗi tải dữ liệu</td></tr>');
+               $('#product-list-body').html('<tr><td colspan="5" class="text-center text-danger">Lỗi tải dữ liệu</td></tr>');
            }
        });
    }

@@ -4,20 +4,27 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Recommendation\RecommendationService;
+use App\Services\Warehouse\WarehouseServiceInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use App\Modules\Deal\Models\Deal;
 use App\Modules\Deal\Models\ProductDeal;
 use App\Modules\Deal\Models\SaleDeal;
+use App\Modules\Product\Models\Variant;
 
 class RecommendationController extends Controller
 {
     protected $recommendationService;
+    protected WarehouseServiceInterface $warehouseService;
 
-    public function __construct(RecommendationService $recommendationService)
-    {
+    public function __construct(
+        RecommendationService $recommendationService,
+        WarehouseServiceInterface $warehouseService
+    ) {
         $this->recommendationService = $recommendationService;
+        $this->warehouseService = $warehouseService;
     }
 
     /**
@@ -56,6 +63,28 @@ class RecommendationController extends Controller
                 ->where('orders.ship', 2)
                 ->where('orders.status', '!=', 2)
                 ->sum('orderdetail.qty') ?? 0;
+
+            // Get warehouse stock for first variant
+            $warehouseStock = 0;
+            $isOutOfStock = false;
+            try {
+                $firstVariant = Variant::where('product_id', $product->id)
+                    ->orderBy('position', 'asc')
+                    ->orderBy('id', 'asc')
+                    ->first();
+                if ($firstVariant) {
+                    $stockData = $this->warehouseService->getVariantStock($firstVariant->id);
+                    $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
+                    $isOutOfStock = $warehouseStock <= 0;
+                } else {
+                    $warehouseStock = (int) ($product->stock ?? 0);
+                    $isOutOfStock = $warehouseStock <= 0;
+                }
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::warning('Failed to get warehouse stock for product: ' . $product->id);
+                $warehouseStock = (int) ($product->stock ?? 1);
+                $isOutOfStock = $warehouseStock <= 0;
+            }
 
             // 检查产品是否参与 deal sốc
             $dealDiscountPercent = 0;
@@ -100,6 +129,8 @@ class RecommendationController extends Controller
                 'review_count' => $ratingCount,
                 'total_sold' => (int) $totalSold,
                 'stock' => $product->stock ?? 1,
+                'warehouse_stock' => $warehouseStock,
+                'is_out_of_stock' => $isOutOfStock,
                 'deal_name' => $dealName,
                 'deal_discount_percent' => $dealDiscountPercent,
             ];

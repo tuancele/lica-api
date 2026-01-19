@@ -17,10 +17,11 @@
             <thead>
                 <tr>
                     <th width="5%" style="text-align: center;"><input style="margin-right: 0px;" type="checkbox" id="checkall" class="wgr-checkbox"></th>
-                    <th width="50%">Sản phẩm</th>
-                    <th width="15%">Giá gốc</th>
-                    <th width="15%">Giá khuyến mại</th>
-                    <th width="15%">Số lượng</th>
+                    <th width="40%">Sản phẩm</th>
+                    <th width="12%">Giá gốc</th>
+                    <th width="12%">Giá khuyến mại</th>
+                    <th width="12%" style="text-align: center;">Tồn kho thực tế</th>
+                    <th width="12%">Số lượng</th>
                 </tr>
             </thead>
         </table>
@@ -43,12 +44,19 @@
                     @if($hasVariants)
                         {{-- Sản phẩm có variants - hiển thị từng variant --}}
                         @foreach($product->variants as $variant)
+                        @php
+                            $variantStock = isset($variant->actual_stock) ? $variant->actual_stock : 0;
+                            // Filter out variants with stock = 0
+                            if ($variantStock <= 0) {
+                                continue;
+                            }
+                        @endphp
                         <tr class="item-{{$product->id}}-variant-{{$variant->id}}">
                             <td width="5%" style="text-align: center;">
                                 <input @if(isset($mang) && in_array($product->id.'_v'.$variant->id,$mang)) checked @endif style="margin: 0px;display: inline-block;" type="checkbox" name="productid[]" class="checkbox wgr-checkbox" value="{{$product->id}}_v{{$variant->id}}" data-product-id="{{$product->id}}" data-variant-id="{{$variant->id}}">
                                 <input type="hidden" name="variant_ids[{{$product->id}}][{{$variant->id}}]" value="{{$variant->id}}">
                             </td>
-                            <td width="50%">
+                            <td width="40%">
                                 <img src="{{$product->image}}" style="width:50px;height: 50px;float: left;margin-right: 5px;">
                                 <p><strong>{{$product->name}}</strong></p>
                                 <small class="text-muted">
@@ -56,35 +64,34 @@
                                     @if($variant->sku) <br>SKU: {{$variant->sku}} @endif
                                 </small>
                             </td>
-                            <td width="15%">{{number_format($variant->price)}}đ</td>
-                            <td width="15%">{{number_format($variant->sale)}}đ</td>
-                            <td width="15%">
-                                @php 
-                                $total1 = countProductWarehouse($product->id,'import');
-                                $total2 = countProductWarehouse($product->id,'export'); @endphp
-                                {{$total1-$total2}}
-                            </td>
+                            <td width="12%">{{number_format($variant->price)}}đ</td>
+                            <td width="12%">{{number_format($variant->sale)}}đ</td>
+                            <td width="12%" style="text-align: center;"><strong>{{number_format($variantStock)}}</strong></td>
+                            <td width="12%">-</td>
                         </tr>
                         @endforeach
                     @else
                         {{-- Sản phẩm không có variants --}}
-                        @php $variant = $product->variant($product->id) @endphp
+                        @php 
+                            $variant = $product->variant($product->id);
+                            $productStock = isset($product->actual_stock) ? $product->actual_stock : 0;
+                            // Filter out products with stock = 0
+                            if ($productStock <= 0) {
+                                continue;
+                            }
+                        @endphp
                         <tr class="item-{{$product->id}}">
                             <td width="5%" style="text-align: center;">
                                 <input @if(isset($mang) && in_array($product->id,$mang)) checked @endif style="margin: 0px;display: inline-block;" type="checkbox" name="productid[]" class="checkbox wgr-checkbox" value="{{$product->id}}" data-product-id="{{$product->id}}" data-variant-id="">
                             </td>
-                            <td width="50%">
+                            <td width="40%">
                                 <img src="{{$product->image}}" style="width:50px;height: 50px;float: left;margin-right: 5px;">
                                 <p>{{$product->name}}</p>
                             </td>
-                            <td width="15%">@if(!empty($variant)){{number_format($variant->price)}}đ @endif</td>
-                            <td width="15%">@if(!empty($variant)){{number_format($variant->sale)}}đ @endif</td>
-                            <td width="15%">
-                                @php 
-                                $total1 = countProductWarehouse($product->id,'import');
-                                $total2 = countProductWarehouse($product->id,'export'); @endphp
-                                {{$total1-$total2}}
-                            </td>
+                            <td width="12%">@if(!empty($variant)){{number_format($variant->price)}}đ @endif</td>
+                            <td width="12%">@if(!empty($variant)){{number_format($variant->sale)}}đ @endif</td>
+                            <td width="12%" style="text-align: center;"><strong>{{number_format($productStock)}}</strong></td>
+                            <td width="12%">-</td>
                         </tr>
                     @endif
                     @endforeach

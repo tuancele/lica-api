@@ -101,9 +101,56 @@
                                                     </td>
 
                                                     <td class="product-subtotal" data-title="Tổng">
-                                                        <span class="commerce-Price-amount amount item-total-{{$variant['item']['id']}}">{{number_format($variant['price']*$variant['qty'])}}đ</span>
+                                                        @php
+                                                            $variantId = $variant['item']['id'];
+                                                            $priceData = $productsWithPrice[$variantId] ?? null;
+                                                            $hasBreakdown = $priceData && isset($priceData['price_breakdown']) && count($priceData['price_breakdown']) > 1;
+                                                            $totalPrice = $priceData['total_price'] ?? ($variant['price'] * $variant['qty']);
+                                                        @endphp
+                                                        <span class="commerce-Price-amount amount item-total-{{$variantId}}">
+                                                            {{number_format($totalPrice)}}đ
+                                                        </span>
+                                                        @if($hasBreakdown)
+                                                            <div class="fs-11 text-muted mt-1" style="cursor: pointer;" title="Click để xem chi tiết">
+                                                                @foreach($priceData['price_breakdown'] as $bd)
+                                                                    {{$bd['quantity']}}x{{number_format($bd['unit_price'])}}đ
+                                                                    @if(!$loop->last) + @endif
+                                                                @endforeach
+                                                            </div>
+                                                        @endif
                                                     </td>
                                                 </tr>
+                                                <!-- Flash Sale Warning Container for this item -->
+                                                @php
+                                                    $variantId = $variant['item']['id'];
+                                                    $priceData = $productsWithPrice[$variantId] ?? null;
+                                                    $hasWarning = $priceData && !empty($priceData['warning']);
+                                                @endphp
+                                                @if($hasWarning)
+                                                <tr class="flash-sale-warning-row-{{$variantId}}">
+                                                    <td colspan="6" class="flash-sale-warning-container-{{$variantId}}" style="padding: 10px 15px;">
+                                                        <div class="flash-sale-warning" style="padding: 10px; background-color: #fff3cd; border-left: 3px solid #ffc107; border-radius: 4px; font-size: 12px;">
+                                                            <i class="fa fa-exclamation-triangle" style="color: #856404; margin-right: 5px;"></i>
+                                                            <strong style="color: #856404;">Vượt quá số lượng Flash Sale</strong>
+                                                            @if(isset($priceData['price_breakdown']) && count($priceData['price_breakdown']) > 1)
+                                                                <div style="margin-top: 5px; padding-top: 5px; border-top: 1px solid #ffc107;">
+                                                                    @foreach($priceData['price_breakdown'] as $bd)
+                                                                        @php
+                                                                            $typeLabel = $bd['type'] === 'flashsale' ? 'Flash Sale' : ($bd['type'] === 'promotion' ? 'Khuyến mãi' : 'Giá thường');
+                                                                        @endphp
+                                                                        {{$bd['quantity']}} sản phẩm × {{number_format($bd['unit_price'])}}đ ({{$typeLabel}}) = {{number_format($bd['subtotal'])}}đ
+                                                                        @if(!$loop->last)<br>@endif
+                                                                    @endforeach
+                                                                </div>
+                                                            @endif
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                @else
+                                                <tr class="flash-sale-warning-row-{{$variantId}}" style="display: none;">
+                                                    <td colspan="6" class="flash-sale-warning-container-{{$variantId}}" style="padding: 10px 15px;"></td>
+                                                </tr>
+                                                @endif
                                                 @endif
                                                 @endforeach
                                                 <tr>
@@ -547,6 +594,9 @@
                             $('.total-price').text(CartAPI.formatCurrency(data.summary.subtotal));
                             $('.count-cart').text(data.summary.total_qty || 0);
                         }
+                        
+                        // Check Flash Sale Mixed Price
+                        checkFlashSalePrice(variantId, newQty);
                     } else {
                         // Revert quantity on error
                         $input.val(currentVal);
@@ -642,6 +692,47 @@
                 });
         });
 
+        // Function to check Flash Sale price when quantity changes
+        function checkFlashSalePrice(variantId, quantity) {
+            if (typeof FlashSaleMixedPrice === 'undefined') {
+                return; // FlashSaleMixedPrice not loaded
+            }
+            
+            // Get product_id from the row
+            var $row = $('.item-cart-' + variantId);
+            var productId = $row.attr('data-main-id');
+            
+            if (!productId) {
+                return;
+            }
+            
+            // Show warning row
+            var $warningRow = $('.flash-sale-warning-row-' + variantId);
+            var $warningContainer = $('.flash-sale-warning-container-' + variantId);
+            
+            // Call FlashSaleMixedPrice to calculate price với callback để cập nhật tổng tiền
+            FlashSaleMixedPrice.calculatePriceWithQuantity(
+                parseInt(productId),
+                parseInt(variantId),
+                quantity,
+                '.item-total-' + variantId, // Price display selector
+                '.flash-sale-warning-container-' + variantId, // Warning container
+                function(priceData) {
+                    // Callback: Cập nhật tổng tiền sau khi tính giá thành công
+                    FlashSaleMixedPrice.updateTotalOrderPrice();
+                    
+                    // Show/hide warning row based on warning content
+                    setTimeout(function() {
+                        if ($warningContainer.html().trim() !== '') {
+                            $warningRow.show();
+                        } else {
+                            $warningRow.hide();
+                        }
+                    }, 100);
+                }
+            );
+        }
+        
         // Manual quantity input change
         $('body').on('blur', '.form-quatity', function() {
             var variantId = $(this).closest('tr').find('.btn-plus').attr('data-id');
@@ -676,6 +767,9 @@
                             $('.total-price').text(CartAPI.formatCurrency(data.summary.subtotal));
                             $('.count-cart').text(data.summary.total_qty || 0);
                         }
+                        
+                        // Check Flash Sale Mixed Price
+                        checkFlashSalePrice(variantId, newQty);
                     } else {
                         CartAPI.showError(response.message || 'Cập nhật số lượng thất bại');
                         // Reload to get correct value

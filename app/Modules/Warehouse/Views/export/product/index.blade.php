@@ -33,11 +33,11 @@
                         <tr>
                             <th width="3%"><input type="checkbox" id="checkall" class="wgr-checkbox"></th>
                             <th width="20%">Sản phẩm</th>
-                            <th width="10%">Kích thước</th>
+                            <th width="10%">Phân loại</th>
                             <th width="10%">Đơn giá ($)</th> 
                             <th width="10%">Số lượng </th>  
                             <th width="10%">Thành tiền ($)</th>    
-                            <th width="10%">Ngày nhập</th>
+                            <th width="10%">Ngày xuất</th>
                             
                             <th width="10%">Thao tác</th>
                         </tr>
@@ -48,10 +48,11 @@
                         <tr>
                             <td><input type="checkbox" name="checklist[]" class="checkbox wgr-checkbox" value="{{$value->id}}"></td>
                             <td>
-                               <a href=""> {{$value->name}} </a>
+                               <a href=""> {{$value->variant->product->name ?? ''}} </a>
+                               <p>Sku: <strong>{{$value->variant->sku ?? ''}}</strong></p>
                             </td>
                             <td>
-                               @if(isset($value->size)){{$value->size->name}}@endif
+                               {{$value->variant->option1_value ?? 'Mặc định'}}
                             </td>
                             <td>
                                 ${{$value->price}}

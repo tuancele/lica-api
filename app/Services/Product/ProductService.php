@@ -4,6 +4,7 @@ namespace App\Services\Product;
 
 use App\Repositories\Product\ProductRepositoryInterface;
 use App\Services\Image\ImageServiceInterface;
+use App\Services\Warehouse\WarehouseServiceInterface;
 use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
 use App\Modules\Dictionary\Models\IngredientPaulas;
@@ -30,7 +31,8 @@ class ProductService implements ProductServiceInterface
 {
     public function __construct(
         private ProductRepositoryInterface $repository,
-        private ImageServiceInterface $imageService
+        private ImageServiceInterface $imageService,
+        private WarehouseServiceInterface $warehouseService
     ) {}
 
     /**
@@ -89,11 +91,13 @@ class ProductService implements ProductServiceInterface
             $product = $this->repository->create($productData);
 
             $hasVariants = (int)($data['has_variants'] ?? 0) === 1;
+            $createdVariants = [];
+            
             if ($hasVariants) {
-                $this->syncVariantsFromJson($product->id, $data['variants_json'] ?? '', $image);
+                $createdVariants = $this->syncVariantsFromJson($product->id, $data['variants_json'] ?? '', $image);
             } else {
                 // Create default variant (single product)
-                $this->createDefaultVariant($product->id, [
+                $variant = $this->createDefaultVariant($product->id, [
                     'sku' => $data['sku'] ?? 'SKU-' . time() . '-' . rand(10, 99),
                     'image' => $image,
                     'price' => $this->parsePrice($data['price'] ?? 0),
@@ -101,9 +105,37 @@ class ProductService implements ProductServiceInterface
                     'weight' => $data['weight'] ?? 0,
                     'stock' => (int)($data['stock_qty'] ?? 0),
                 ]);
+                if ($variant) {
+                    // Reload variant to ensure we have fresh data
+                    $variant->refresh();
+                    $createdVariants[] = $variant;
+                }
             }
             
             DB::commit();
+            
+            // Reload product to ensure fresh data
+            $product->refresh();
+            
+            // Auto create import receipt if initial stock > 0
+            // Load all variants for the product to ensure we have complete data
+            // Use fresh() to ensure we get the latest data from database
+            $allVariants = Variant::where('product_id', $product->id)->get();
+            
+            Log::info('Loaded variants for import receipt creation', [
+                'product_id' => $product->id,
+                'variants_count' => $allVariants->count(),
+                'variants' => $allVariants->map(function($v) {
+                    return [
+                        'id' => $v->id,
+                        'sku' => $v->sku,
+                        'stock' => $v->stock,
+                        'price' => $v->price,
+                    ];
+                })->toArray(),
+            ]);
+            
+            $this->createInitialStockImportReceipt($product, $allVariants->all());
             
             // Clear cache (selective clearing instead of flush)
             Cache::forget("product:{$product->id}");
@@ -365,24 +397,44 @@ class ProductService implements ProductServiceInterface
      * 
      * @param int $productId
      * @param array $data
-     * @return void
+     * @return Variant|null
      */
-    private function createDefaultVariant(int $productId, array $data): void
+    private function createDefaultVariant(int $productId, array $data): ?Variant
     {
-        Variant::create([
+        $stock = (int)($data['stock'] ?? 0);
+        
+        Log::info('Creating default variant', [
+            'product_id' => $productId,
+            'sku' => $data['sku'] ?? 'N/A',
+            'stock' => $stock,
+            'price' => $data['price'] ?? 0,
+        ]);
+        
+        $variant = Variant::create([
             'sku' => $data['sku'],
             'product_id' => $productId,
             'option1_value' => null,
             'image' => $data['image'],
             'size_id' => 0,
             'color_id' => 0,
-            'weight' => $data['weight'],
+            'weight' => $data['weight'] ?? 0,
             'price' => $data['price'],
             'sale' => $data['sale'],
-            'stock' => (int)($data['stock'] ?? 0),
+            'stock' => $stock,
             'position' => 0,
             'user_id' => auth()->id(),
         ]);
+        
+        // Reload to ensure we have the saved data
+        $variant->refresh();
+        
+        Log::info('Default variant created', [
+            'variant_id' => $variant->id,
+            'stock_saved' => $variant->stock,
+            'stock_expected' => $stock,
+        ]);
+        
+        return $variant;
     }
 
     /**
@@ -391,9 +443,9 @@ class ProductService implements ProductServiceInterface
      * @param int $productId
      * @param string $variantsJson
      * @param string|null $fallbackImage
-     * @return void
+     * @return array Array of created/updated Variant models
      */
-    private function syncVariantsFromJson(int $productId, string $variantsJson, ?string $fallbackImage = null): void
+    private function syncVariantsFromJson(int $productId, string $variantsJson, ?string $fallbackImage = null): array
     {
         $payload = json_decode($variantsJson, true);
         if (!is_array($payload) || !isset($payload['variants']) || !is_array($payload['variants'])) {
@@ -433,6 +485,7 @@ class ProductService implements ProductServiceInterface
 
         $existing = Variant::where('product_id', $productId)->get()->keyBy('id');
         $keepIds = [];
+        $createdVariants = [];
 
         foreach ($variants as $pos => $v) {
             $variantId = isset($v['id']) && $v['id'] !== '' ? (int)$v['id'] : null;
@@ -491,6 +544,7 @@ class ProductService implements ProductServiceInterface
                 $data['sku'] = $sku;
                 $new = Variant::create($data);
                 $keepIds[] = $new->id;
+                $createdVariants[] = $new;
             }
         }
 
@@ -503,6 +557,8 @@ class ProductService implements ProductServiceInterface
             }
             Variant::whereIn('id', $toDelete->all())->delete();
         }
+        
+        return $createdVariants;
     }
 
     /**
@@ -705,5 +761,146 @@ class ProductService implements ProductServiceInterface
         }
         
         return 0.0;
+    }
+
+    /**
+     * Auto create import receipt for initial stock when creating product
+     * 
+     * @param Product $product
+     * @param array $variants Array of Variant models
+     * @return void
+     */
+    private function createInitialStockImportReceipt(Product $product, array $variants): void
+    {
+        try {
+            Log::info('Attempting to create import receipt for new product', [
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'variants_count' => count($variants),
+            ]);
+
+            // Filter variants with stock > 0
+            $variantsWithStock = [];
+            foreach ($variants as $variant) {
+                // Handle Variant model instances
+                if ($variant instanceof Variant) {
+                    // Reload variant to ensure we have the latest data
+                    $variant->refresh();
+                    
+                    $stock = (int)($variant->stock ?? 0);
+                    $variantId = $variant->id ?? null;
+                    $price = (float)($variant->price ?? 0);
+                    
+                    Log::info('Checking variant for stock', [
+                        'variant_id' => $variantId,
+                        'stock' => $stock,
+                        'price' => $price,
+                        'variant_raw_stock' => $variant->getAttributes()['stock'] ?? 'N/A',
+                        'variant_data' => [
+                            'id' => $variant->id,
+                            'sku' => $variant->sku,
+                            'product_id' => $variant->product_id,
+                            'stock' => $variant->stock,
+                            'price' => $variant->price,
+                        ],
+                    ]);
+                    
+                    if ($variantId && $stock > 0) {
+                        $variantsWithStock[] = [
+                            'variant' => $variant,
+                            'stock' => $stock,
+                            'price' => $price,
+                        ];
+                    } else {
+                        Log::warning('Variant skipped - no stock or no ID', [
+                            'variant_id' => $variantId,
+                            'stock' => $stock,
+                        ]);
+                    }
+                } else {
+                    Log::warning('Variant is not an instance of Variant model', [
+                        'type' => gettype($variant),
+                        'class' => is_object($variant) ? get_class($variant) : 'N/A',
+                    ]);
+                }
+            }
+
+            Log::info('Filtered variants with stock', [
+                'product_id' => $product->id,
+                'variants_with_stock_count' => count($variantsWithStock),
+            ]);
+
+            if (empty($variantsWithStock)) {
+                Log::info('No variants with stock > 0, skipping import receipt creation', [
+                    'product_id' => $product->id,
+                ]);
+                return; // No stock to import
+            }
+
+            // Prepare import receipt items
+            $items = [];
+            foreach ($variantsWithStock as $item) {
+                $variant = $item['variant'];
+                if ($variant instanceof Variant) {
+                    $items[] = [
+                        'variant_id' => $variant->id,
+                        'price' => $item['price'],
+                        'quantity' => $item['stock'],
+                    ];
+                }
+            }
+
+            if (empty($items)) {
+                Log::warning('No valid items prepared for import receipt', [
+                    'product_id' => $product->id,
+                ]);
+                return;
+            }
+
+            // Generate import receipt code
+            $importCode = 'NH-PRODUCT-' . $product->id . '-' . time();
+            
+            // Ensure code is unique
+            $counter = 1;
+            while (\App\Modules\Warehouse\Models\Warehouse::where('code', $importCode)->exists()) {
+                $importCode = 'NH-PRODUCT-' . $product->id . '-' . time() . '-' . $counter;
+                $counter++;
+            }
+
+            Log::info('Creating import receipt via WarehouseService', [
+                'product_id' => $product->id,
+                'import_code' => $importCode,
+                'items_count' => count($items),
+                'items' => $items,
+            ]);
+
+            // Create import receipt using WarehouseService
+            $warehouse = $this->warehouseService->createImportReceipt([
+                'code' => $importCode,
+                'subject' => 'Nhập hàng ban đầu cho sản phẩm: ' . $product->name,
+                'content' => 'Tự động tạo phiếu nhập hàng khi tạo sản phẩm mới',
+                'vat_invoice' => '', // Không có VAT invoice cho nhập hàng ban đầu
+                'items' => $items,
+            ]);
+
+            Log::info('Successfully created import receipt for new product', [
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'import_code' => $importCode,
+                'warehouse_id' => $warehouse->id ?? null,
+                'variants_count' => count($items),
+            ]);
+
+        } catch (\Exception $e) {
+            // Log error but don't fail product creation
+            Log::error('Failed to auto create import receipt for new product', [
+                'product_id' => $product->id,
+                'product_name' => $product->name ?? 'Unknown',
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
     }
 }

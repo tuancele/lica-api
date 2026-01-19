@@ -30,8 +30,7 @@
                         <tr>
                             <th width="30%" colspan="2">Sản phẩm</th>
                             <th width="10%">Mã sản phẩm</th>
-                            <th width="10%">Màu sắc</th>
-                            <th width="10%">Size</th>
+                            <th width="20%">Phân loại</th>
                             <th width="10%">Giá nhập</th>
                             <th width="10%">Giá bán</th>
                             <th width="10%">Số lượng</th>
@@ -51,8 +50,7 @@
                             <td>
                                 {{$variants[0]->sku}}
                             </td>
-                            <td><div style="float: left;border: 1px solid {{$variants[0]->color->color??'#000'}};width:15px;height:15px;background:{{$variants[0]->color->color??'#000'}};margin-right:3px"></div>{{$variants[0]->color->name??'Mặc định'}}</td>
-                            <td>{{$variants[0]->size->name??'Mặc định'}}{{$variants[0]->size->unit??''}}</td>
+                            <td>{{$variants[0]->option1_value ?? 'Mặc định'}}</td>
                             <td>
                                 @php 
                                 $prIm = App\Modules\Warehouse\Models\ProductWarehouse::where('variant_id',$variants[0]->id)->first();
@@ -71,8 +69,7 @@
                         @for($i = 1;$i < $total; $i++)
                             <tr>
                                 <td>{{$variants[$i]->sku}}</td>
-                                <td><div style="float: left;border: 1px solid {{$variants[$i]->color->color??'#000'}};width:15px;height:15px;background:{{$variants[$i]->color->color??'#000'}};margin-right:3px"></div>{{$variants[$i]->color->name??'Mặc định'}}</td>
-                                <td>{{$variants[$i]->size->name??'Mặc định'}}{{$variants[$i]->size->unit??''}}</td>
+                                <td>{{$variants[$i]->option1_value ?? 'Mặc định'}}</td>
                                 <td>
                                     @php 
                                         $prIm = App\Modules\Warehouse\Models\ProductWarehouse::where('variant_id',$variants[$i]->id)->first();

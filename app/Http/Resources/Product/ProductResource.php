@@ -32,6 +32,8 @@ class ProductResource extends JsonResource
             'feature' => $this->feature,
             'best' => $this->best,
             'stock' => $this->stock,
+            'warehouse_stock' => isset($this->warehouse_stock) ? (int) $this->warehouse_stock : (int) $this->stock,
+            'is_out_of_stock' => isset($this->is_out_of_stock) ? (bool) $this->is_out_of_stock : ((int) $this->stock <= 0),
             'verified' => $this->verified,
             'sort' => $this->sort,
             'brand' => new BrandResource($this->whenLoaded('brand')),

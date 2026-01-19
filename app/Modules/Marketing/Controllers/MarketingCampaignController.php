@@ -7,17 +7,21 @@ use App\Http\Controllers\Controller;
 use App\Modules\Marketing\Models\MarketingCampaign;
 use App\Modules\Marketing\Models\MarketingCampaignProduct;
 use App\Modules\Product\Models\Product;
+use App\Services\Promotion\ProductStockValidatorInterface;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Validator;
 
 class MarketingCampaignController extends Controller
 {
     private $model;
     private $view = 'Marketing';
+    protected ProductStockValidatorInterface $productStockValidator;
 
-    public function __construct(MarketingCampaign $model)
+    public function __construct(MarketingCampaign $model, ProductStockValidatorInterface $productStockValidator)
     {
         $this->model = $model;
+        $this->productStockValidator = $productStockValidator;
     }
 
     public function index(Request $request)
@@ -89,6 +93,20 @@ class MarketingCampaignController extends Controller
                         continue; 
                     }
 
+                    // Validate product stock > 0
+                    $stock = $this->productStockValidator->getProductStock($productId);
+                    if ($stock <= 0) {
+                        $product = Product::find($productId);
+                        $productName = $product ? $product->name : "ID {$productId}";
+                        Log::warning("Product has no stock, skipped from MarketingCampaign", [
+                            'product_id' => $productId,
+                            'product_name' => $productName,
+                            'campaign_id' => $id,
+                            'stock' => $stock
+                        ]);
+                        continue; // Skip this product
+                    }
+
                     MarketingCampaignProduct::create([
                         'campaign_id' => $id,
                         'product_id' => $productId,
@@ -120,7 +138,22 @@ class MarketingCampaignController extends Controller
         }
         $data['detail'] = $detail;
         $data['campaign_products'] = MarketingCampaignProduct::where('campaign_id', $id)->get();
-        // Do NOT load all products
+        
+        // Load products with actual stock for display
+        $productIds = $data['campaign_products']->pluck('product_id')->unique();
+        $products = Product::whereIn('id', $productIds)
+            ->with(['variants' => function($q) {
+                $q->select('id', 'product_id', 'option1_value', 'price', 'stock', 'sku');
+            }])
+            ->get();
+        
+        // Calculate actual stock for each product
+        $productsWithStock = $products->map(function($product) {
+            $product->actual_stock = $this->productStockValidator->getProductStock($product->id);
+            return $product;
+        });
+        
+        $data['products'] = $productsWithStock;
         
         return view($this->view . '::edit', $data);
     }
@@ -215,6 +248,20 @@ class MarketingCampaignController extends Controller
                              continue; 
                         }
 
+                        // Validate product stock > 0 (only for new products)
+                        $stock = $this->productStockValidator->getProductStock($productId);
+                        if ($stock <= 0) {
+                            $product = Product::find($productId);
+                            $productName = $product ? $product->name : "ID {$productId}";
+                            Log::warning("Product has no stock, skipped from MarketingCampaign update", [
+                                'product_id' => $productId,
+                                'product_name' => $productName,
+                                'campaign_id' => $request->id,
+                                'stock' => $stock
+                            ]);
+                            continue; // Skip this product
+                        }
+
                         MarketingCampaignProduct::create([
                             'campaign_id' => $request->id,
                             'product_id' => $productId,
@@ -299,7 +346,20 @@ class MarketingCampaignController extends Controller
     public function loadProduct(Request $request)
     {
         // Used when selecting products from modal to add to the table
-        $data['products'] = Product::select('id', 'name', 'image')->whereIn('id', $request->productid)->get();
+        $products = Product::select('id', 'name', 'image', 'has_variants')
+            ->whereIn('id', $request->productid)
+            ->with(['variants' => function($q) {
+                $q->select('id', 'product_id', 'option1_value', 'price', 'stock', 'sku');
+            }])
+            ->get();
+        
+        // Calculate actual stock for each product
+        $productsWithStock = $products->map(function($product) {
+            $product->actual_stock = $this->productStockValidator->getProductStock($product->id);
+            return $product;
+        });
+        
+        $data['products'] = $productsWithStock;
         // Return only the rows to be appended
         return view($this->view . '::product_rows', $data);
     }
@@ -308,15 +368,49 @@ class MarketingCampaignController extends Controller
     public function searchProduct(Request $request)
     {
         $keyword = $request->get('keyword');
-        $products = Product::select('id', 'name', 'image', 'stock')
+        $products = Product::select('id', 'name', 'image', 'stock', 'has_variants')
             ->where([['status', '1'], ['type', 'product']])
             ->where('name', 'like', '%' . $keyword . '%')
+            ->with(['variants' => function($q) {
+                $q->select('id', 'product_id', 'option1_value', 'price', 'stock', 'sku');
+            }])
             ->orderBy('id', 'desc')
             ->paginate(50); // Pagination to avoid "max_input_vars" issue and slowness
 
         // Return HTML to render in Modal Body
         $html = '';
         foreach($products as $product) {
+            // Get actual stock from warehouse system
+            $stock = $this->productStockValidator->getProductStock($product->id);
+            
+            // Filter out products with stock = 0
+            if ($stock <= 0) {
+                // Check if product has variants with stock > 0
+                if ($product->has_variants == 1 && $product->variants) {
+                    $hasStock = false;
+                    $totalVariantStock = 0;
+                    foreach ($product->variants as $variant) {
+                        $variantStock = $this->productStockValidator->getProductStock(
+                            $product->id,
+                            $variant->id
+                        );
+                        if ($variantStock > 0) {
+                            $hasStock = true;
+                            $totalVariantStock += $variantStock;
+                        }
+                    }
+                    // If no variants have stock, skip this product
+                    if (!$hasStock) {
+                        continue;
+                    }
+                    // Use total variant stock for display
+                    $stock = $totalVariantStock;
+                } else {
+                    // Product has no variants and stock = 0, skip it
+                    continue;
+                }
+            }
+            
             $variant = $product->variant($product->id);
             $price = $variant ? number_format($variant->price) . 'đ' : '-';
             $image = getImage($product->image);
@@ -325,13 +419,19 @@ class MarketingCampaignController extends Controller
             $html .= '<td width="5%" style="text-align: center;">';
             $html .= '<input style="margin: 0px;display: inline-block;" type="checkbox" name="productid[]" class="checkbox wgr-checkbox" value="'.$product->id.'">';
             $html .= '</td>';
-            $html .= '<td width="55%">';
+            $html .= '<td width="40%">';
             $html .= '<img src="'.$image.'" style="width:50px;height: 50px;float: left;margin-right: 5px;">';
             $html .= '<p>'.$product->name.'</p>';
             $html .= '</td>';
-            $html .= '<td width="20%">'.$price.'</td>';
-            $html .= '<td width="20%">-</td>'; // Placeholder
+            $html .= '<td width="15%">'.$price.'</td>';
+            $html .= '<td width="15%">-</td>'; // Placeholder
+            $html .= '<td width="15%" style="text-align: center;"><strong>'.number_format($stock).'</strong></td>';
             $html .= '</tr>';
+        }
+        
+        // If no products found, show message
+        if (empty($html)) {
+            $html = '<tr><td colspan="5" class="text-center">Không tìm thấy sản phẩm có tồn kho</td></tr>';
         }
         
         // Add pagination links if needed, but for simple scroll we might just load more? 

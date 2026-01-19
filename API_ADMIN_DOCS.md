@@ -137,6 +137,15 @@
 - `seo_description` (string, optional): SEO描述，最大500字符
 - `r2_session_key` (string, optional): R2上传会话密钥
 
+**Logic tự động:**
+- Nếu `stock_qty` > 0 (sản phẩm không có variants) hoặc variants có `stock` > 0, hệ thống sẽ tự động tạo phiếu nhập hàng trong kho hàng với:
+  - Mã phiếu: `NH-PRODUCT-{product_id}-{timestamp}`
+  - Tiêu đề: "Nhập hàng ban đầu cho sản phẩm: {product_name}"
+  - Nội dung: "Tự động tạo phiếu nhập hàng khi tạo sản phẩm mới"
+  - Giá nhập: Sử dụng giá từ variant (price)
+  - Số lượng: Sử dụng stock_qty hoặc stock từ variants
+  - VAT Invoice: Để trống
+
 **Phản hồi mẫu (201):**
 ```json
 {
@@ -679,7 +688,9 @@ Product/
     "name": "Flash Sale 名称",
     "start": 1704067200,
     "end": 1704153600,
-    "end_date": "2024/01/02 00:00:00"
+    "end_date": "2024-01-02 00:00:00",
+    "end_timestamp": 1704153600,
+    "total_products": 25
   },
   "count": 5
 }
@@ -1021,6 +1032,12 @@ Product/
 - `products.*.price_sale`: required, numeric, min:0
 - `products.*.number`: required, integer, min:1
 
+**Stock Validation (新增):**
+- 所有产品的库存必须 > 0 才能参与 Flash Sale
+- 有 variant 的产品：从 warehouse 系统获取实际库存
+- 无 variant 的产品：使用 product.stock 字段或默认 variant 的库存
+- 如果产品库存为 0，返回 422 错误
+
 **Phản hồi mẫu (201):**
 ```json
 {
@@ -1046,6 +1063,10 @@ Product/
 - 更新 flashsales 表
 - 删除不在 request 中的 productsales
 - 更新/创建新的 productsales
+
+**Stock Validation (新增):**
+- 更新产品时，所有产品的库存必须 > 0
+- 如果产品库存为 0，返回 422 错误
 
 **Phản hồi mẫu (200):**
 ```json
@@ -1108,10 +1129,21 @@ Product/
 
 **Mục tiêu:** 搜索产品以添加到 Flash Sale（Admin）
 
-**Query Parameters:**
+**Request Body (JSON):**
 - `keyword` (string, required): 搜索关键词
+
+**Query Parameters:**
 - `page` (integer, optional): 页码，默认 1
-- `limit` (integer, optional): 每页数量，默认 50
+- `limit` (integer, optional): 每页数量，默认 50，最大 100
+
+**Stock Filtering (新增):**
+- 自动过滤掉库存为 0 的产品
+- 使用 warehouse 系统获取实际库存（而非 product.stock 字段）
+- 对于有 variant 的产品：
+  - 只显示库存 > 0 的 variant
+  - 如果所有 variant 的库存都为 0，则完全过滤掉该产品
+- 对于无 variant 的产品：
+  - 如果库存为 0，则过滤掉该产品
 
 **Phản hồi mẫu (200):**
 ```json
@@ -1145,7 +1177,12 @@ Product/
 }
 ```
 
-**Trạng thái:** Hoàn thành
+**Lưu ý:**
+- `stock` 字段显示的是从 warehouse 系统获取的实际库存
+- 返回的产品列表已自动过滤掉库存为 0 的产品和 variant
+- 分页信息基于原始查询结果，实际返回的数据可能少于分页显示的数量（因为过滤）
+
+**Trạng thái:** Hoàn thành (已升级 - 添加库存过滤)
 
 ---
 
@@ -2016,6 +2053,13 @@ Product/
 - Nếu sản phẩm có `has_variants = 0`, thì `variant_id` phải là NULL
 - `variant_id` phải thuộc về `product_id` tương ứng
 
+**Stock Validation (新增):**
+- 所有产品的库存必须 > 0 才能参与 Deal
+- 验证 `products` 和 `sale_products` 数组中的所有产品
+- 有 variant 的产品：从 warehouse 系统获取实际库存
+- 无 variant 的产品：使用 product.stock 字段或默认 variant 的库存
+- 如果产品库存为 0，返回 422 错误
+
 **Phản hồi mẫu (201):**
 ```json
 {
@@ -2044,6 +2088,18 @@ Product/
 }
 ```
 
+**Phản hồi lỗi (422 - Stock Validation):**
+```json
+{
+  "success": false,
+  "message": "Một số sản phẩm không có tồn kho, không thể tham gia Deal",
+  "errors": {
+    "products.0.stock": ["Tồn kho phải lớn hơn 0"],
+    "products.1.stock": ["Tồn kho phải lớn hơn 0"]
+  }
+}
+```
+
 **Trạng thái:** Hoàn thành
 
 ---
@@ -2053,6 +2109,10 @@ Product/
 **Mục tiêu:** 更新Deal信息
 
 **Tham số đầu vào:** Tương tự POST, nhưng tất cả fields đều optional (sử dụng `sometimes`)
+
+**Stock Validation (新增):**
+- 更新产品时，所有产品的库存必须 > 0
+- 如果产品库存为 0，返回 422 错误
 
 **Phản hồi mẫu (200):**
 ```json
@@ -2170,5 +2230,354 @@ Product/
 
 ---
 
-**最后更新:** 2025-01-18
+## Warehouse Management API (V1)
+
+### Overview
+Module Quản lý Kho hàng đã được nâng cấp sang RESTful API V1 với đầy đủ các chức năng quản lý tồn kho, phiếu nhập/xuất hàng và thống kê.
+
+**Base URL:** `/admin/api/v1/warehouse`
+
+**Xem chi tiết:** Xem file `WAREHOUSE_API_CONVERSION_PLAN.md` để biết đầy đủ thông tin về các endpoints.
+
+---
+
+### A. Inventory Management (Quản lý Tồn kho)
+
+#### 1. GET /admin/api/v1/warehouse/inventory
+**Mục tiêu:** Lấy danh sách tồn kho với phân trang và bộ lọc
+
+**Tham số đầu vào (Query Params):**
+- `page` (integer, optional): Trang hiện tại, mặc định 1
+- `limit` (integer, optional): Số lượng mỗi trang, mặc định 10, tối đa 100
+- `keyword` (string, optional): Tìm kiếm theo tên sản phẩm hoặc SKU
+- `variant_id` (integer, optional): Lọc theo variant ID
+- `product_id` (integer, optional): Lọc theo product ID
+- `min_stock` (integer, optional): Lọc tồn kho tối thiểu
+- `max_stock` (integer, optional): Lọc tồn kho tối đa
+- `sort_by` (string, optional): Sắp xếp theo (stock, product_name, variant_name), mặc định 'product_name'
+- `sort_order` (string, optional): Thứ tự sắp xếp (asc, desc), mặc định 'asc'
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "variant_id": 1,
+      "variant_sku": "SKU-001",
+      "variant_option": "500ml",
+      "product_id": 10,
+      "product_name": "Sản phẩm A",
+      "product_image": "https://example.com/image.jpg",
+      "import_total": 1000,
+      "export_total": 750,
+      "current_stock": 250,
+      "last_import_date": "2026-01-18T10:30:00.000000Z",
+      "last_export_date": "2026-01-19T14:20:00.000000Z"
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "per_page": 10,
+    "total": 150,
+    "last_page": 15
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 2. GET /admin/api/v1/warehouse/inventory/{variantId}
+**Mục tiêu:** Lấy chi tiết tồn kho của một variant cụ thể
+
+**Tham số đầu vào:**
+- `variantId` (integer, required): ID của variant (URL parameter)
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### B. Import Receipts Management (Quản lý Phiếu Nhập hàng)
+
+#### 3. GET /admin/api/v1/warehouse/import-receipts
+**Mục tiêu:** Lấy danh sách phiếu nhập hàng với phân trang và bộ lọc
+
+**Tham số đầu vào (Query Params):**
+- `page`, `limit`, `keyword`, `code`, `user_id`, `date_from`, `date_to`, `sort_by`, `sort_order`
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 4. GET /admin/api/v1/warehouse/import-receipts/{id}
+**Mục tiêu:** Lấy chi tiết phiếu nhập hàng bao gồm danh sách sản phẩm
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 5. POST /admin/api/v1/warehouse/import-receipts
+**Mục tiêu:** Tạo phiếu nhập hàng mới
+
+**Tham số đầu vào (Body - JSON):**
+```json
+{
+  "code": "NH-ORDER001-1705564800",
+  "subject": "Nhập hàng từ nhà cung cấp ABC",
+  "content": "Ghi chú nhập hàng",
+  "vat_invoice": "VAT-2026-001",
+  "items": [
+    {
+      "variant_id": 10,
+      "price": 100000,
+      "quantity": 20
+    }
+  ]
+}
+```
+
+**Validation Logic:**
+- `code`: required, unique:warehouse,code
+- `subject`: required, max:255
+- `items`: required, array, min:1
+- `items.*.variant_id`: required, exists:variants,id
+- `items.*.price`: required, numeric, min:0
+- `items.*.quantity`: required, integer, min:1
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 6. PUT /admin/api/v1/warehouse/import-receipts/{id}
+**Mục tiêu:** Cập nhật phiếu nhập hàng
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 7. DELETE /admin/api/v1/warehouse/import-receipts/{id}
+**Mục tiêu:** Xóa phiếu nhập hàng
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 8. GET /admin/api/v1/warehouse/import-receipts/{id}/print
+**Mục tiêu:** Lấy thông tin phiếu nhập hàng để in (bao gồm QR code, mã phiếu, tổng bằng chữ)
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### C. Export Receipts Management (Quản lý Phiếu Xuất hàng)
+
+#### 9. GET /admin/api/v1/warehouse/export-receipts
+**Mục tiêu:** Lấy danh sách phiếu xuất hàng với phân trang và bộ lọc
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 10. GET /admin/api/v1/warehouse/export-receipts/{id}
+**Mục tiêu:** Lấy chi tiết phiếu xuất hàng
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 11. POST /admin/api/v1/warehouse/export-receipts
+**Mục tiêu:** Tạo phiếu xuất hàng mới
+
+**Validation Logic:** Tương tự import-receipts, nhưng thêm kiểm tra tồn kho
+
+**Lỗi khi thiếu tồn kho (422):**
+```json
+{
+  "success": false,
+  "message": "Không đủ tồn kho để xuất hàng",
+  "errors": {
+    "items.0.quantity": [
+      "Số lượng vượt quá tồn kho. Tồn kho hiện tại: 10"
+    ]
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 12. PUT /admin/api/v1/warehouse/export-receipts/{id}
+**Mục tiêu:** Cập nhật phiếu xuất hàng
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 13. DELETE /admin/api/v1/warehouse/export-receipts/{id}
+**Mục tiêu:** Xóa phiếu xuất hàng
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 14. GET /admin/api/v1/warehouse/export-receipts/{id}/print
+**Mục tiêu:** Lấy thông tin phiếu xuất hàng để in
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### D. Supporting Endpoints (Các Endpoint Hỗ trợ)
+
+#### 15. GET /admin/api/v1/warehouse/products/search
+**Mục tiêu:** Tìm kiếm sản phẩm để chọn khi tạo phiếu nhập/xuất
+
+**Tham số đầu vào (Query Params):**
+- `q` (string, required, min:2): Từ khóa tìm kiếm
+- `limit` (integer, optional): Số lượng kết quả, mặc định 50, tối đa 100
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 16. GET /admin/api/v1/warehouse/products/{productId}/variants
+**Mục tiêu:** Lấy danh sách phân loại của một sản phẩm
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 17. GET /admin/api/v1/warehouse/variants/{variantId}/stock
+**Mục tiêu:** Lấy thông tin tồn kho của một variant
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 18. GET /admin/api/v1/warehouse/variants/{variantId}/price
+**Mục tiêu:** Lấy giá đề xuất cho variant (giá bán hoặc giá nhập gần nhất)
+
+**Tham số đầu vào (Query Params):**
+- `type` (string, optional): Loại giá (import|export), mặc định 'export'
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### E. Statistics (Thống kê)
+
+#### 19. GET /admin/api/v1/warehouse/statistics/quantity
+**Mục tiêu:** Thống kê số lượng tồn kho theo variant
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 20. GET /admin/api/v1/warehouse/statistics/revenue
+**Mục tiêu:** Thống kê doanh thu theo variant
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 21. GET /admin/api/v1/warehouse/statistics/summary
+**Mục tiêu:** Tổng hợp thống kê tổng quan kho hàng
+
+**Tham số đầu vào (Query Params):**
+- `date_from` (date, optional): Từ ngày (format: YYYY-MM-DD)
+- `date_to` (date, optional): Đến ngày (format: YYYY-MM-DD)
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### Implementation Details
+
+**Files Created:**
+- `app/Services/Warehouse/WarehouseServiceInterface.php`
+- `app/Services/Warehouse/WarehouseService.php`
+- `app/Http/Requests/Warehouse/StoreImportReceiptRequest.php`
+- `app/Http/Requests/Warehouse/UpdateImportReceiptRequest.php`
+- `app/Http/Requests/Warehouse/StoreExportReceiptRequest.php`
+- `app/Http/Requests/Warehouse/UpdateExportReceiptRequest.php`
+- `app/Http/Resources/Warehouse/InventoryResource.php`
+- `app/Http/Resources/Warehouse/ImportReceiptResource.php`
+- `app/Http/Resources/Warehouse/ImportReceiptCollection.php`
+- `app/Http/Resources/Warehouse/ExportReceiptResource.php`
+- `app/Http/Resources/Warehouse/ExportReceiptCollection.php`
+- `app/Http/Resources/Warehouse/ReceiptItemResource.php`
+- `app/Modules/ApiAdmin/Controllers/WarehouseController.php`
+
+**Files Updated:**
+- `app/Modules/Warehouse/Models/Warehouse.php` - Thêm relationship `items()`
+- `app/Modules/ApiAdmin/routes.php` - Đăng ký Warehouse routes
+- `app/Providers/AppServiceProvider.php` - Đăng ký WarehouseService
+
+**Features:**
+- ✅ Đầy đủ CRUD cho Import/Export receipts
+- ✅ Kiểm tra tồn kho tự động khi xuất hàng
+- ✅ Hỗ trợ VAT invoice
+- ✅ Tự động tạo mã phiếu nhập/xuất hàng
+- ✅ QR code và tổng bằng chữ tiếng Việt
+- ✅ Thống kê tồn kho, doanh thu, tổng hợp
+- ✅ Tìm kiếm sản phẩm và lấy phân loại
+- ✅ Validation đầy đủ với thông báo lỗi chi tiết
+
+---
+
+---
+
+## Flash Sale Mixed Pricing API (Mua vượt hạn mức)
+
+### 1. POST /api/price/calculate
+
+**Mục tiêu:** Tính giá với số lượng (hỗ trợ giá hỗn hợp khi mua vượt hạn mức Flash Sale)
+
+**Tham số đầu vào (Body - JSON):**
+- `product_id` (integer, required): Product ID
+- `variant_id` (integer, optional): Variant ID
+- `quantity` (integer, required): Số lượng mua
+
+**Logic:**
+- Nếu `quantity ≤ flash_sale_remaining`: Tất cả tính theo giá Flash Sale
+- Nếu `quantity > flash_sale_remaining`: 
+  - Phần trong hạn mức tính theo giá Flash Sale
+  - Phần vượt hạn mức tính theo giá ưu tiên tiếp theo (Promotion hoặc giá gốc)
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "total_price": 1500000,
+    "price_breakdown": [
+      {
+        "type": "flashsale",
+        "quantity": 5,
+        "unit_price": 100000,
+        "subtotal": 500000
+      },
+      {
+        "type": "promotion",
+        "quantity": 10,
+        "unit_price": 100000,
+        "subtotal": 1000000
+      }
+    ],
+    "flash_sale_remaining": 5,
+    "warning": "Chỉ còn 5 sản phẩm giá Flash Sale, 10 sản phẩm còn lại sẽ được tính theo giá khuyến mãi",
+    "flash_sale_id": 1,
+    "product_sale_id": 10
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+**最后更新:** 2026-01-20
 **维护者:** AI Assistant

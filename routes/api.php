@@ -101,3 +101,13 @@ Route::prefix('v1/orders')->namespace('Api\V1')->middleware(['web', 'auth:member
     Route::get('/', 'OrderController@index'); // GET /api/v1/orders
     Route::get('/{code}', 'OrderController@show'); // GET /api/v1/orders/{code}
 });
+
+// Price & Order Processing API
+Route::prefix('price')->group(function () {
+    Route::get('/{productId}', 'OrderProcessingController@getPrice'); // GET /api/price/{productId}
+    Route::post('/calculate', 'OrderProcessingController@calculatePrice'); // POST /api/price/calculate
+});
+
+Route::prefix('orders')->group(function () {
+    Route::post('/process', 'OrderProcessingController@processOrder'); // POST /api/orders/process
+});

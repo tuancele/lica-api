@@ -33,6 +33,9 @@
     <td>
         <input type="text" name="pricesale[{{$product->id}}]" class="form-control pricesale price" value="{{$price_sale}}" placeholder="Nhập giá KM">
     </td>
+    <td style="text-align: center;">
+        <strong>{{number_format($product->actual_stock ?? 0)}}</strong>
+    </td>
     <td><a class="btn btn-danger btn-xs delete_item"><i class="fa fa-trash-o" aria-hidden="true"></i></a></td>
 </tr>
 @endforeach

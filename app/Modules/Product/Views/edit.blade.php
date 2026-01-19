@@ -247,9 +247,11 @@
                         </div>
                         <div class="col-md-4">
                             <div class="form-item">
-                                <label class="form-label required">Kho hàng</label>
-                                <input type="number" name="stock_qty" class="shopee-input" value="{{ (int)($defaultVariant->stock ?? 0) }}" min="0">
+                                <label class="form-label required">Kho hàng <small class="text-muted">(Tự động từ hệ thống kho)</small></label>
+                                <input type="number" name="stock_qty" id="single_stock_qty" class="shopee-input" value="{{ (int)($defaultVariant->stock ?? 0) }}" min="0" readonly style="background-color: #f5f5f5; cursor: not-allowed;">
                                 <input type="hidden" name="stock" value="1">
+                                <small class="text-muted" id="single_stock_loading" style="display:none;">Đang tải từ kho hàng...</small>
+                                <small class="text-info" style="display:none;" id="single_stock_loaded">✓ Đã cập nhật từ hệ thống kho</small>
                             </div>
                         </div>
                     </div>
@@ -308,7 +310,7 @@
                                     <th width="18%">Ảnh</th>
                                     <th width="18%">Phân loại</th>
                                     <th width="16%">Giá</th>
-                                    <th width="16%">Kho hàng</th>
+                                    <th width="16%">Kho hàng <small class="text-muted" style="font-weight: normal;">(Tự động)</small></th>
                                     <th width="20%">SKU</th>
                                     <th width="12%">Xóa</th>
                                 </tr>
@@ -559,7 +561,7 @@ $(document).ready(function() {
                 </td>
                 <td><strong>${escapeHtml(safe)}</strong></td>
                 <td><input type="text" class="shopee-input price variant-price" value="${escapeHtml(price)}"></td>
-                <td><input type="number" class="shopee-input variant-stock" value="${escapeHtml(stock)}" min="0"></td>
+                <td><input type="number" class="shopee-input variant-stock" value="${escapeHtml(stock)}" min="0" readonly style="background-color: #f5f5f5; cursor: not-allowed;" title="Tồn kho được lấy tự động từ hệ thống kho hàng"></td>
                 <td><input type="text" class="shopee-input variant-sku" value="${escapeHtml(sku)}"></td>
                 <td><button type="button" class="btn btn-danger btn-xs variant-delete-row"><i class="fa fa-trash"></i></button></td>
             </tr>
@@ -688,13 +690,16 @@ $(document).ready(function() {
 
     $('#btn_apply_all').on('click', function() {
         const p = prompt('Giá áp dụng cho tất cả (bỏ trống để không thay đổi):', '');
-        const s = prompt('Kho áp dụng cho tất cả (bỏ trống để không thay đổi):', '');
-        $variantTableBody.find('tr').each(function() {
-            if (p !== null && p !== '') $(this).find('.variant-price').val(p);
-            if (s !== null && s !== '') $(this).find('.variant-stock').val(s);
-        });
-        $variantTableBody.find('.variant-price').number(true, 0);
-        buildVariantsJson();
+        // Stock không thể chỉnh sửa - chỉ hiển thị thông báo
+        if (p !== null && p !== '') {
+            $variantTableBody.find('tr').each(function() {
+                $(this).find('.variant-price').val(p);
+            });
+            $variantTableBody.find('.variant-price').number(true, 0);
+            buildVariantsJson();
+        }
+        // Thông báo về stock chỉ đọc
+        alert('Lưu ý: Tồn kho được lấy tự động từ hệ thống kho hàng và không thể chỉnh sửa thủ công.');
     });
 
     // Prefill from existing variants (edit page)
@@ -712,11 +717,87 @@ $(document).ready(function() {
             ensureVariantRow(v.option1_value || 'Mặc định', v);
         });
         buildVariantsJson();
+        
+        // Load stock from Warehouse API for each variant
+        loadVariantStocksFromWarehouse();
+    }
+    
+    /**
+     * Load stock from Warehouse API for all variants
+     */
+    function loadVariantStocksFromWarehouse() {
+        const variantIds = [];
+        $variantTableBody.find('tr').each(function() {
+            const variantId = $(this).attr('data-variant-id');
+            if (variantId && variantId !== '') {
+                variantIds.push(variantId);
+            }
+        });
+        
+        if (variantIds.length === 0) return;
+        
+        // Load stock for each variant
+        variantIds.forEach(function(variantId) {
+            $.ajax({
+                url: '/admin/api/warehouse/variants/' + variantId + '/stock',
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(response) {
+                    if (response.success && response.data) {
+                        const stock = response.data.current_stock || 0;
+                        const $row = $variantTableBody.find('tr[data-variant-id="' + variantId + '"]');
+                        if ($row.length > 0) {
+                            const $stockInput = $row.find('.variant-stock');
+                            $stockInput.val(stock);
+                            // Thêm class để hiển thị đã được cập nhật
+                            $stockInput.addClass('stock-loaded');
+                            buildVariantsJson();
+                        }
+                    }
+                },
+                error: function(xhr) {
+                    console.warn('Failed to load stock for variant ' + variantId + ':', xhr.status);
+                    // Keep existing stock value if API call fails
+                }
+            });
+        });
     }
 
     $('#tblForm').on('submit', function() { buildVariantsJson(); });
 
     $(".list_image").sortable({ items: ".image-upload-box.has-img", update: function() { refreshImgStatus(); } });
+    
+    // Load stock from Warehouse API for single product (no variants)
+    if ($hasVariants.val() === '0') {
+        const defaultVariantId = existingVariants.length > 0 ? existingVariants[0].id : null;
+        if (defaultVariantId) {
+            $('#single_stock_loading').show();
+            $.ajax({
+                url: '/admin/api/warehouse/variants/' + defaultVariantId + '/stock',
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(response) {
+                    if (response.success && response.data) {
+                        const stock = response.data.current_stock || 0;
+                        $('#single_stock_qty').val(stock);
+                        $('#single_stock_loaded').show();
+                    }
+                },
+                error: function(xhr) {
+                    console.warn('Failed to load stock for variant ' + defaultVariantId + ':', xhr.status);
+                },
+                complete: function() {
+                    $('#single_stock_loading').hide();
+                }
+            });
+        }
+    }
 });
 </script>
 <style>
@@ -746,6 +827,23 @@ $(document).ready(function() {
         padding: 6px 8px;
         font-size: 12px;
         height: 34px;
+    }
+    
+    /* Readonly stock input styling */
+    .variant-stock[readonly],
+    #single_stock_qty[readonly] {
+        background-color: #f5f5f5 !important;
+        cursor: not-allowed !important;
+        color: #666;
+    }
+    
+    .variant-stock.stock-loaded {
+        border-left: 3px solid #52c41a;
+        padding-left: 5px;
+    }
+    
+    .variant-stock[readonly]:hover {
+        background-color: #f0f0f0 !important;
     }
     #variant-selling .variant-table .variant-img-box {
         margin-bottom: 4px;

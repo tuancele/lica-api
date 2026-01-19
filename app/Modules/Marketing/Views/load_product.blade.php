@@ -28,10 +28,11 @@
     <thead>
         <tr>
             <th width="5%" style="text-align: center;"><input type="checkbox" id="checkall2" class="wgr-checkbox"></th>
-            <th width="40%">Sản phẩm</th>
-            <th width="15%">Giá gốc</th>
-            <th width="15%">Giảm giá</th>
-            <th width="20%">Giá khuyến mại</th>
+            <th width="30%">Sản phẩm</th>
+            <th width="12%">Giá gốc</th>
+            <th width="12%">Giảm giá</th>
+            <th width="12%">Giá khuyến mại</th>
+            <th width="12%" style="text-align: center;">Tồn kho thực tế</th>
             <th width="10%">Thao tác</th>
         </tr>
     </thead>

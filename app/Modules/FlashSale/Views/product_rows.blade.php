@@ -18,8 +18,12 @@
         $productSale = $productSales->where('variant_id', $variant->id)->first();
         $price_sale = $productSale ? $productSale->price_sale : '';
         $number_sale = $productSale ? $productSale->number : '';
+        $actual_stock = isset($variant->actual_stock) ? $variant->actual_stock : 0;
+        $available_stock = isset($variant->available_stock) ? $variant->available_stock : $actual_stock;
+        // Flash Sale Virtual Stock = number - buy (if exists)
+        $flash_virtual_stock = $productSale ? ($productSale->number - $productSale->buy) : 0;
     @endphp
-    <tr class="item-{{$product->id}}-variant-{{$variant->id}}">
+    <tr class="item-{{$product->id}}-variant-{{$variant->id}}" data-product-id="{{$product->id}}" data-variant-id="{{$variant->id}}" data-original-price="{{$variant->price}}" data-stock="{{$actual_stock}}" data-available-stock="{{$available_stock}}">
         <td style="text-align: center;">
             <input type="checkbox" name="checklist[]" class="checkbox2 wgr-checkbox" value="{{$product->id}}_v{{$variant->id}}">
             <input type="hidden" name="variant_ids[{{$product->id}}][{{$variant->id}}]" value="{{$variant->id}}">
@@ -39,10 +43,24 @@
             <input type="hidden" name="price_product[{{$product->id}}][{{$variant->id}}]" value="{{$variant->price}}">
         </td>
         <td>
-            <input type="text" name="pricesale[{{$product->id}}][{{$variant->id}}]" class="form-control pricesale price" value="{{$price_sale}}">
+            <input type="text" name="pricesale[{{$product->id}}][{{$variant->id}}]" class="form-control pricesale price" value="{{$price_sale}}" data-original-price="{{$variant->price}}">
+            <small class="text-danger price-error" style="display:none;"></small>
         </td>
         <td>
-            <input type="number" name="numbersale[{{$product->id}}][{{$variant->id}}]" class="form-control" value="{{$number_sale}}">
+            <input type="number" name="numbersale[{{$product->id}}][{{$variant->id}}]" class="form-control number-sale" value="{{$number_sale}}" min="1" max="{{$actual_stock}}" data-stock="{{$actual_stock}}" data-available-stock="{{$available_stock}}">
+            <small class="text-danger stock-error" style="display:none;"></small>
+        </td>
+        <td style="text-align: center;">
+            <strong>{{number_format($actual_stock)}}</strong>
+            @if($available_stock < $actual_stock)
+                <br><small class="text-info">Khả dụng: {{number_format($available_stock)}}</small>
+            @endif
+            @if($flash_virtual_stock > 0)
+                <br><small class="text-warning">Flash Sale: {{number_format($flash_virtual_stock)}}</small>
+            @endif
+        </td>
+        <td style="text-align: center;">
+            <strong class="text-info">{{number_format($available_stock)}}</strong>
         </td>
         <td>
             <a class="btn btn-danger btn-xs delete_item"><i class="fa fa-trash-o" aria-hidden="true"></i></a>
@@ -60,8 +78,12 @@
             $price_sale = $productSale->price_sale;
             $number_sale = $productSale->number;
         }
+        $actual_stock = isset($product->actual_stock) ? $product->actual_stock : 0;
+        $available_stock = isset($product->available_stock) ? $product->available_stock : $actual_stock;
+        // Flash Sale Virtual Stock = number - buy (if exists)
+        $flash_virtual_stock = $productSale ? ($productSale->number - $productSale->buy) : 0;
     @endphp
-    <tr class="item-{{$product->id}}">
+    <tr class="item-{{$product->id}}" data-product-id="{{$product->id}}" data-variant-id="" data-original-price="{{!empty($variant) ? $variant->price : 0}}" data-stock="{{$actual_stock}}" data-available-stock="{{$available_stock}}">
         <td style="text-align: center;">
             <input type="checkbox" name="checklist[]" class="checkbox2 wgr-checkbox" value="{{$product->id}}">
         </td>
@@ -76,10 +98,24 @@
             @endif
         </td>
         <td>
-            <input type="text" name="pricesale[{{$product->id}}]" class="form-control pricesale price" value="{{$price_sale}}">
+            <input type="text" name="pricesale[{{$product->id}}]" class="form-control pricesale price" value="{{$price_sale}}" data-original-price="{{!empty($variant) ? $variant->price : 0}}">
+            <small class="text-danger price-error" style="display:none;"></small>
         </td>
         <td>
-            <input type="number" name="numbersale[{{$product->id}}]" class="form-control" value="{{$number_sale}}">
+            <input type="number" name="numbersale[{{$product->id}}]" class="form-control number-sale" value="{{$number_sale}}" min="1" max="{{$actual_stock}}" data-stock="{{$actual_stock}}" data-available-stock="{{$available_stock}}">
+            <small class="text-danger stock-error" style="display:none;"></small>
+        </td>
+        <td style="text-align: center;">
+            <strong>{{number_format($actual_stock)}}</strong>
+            @if($available_stock < $actual_stock)
+                <br><small class="text-info">Khả dụng: {{number_format($available_stock)}}</small>
+            @endif
+            @if($flash_virtual_stock > 0)
+                <br><small class="text-warning">Flash Sale: {{number_format($flash_virtual_stock)}}</small>
+            @endif
+        </td>
+        <td style="text-align: center;">
+            <strong class="text-info">{{number_format($available_stock)}}</strong>
         </td>
         <td>
             <a class="btn btn-danger btn-xs delete_item"><i class="fa fa-trash-o" aria-hidden="true"></i></a>

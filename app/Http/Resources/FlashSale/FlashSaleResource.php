@@ -34,7 +34,7 @@ class FlashSaleResource extends JsonResource
             'status' => (string) $this->status,
             'is_active' => $this->is_active,
             'countdown_seconds' => $this->countdown_seconds,
-            'total_products' => $this->when(isset($this->total_products), $this->total_products),
+            'total_products' => $this->total_products ?? $this->products()->count(),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

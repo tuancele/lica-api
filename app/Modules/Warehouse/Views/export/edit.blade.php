@@ -34,33 +34,25 @@
                 <table class="table table-bordered table-striped" id="listProduct" number="{{$list->count()}}">
                     <tr>
                         <th width="30%"><label class="control-label">Mã sản phẩm</label></th>
-                        <th width="15%"><label class="control-label">Màu sắc</label></th>
-                        <th width="15%"><label class="control-label">Size</label></th>
-                        <th width="20%"><label class="control-label">Giá nhập (đ)</label></th>
+                        <th width="30%"><label class="control-label">Phân loại</label></th>
+                        <th width="20%"><label class="control-label">Giá xuất (đ)</label></th>
                         <th width="20%"><label class="control-label">Số lượng</label></th>
                     </tr>
                     @if($list->count() > 0)
                     @foreach($list as $key => $value)
                     <tr class="item-{{$key+1}}" item="{{$key+1}}">
                         <td>
-                            <select class="form-control select_product" name="product_id[]" required="">
+                            <select class="form-control select_product select" name="product_id[]" required="">
                                 <option value="0">Không</option>
                                 @if($products->count() > 0)
                                 @foreach($products as $variant)
-                                <option value="{{$variant->id}}" @if($variant->id == $value->variant_id) selected="" @endif>{{$variant->sku}} - {{$variant->product->name??''}}</option>
+                                <option value="{{$variant->id}}" data-option="{{$variant->option1_value ?? 'Mặc định'}}" @if($variant->id == $value->variant_id) selected="" @endif>{{$variant->sku}} - {{$variant->product->name??''}}</option>
                                 @endforeach
                                 @endif
                             </select>
                         </td>
                         <td>
-                            <select class="form-control select_color" name="color_id[]" >
-                                <option value="{{$value->variant->color_id}}" selected>{{$value->variant->color->name}}</option>
-                            </select>
-                        </td>
-                        <td>
-                            <select class="form-control select_size" name="size_id[]">
-                            <option value="{{$value->variant->size_id}}" selected>{{$value->variant->size->name}}{{$value->variant->size->unit}}</option>
-                            </select>
+                            <input type="text" class="form-control option1_value" readonly value="{{$value->variant->option1_value ?? 'Mặc định'}}">
                         </td>
                         <td>
                             <input type="text" name="price[]" class="form-control price" data-validation="required" data-validation-error-msg="Không được bỏ trống" value="{{$value->price}}">
@@ -133,20 +125,24 @@
     $('#listProduct').on('change','.select_product',function(){
         var item = $(this).parent().parent().attr('item');
         var id = $(this).val();
-        $(".item-"+item+" .select_size").load("/admin/export-goods/size/"+id);
-        $(".item-"+item+" .select_color").load("/admin/export-goods/color/"+id);
-        $.ajax({
-            type: 'post',
-            url: '/admin/export-goods/getPrice',
-            data: {id:id},
-            headers:
-            {
-                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-            },
-            success: function (res) {
-               $("body .item-"+item+" .price").val(res);
-            }
-        })
+        if(id && id != '0'){
+            var optionValue = $(this).find('option:selected').attr('data-option') || 'Mặc định';
+            $(".item-"+item+" .option1_value").val(optionValue);
+            $.ajax({
+                type: 'post',
+                url: '/admin/export-goods/getPrice',
+                data: {id:id},
+                headers:
+                {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function (res) {
+                   $("body .item-"+item+" .price").val(res);
+                }
+            })
+        } else {
+            $(".item-"+item+" .option1_value").val('');
+        }
     }); 
     $('#listProduct').on('change','input[type="number"]',function(){
         var qty = $(this).val();
