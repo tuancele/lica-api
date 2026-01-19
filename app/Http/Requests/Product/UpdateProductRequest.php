@@ -106,11 +106,6 @@ class UpdateProductRequest extends FormRequest
                 'numeric',
                 'min:0'
             ],
-            'sale' => [
-                'nullable',
-                'numeric',
-                'min:0'
-            ],
             'stock_qty' => [
                 'nullable',
                 'integer',
@@ -221,12 +216,6 @@ class UpdateProductRequest extends FormRequest
                 'price' => (float) str_replace(',', '', $this->price)
             ]);
         }
-        if ($this->has('sale') && is_string($this->sale)) {
-            $this->merge([
-                'sale' => (float) str_replace(',', '', $this->sale)
-            ]);
-        }
-
         // Normalize has_variants
         if ($this->has('has_variants')) {
             $this->merge([

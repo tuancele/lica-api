@@ -246,13 +246,13 @@
                  data-limit="18"
                  data-loaded="0"
                  data-per-load="12">
-                @for($i = 0; $i < 6; $i++)
+                @for($i = 0; $i < 12; $i++)
                 @include('Website::product.skeleton-item')
                 @endfor
             </div>
         </div>
         <div class="lazy-hidden-content" style="display: none;">
-            <div class="list-flash mt-3 product-recommendations-home recommendations-grid-3x6 recommendations-no-carousel" 
+            <div id="recommendations-body" class="list-flash mt-3 product-recommendations-home recommendations-grid-3x6 recommendations-no-carousel" 
                  data-exclude=""
                  data-limit="18"
                  data-loaded="0"
@@ -542,16 +542,38 @@
                             html += '</div>';
                             html += '</div>';
                         });
-                        brandsList.html(html);
+
+                        // 使用 SkeletonManager.hideAndShow 渐隐 Skeleton、渐显内容
+                        if (window.SkeletonManager && typeof window.SkeletonManager.hideAndShow === 'function') {
+                            window.SkeletonManager.hideAndShow(brandsList[0], html);
+                        } else {
+                            brandsList.html(html);
+                        }
                         
-                        // 初始化图片懒加载
+                        // 初始化图片懒加载与 skeleton 容器
                         brandsList.find('.js-skeleton-img').each(function() {
                             const img = $(this);
-                            if (img.attr('src') && img.attr('src') !== '') {
+                            const src = img.attr('src');
+                            
+                            if (src && src !== '') {
                                 img.css({
                                     'opacity': '1',
                                     'visibility': 'visible'
                                 });
+                                
+                                img.on('error', function() {
+                                    const skeletonContainer = img.closest('.js-skeleton');
+                                    if (skeletonContainer && skeletonContainer.length) {
+                                        skeletonContainer.css('background-color', '#f0f0f0');
+                                        img.hide();
+                                    }
+                                });
+                            } else {
+                                const skeletonContainer = img.closest('.js-skeleton');
+                                if (skeletonContainer && skeletonContainer.length) {
+                                    skeletonContainer.css('background-color', '#f0f0f0');
+                                    img.hide();
+                                }
                             }
                         });
                     } else {

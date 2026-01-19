@@ -76,6 +76,12 @@ Route::prefix('v1/products')->namespace('Api\V1')->group(function () {
     Route::get('/{slug}', 'ProductController@show'); // GET /api/v1/products/{slug}
 });
 
+// Deal Shock API V1 - bundles for frontend
+Route::prefix('v1/deals')->namespace('Api\V1')->group(function () {
+    Route::get('/active-bundles', 'DealController@getActiveBundles'); // GET /api/v1/deals/active-bundles
+    Route::get('/{id}/bundle', 'DealController@showBundle'); // GET /api/v1/deals/{id}/bundle
+});
+
 // Cart API V1 - RESTful 标准
 // IMPORTANT: These routes need session support, so we use web middleware group
 // This ensures session sharing between web and API routes

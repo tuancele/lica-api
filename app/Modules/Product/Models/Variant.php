@@ -21,7 +21,6 @@ class Variant extends Model
         'color_id',
         'weight',
         'price',
-        'sale',
         'stock',
         'position',
         'user_id',

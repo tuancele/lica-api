@@ -70,7 +70,7 @@
                             <td>
                                 <a href="{{asset($product->slug)}}" target="_blank">{{$product->name}}</a>
                                 @if(!empty($variant))
-                                <p style="color:red;font-weight: 600;">@if($variant->price == 0) Liên hệ @else @if($variant->sale != 0) {{number_format($variant->sale)}}đ <del style="font-weight:normal;color:#666;margin-left: 5px;">{{number_format($variant->price)}}đ</del> @else {{number_format($variant->price)}}đ @endif @endif</p>
+                                <p style="color:red;font-weight: 600;">@if($variant->price == 0) Liên hệ @else {{number_format($variant->price)}}đ @endif</p>
                                 @endif
                             </td>
                             <td>

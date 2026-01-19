@@ -147,19 +147,15 @@ class PriceEngineService implements PriceEngineServiceInterface
      */
     protected function getPromotionPrice(int $productId, Carbon $now): ?array
     {
-        // Tìm Marketing Campaign đang active
-        $activeCampaign = MarketingCampaign::where('status', '1')
-            ->where('start_at', '<=', $now)
-            ->where('end_at', '>=', $now)
-            ->first();
-        
-        if (!$activeCampaign) {
-            return null;
-        }
-        
-        // Tìm sản phẩm trong campaign
-        $campaignProduct = MarketingCampaignProduct::where('campaign_id', $activeCampaign->id)
-            ->where('product_id', $productId)
+        // Tìm sản phẩm trong bất kỳ Marketing Campaign nào đang active
+        // (tránh lỗi chọn nhầm campaign không chứa product)
+        $campaignProduct = MarketingCampaignProduct::where('product_id', $productId)
+            ->whereHas('campaign', function ($q) use ($now) {
+                $q->where('status', '1')
+                  ->where('start_at', '<=', $now)
+                  ->where('end_at', '>=', $now);
+            })
+            ->orderByDesc('id')
             ->first();
         
         if (!$campaignProduct) {
@@ -168,7 +164,7 @@ class PriceEngineService implements PriceEngineServiceInterface
         
         return [
             'price' => (float) $campaignProduct->price,
-            'campaign_id' => $activeCampaign->id,
+            'campaign_id' => (int) $campaignProduct->campaign_id,
         ];
     }
     

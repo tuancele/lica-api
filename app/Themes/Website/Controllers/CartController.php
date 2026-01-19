@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use GuzzleHttp\Client;
 use App\Modules\FlashSale\Models\ProductSale;
 use App\Modules\FlashSale\Models\FlashSale;
@@ -92,6 +93,27 @@ class CartController extends Controller
                     $variantId,
                     $quantity
                 );
+
+                // Kiểm tra Deal Sốc (cảnh báo hiển thị, không đổi DOM)
+                $dealWarning = null;
+                if (!empty($item['is_deal'])) {
+                    $dealCheck = $this->validateDealAvailability($item['item']['product_id'], $variantId, $quantity);
+                    if (!$dealCheck['available']) {
+                        $dealWarning = $dealCheck['message'];
+                    } else {
+                        // Áp dụng giá Deal nếu thỏa điều kiện ưu tiên (kể cả Deal 0đ)
+                        $dealPricing = $this->applyDealPriceForCartItem(
+                            $item['item']['product_id'],
+                            $variantId,
+                            $quantity,
+                            $priceWithQuantity
+                        );
+                        if ($dealPricing !== null) {
+                            $priceWithQuantity['total_price'] = $dealPricing['total_price'];
+                            $priceWithQuantity['price_breakdown'] = $dealPricing['price_breakdown'];
+                        }
+                    }
+                }
                 
                 $recalculatedTotal += $priceWithQuantity['total_price'];
                 
@@ -100,6 +122,7 @@ class CartController extends Controller
                     'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
                     'total_price' => $priceWithQuantity['total_price'],
                     'warning' => $priceWithQuantity['warning'] ?? null,
+                    'deal_warning' => $dealWarning,
                     'flash_sale_remaining' => $priceWithQuantity['flash_sale_remaining'] ?? 0,
                 ];
             }
@@ -144,6 +167,35 @@ class CartController extends Controller
                     $q->whereIn('product_id', $main_product_ids)->where('status', '1');
                 })->where([['status', '1'], ['start', '<=', $now], ['end', '>=', $now]])->with('sales.product')->get();
                 
+                // Gắn cờ available cho sale products theo quota (qty-buy) và tồn kho thực (S_phy)
+                $deals = $deals->map(function($deal) {
+                    $deal->sales = $deal->sales->map(function($sale) {
+                        $remaining = max(0, ((int)$sale->qty) - ((int)($sale->buy ?? 0)));
+                        $stock = 0;
+                        try {
+                            $variantId = $sale->variant_id;
+                            if ($variantId) {
+                                $stockInfo = app(WarehouseServiceInterface::class)->getVariantStock($variantId);
+                                $stock = (int)($stockInfo['current_stock'] ?? 0);
+                            } else {
+                                // không có variant, dùng product->stock nếu có
+                                $stock = (int)($sale->product->stock ?? 0);
+                            }
+                        } catch (\Throwable $e) {
+                            Log::warning('[CartController] getVariantStock fail for deal suggestion', [
+                                'sale_id' => $sale->id,
+                                'variant_id' => $sale->variant_id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+                        $sale->remaining_quota = $remaining;
+                        $sale->available = $remaining > 0 && $stock > 0;
+                        $sale->physical_stock = $stock;
+                        return $sale;
+                    });
+                    return $deal;
+                });
+
                 $data['available_deals'] = $deals;
             }
         }
@@ -198,6 +250,26 @@ class CartController extends Controller
                 $variantId,
                 $quantity
             );
+
+            $dealWarning = null;
+            if (!empty($item['is_deal'])) {
+                $dealCheck = $this->validateDealAvailability($item['item']['product_id'], $variantId, $quantity);
+                if (!$dealCheck['available']) {
+                    $dealWarning = $dealCheck['message'];
+                } else {
+                    // Áp dụng giá Deal nếu thỏa điều kiện ưu tiên (kể cả Deal 0đ)
+                    $dealPricing = $this->applyDealPriceForCartItem(
+                        $item['item']['product_id'],
+                        $variantId,
+                        $quantity,
+                        $priceWithQuantity
+                    );
+                    if ($dealPricing !== null) {
+                        $priceWithQuantity['total_price'] = $dealPricing['total_price'];
+                        $priceWithQuantity['price_breakdown'] = $dealPricing['price_breakdown'];
+                    }
+                }
+            }
             
             $recalculatedTotal += $priceWithQuantity['total_price'];
             
@@ -206,6 +278,7 @@ class CartController extends Controller
                 'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
                 'total_price' => $priceWithQuantity['total_price'],
                 'warning' => $priceWithQuantity['warning'] ?? null,
+                'deal_warning' => $dealWarning,
                 'flash_sale_remaining' => $priceWithQuantity['flash_sale_remaining'] ?? 0,
             ];
         }
@@ -278,6 +351,168 @@ class CartController extends Controller
         $data['feeship'] = $feeShip;
         $data['token'] = $token;
         return view('Website::cart.checkout', $data);
+    }
+
+    /**
+     * Áp dụng giá Deal Sốc cho item trong giỏ hàng (tầng view Cart/Checkout).
+     *
+     * Rule giống CartService:
+     * - Nếu breakdown có flashsale/promotion => giữ nguyên, không override Deal.
+     * - Nếu toàn bộ breakdown là normal:
+     *   + Lấy SaleDeal.price làm dealPrice.
+     *   + Nếu dealPrice > 0 && dealPrice < original_price => dùng dealPrice.
+     *   + Nếu dealPrice == 0 && original_price > 0 => dùng 0đ (Deal 0đ).
+     *
+     * @param int   $productId
+     * @param int   $variantId
+     * @param int   $quantity
+     * @param array $priceWithQuantity
+     * @return array|null
+     */
+    private function applyDealPriceForCartItem(int $productId, int $variantId, int $quantity, array $priceWithQuantity): ?array
+    {
+        if ($quantity <= 0) {
+            return null;
+        }
+
+        if (empty($priceWithQuantity['price_breakdown']) || !is_array($priceWithQuantity['price_breakdown'])) {
+            return null;
+        }
+
+        $breakdown = $priceWithQuantity['price_breakdown'];
+
+        $hasFlashSale = false;
+        $hasPromotion = false;
+        foreach ($breakdown as $bd) {
+            if (($bd['type'] ?? null) === 'flashsale') {
+                $hasFlashSale = true;
+            }
+            if (($bd['type'] ?? null) === 'promotion') {
+                $hasPromotion = true;
+            }
+        }
+
+        if ($hasFlashSale || $hasPromotion) {
+            return null;
+        }
+
+        $firstLine = $breakdown[0];
+        $originalPrice = (float)($firstLine['unit_price'] ?? 0);
+        if ($originalPrice <= 0) {
+            return null;
+        }
+
+        $now = time();
+        $saleDealQuery = SaleDeal::where('product_id', $productId)
+            ->whereHas('deal', function ($q) use ($now) {
+                $q->where('status', '1')
+                    ->where('start', '<=', $now)
+                    ->where('end', '>=', $now);
+            });
+
+        $saleDealQuery->where(function ($q) use ($variantId) {
+            $q->where('variant_id', $variantId)
+                ->orWhereNull('variant_id');
+        });
+
+        $saleDeal = $saleDealQuery->first();
+        if (!$saleDeal) {
+            return null;
+        }
+
+        $dealPrice = (float)($saleDeal->price ?? 0);
+
+        if ($dealPrice > 0 && $dealPrice < $originalPrice) {
+            $total = $dealPrice * $quantity;
+
+            return [
+                'total_price' => $total,
+                'price_breakdown' => [
+                    [
+                        'type' => 'deal',
+                        'quantity' => $quantity,
+                        'unit_price' => $dealPrice,
+                        'subtotal' => $total,
+                    ],
+                ],
+            ];
+        }
+
+        if ($dealPrice == 0.0 && $originalPrice > 0) {
+            $total = 0.0;
+
+            return [
+                'total_price' => $total,
+                'price_breakdown' => [
+                    [
+                        'type' => 'deal',
+                        'quantity' => $quantity,
+                        'unit_price' => 0.0,
+                        'subtotal' => $total,
+                    ],
+                ],
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Kiểm tra quỹ/tồn kho Deal Sốc (hiển thị cảnh báo, không lock).
+     */
+    private function validateDealAvailability(int $productId, int $variantId, int $quantity): array
+    {
+        $now = time();
+
+        $saleDealQuery = SaleDeal::where('product_id', $productId)
+            ->whereHas('deal', function ($q) use ($now) {
+                $q->where('status', '1')
+                    ->where('start', '<=', $now)
+                    ->where('end', '>=', $now);
+            });
+
+        $saleDealQuery->where(function ($q) use ($variantId) {
+            $q->where('variant_id', $variantId)
+                ->orWhereNull('variant_id');
+        });
+
+        $saleDeal = $saleDealQuery->first();
+        if (!$saleDeal) {
+            return [
+                'available' => false,
+                'message' => 'Quà tặng Deal Sốc đã hết, giá được chuyển về giá thường/khuyến mại.',
+            ];
+        }
+
+        // Quỹ deal (Shopee style): qty là số suất còn lại
+        if ((int) $saleDeal->qty < $quantity) {
+            return [
+                'available' => false,
+                'message' => 'Quà tặng Deal Sốc đã hết, giá được chuyển về giá thường/khuyến mại.',
+            ];
+        }
+
+        try {
+            $stockInfo = $this->warehouseService->getVariantStock($variantId);
+            $phy = (int) ($stockInfo['current_stock'] ?? 0);
+            if ($phy <= 0) {
+                return [
+                    'available' => false,
+                    'message' => 'Quà tặng Deal Sốc đã hết, giá được chuyển về giá thường/khuyến mại.',
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[CartController] validateDealAvailability stock check failed', [
+                'product_id' => $productId,
+                'variant_id' => $variantId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return [
+            'available' => true,
+            'message' => null,
+        ];
     }
 
     public function loadPromotion()
@@ -376,6 +611,7 @@ class CartController extends Controller
         }
 
         try {
+            DB::beginTransaction();
             $sale = 0;
             $promotion = 0;
             $oldCart = Session::get('cart');
@@ -600,6 +836,7 @@ class CartController extends Controller
                             $color_id = null;
                             $size_id = null;
                             $weight = 0;
+                            $dealsale_id = $variant['dealsale_id'] ?? null;
                             
                             if (is_object($item)) {
                                 $variant_id = $item->id ?? null;
@@ -611,6 +848,30 @@ class CartController extends Controller
                                 $color_id = $item['color_id'] ?? null;
                                 $size_id = $item['size_id'] ?? null;
                                 $weight = $item['weight'] ?? 0;
+                            }
+
+                            // Shopee-style deal quota: decrement deal_sales.qty at order creation time
+                            if (isset($variant['is_deal']) && (int) $variant['is_deal'] === 1) {
+                                if (!$dealsale_id) {
+                                    throw new \Exception('Thiếu dealsale_id cho sản phẩm Deal Sốc');
+                                }
+
+                                /** @var SaleDeal|null $saleDeal */
+                                $saleDeal = SaleDeal::where('id', (int) $dealsale_id)->lockForUpdate()->first();
+                                if (!$saleDeal) {
+                                    throw new \Exception('Suất quà tặng vừa hết');
+                                }
+
+                                $quantityDeal = (int) ($variant['qty'] ?? 1);
+                                if ((int) $saleDeal->qty < $quantityDeal) {
+                                    throw new \Exception('Suất quà tặng vừa hết');
+                                }
+
+                                Log::info('[DEAL_SALE_UPDATE] DealID: ' . $dealsale_id . ' | Suất cũ: ' . ((int) $saleDeal->qty) . ' | Trừ: ' . $quantityDeal);
+                                $saleDeal->decrement('qty', $quantityDeal);
+                                $saleDeal->increment('buy', $quantityDeal);
+                                $saleDeal->refresh();
+                                Log::info('[DEAL_SALE_UPDATE] DealID: ' . $dealsale_id . ' | Suất mới sau khi trừ: ' . (int) $saleDeal->qty);
                             }
                             
                             OrderDetail::insert([
@@ -625,6 +886,7 @@ class CartController extends Controller
                                 'image' => $product->image ?? '',
                                 'weight' => $weight * ($variant['qty'] ?? 1),
                                 'subtotal' => ($variant['price'] ?? 0) * ($variant['qty'] ?? 1),
+                                'dealsale_id' => $dealsale_id,
                                 'created_at' => date('Y-m-d H:i:s')
                             ]);
 
@@ -677,6 +939,7 @@ class CartController extends Controller
                     // Continue with order success even if email fails
                 }
                 
+                DB::commit();
                 Session::forget('cart');
                 Session::forget('ss_counpon');
                 
@@ -689,6 +952,7 @@ class CartController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Lỗi tạo đơn hàng.']);
 
         } catch (\Exception $e) {
+            DB::rollBack();
             Log::error('Checkout Error: ' . $e->getMessage());
             Log::error('Stack Trace: ' . $e->getTraceAsString());
             Log::error('Request Data: ' . json_encode($req->all()));

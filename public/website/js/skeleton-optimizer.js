@@ -343,6 +343,81 @@
     }
 
     /**
+     * SkeletonManager - 统一管理 Skeleton → 内容 thật 的切换
+     * 使用 jQuery 的 fadeOut/fadeIn，并且只替换 container.innerHTML
+     */
+    function createSkeletonManager() {
+        // 如果 jQuery 不存在，则提供降级版本（无动画）
+        var hasJquery = typeof window.jQuery !== 'undefined';
+
+        function getContainerElement(container) {
+            if (!container) return null;
+            if (container instanceof HTMLElement) return container;
+            if (typeof container === 'string') {
+                var el = document.querySelector(container);
+                return el || null;
+            }
+            // 兼容 jQuery 对象
+            if (container[0] && container[0] instanceof HTMLElement) {
+                return container[0];
+            }
+            return null;
+        }
+
+        /**
+         * 隐藏 skeleton 并显示真实内容
+         * 规则：
+         * - 只修改 container.innerHTML，绝不替换 container 本身（outerHTML）
+         * - 使用 fadeOut/fadeIn（如果有 jQuery），否则直接切换
+         */
+        function hideAndShow(container, newHtml) {
+            var el = getContainerElement(container);
+            if (!el) return;
+
+            // 保护性：避免外层调用传错 null
+            if (typeof newHtml !== 'string') {
+                // 如果没有新内容，仅执行简单的显示
+                if (hasJquery) {
+                    window.jQuery(el).fadeIn(150);
+                } else {
+                    el.style.display = '';
+                    el.style.opacity = '1';
+                }
+                return;
+            }
+
+            // 使用 jQuery 动画
+            if (hasJquery) {
+                var $el = window.jQuery(el);
+                // 保留当前高度，避免闪动
+                var currentHeight = $el.outerHeight();
+                if (currentHeight && currentHeight > 0) {
+                    $el.css('min-height', currentHeight + 'px');
+                }
+
+                $el.stop(true, true).fadeOut(150, function() {
+                    // 只替换 innerHTML，保持事件绑定在父容器上的不变
+                    el.innerHTML = newHtml;
+
+                    $el.fadeIn(150, function() {
+                        // 恢复高度限制
+                        $el.css('min-height', '');
+                    });
+                });
+            } else {
+                // 降级：无动画
+                el.innerHTML = newHtml;
+                el.style.display = '';
+                el.style.opacity = '1';
+            }
+        }
+
+        return {
+            hideAndShow: hideAndShow
+        };
+    }
+
+    /**
      * 主初始化函数
      */
     function init() {
@@ -351,6 +426,11 @@
         
         // 初始化窗口大小改变监听
         initResizeListener();
+        
+        // 初始化 SkeletonManager（全局可用）
+        if (!window.SkeletonManager) {
+            window.SkeletonManager = createSkeletonManager();
+        }
         
         // 初始化 skeleton 优化器
         initLazySkeletonOptimizer();

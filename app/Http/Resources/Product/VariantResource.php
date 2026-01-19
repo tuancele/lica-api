@@ -27,7 +27,6 @@ class VariantResource extends JsonResource
             'color_id' => $this->color_id,
             'weight' => (float) $this->weight,
             'price' => (float) $this->price,
-            'sale' => (float) $this->sale,
             'stock' => (int) $this->stock,
             'warehouse_stock' => isset($this->warehouse_stock) ? (int) $this->warehouse_stock : (int) $this->stock,
             'is_out_of_stock' => isset($this->is_out_of_stock) ? (bool) $this->is_out_of_stock : ((int) $this->stock <= 0),

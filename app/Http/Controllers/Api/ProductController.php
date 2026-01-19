@@ -18,7 +18,6 @@ use App\Services\PriceCalculationService;
 use App\Services\Warehouse\WarehouseServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
@@ -163,7 +162,7 @@ class ProductController extends Controller
             }
         }
         
-        // Calculate price using PriceCalculationService (Flash Sale > Marketing Campaign > Sale > Normal)
+        // Calculate price using PriceCalculationService (Flash Sale > Marketing Campaign > Normal)
         $priceInfo = null;
         
         try {
@@ -214,7 +213,6 @@ class ProductController extends Controller
             'brand_name' => $brandName,
             'brand_slug' => $brandSlug,
             'price' => $priceInfo->original_price ?? $variantPrice, // Original price
-            'sale' => (float) ($product->sale ?? 0), // Variant sale price (for backward compatibility)
             'price_info' => [
                 'price' => $priceInfo->price ?? $variantPrice, // Final price (after all discounts)
                 'original_price' => $priceInfo->original_price ?? $variantPrice,
@@ -392,7 +390,27 @@ class ProductController extends Controller
         try {
             $limit = (int) $request->get('limit', 10);
             
-            $result = Cache::remember("api_top_selling_products_v2_{$limit}", 3600, function () use ($limit) {
+            // Bypass cache for real-time data integrity
+            $result = (function () use ($limit) {
+                // Base product columns (avoid duplicate rows when joining variants)
+                $baseProductColumns = [
+                    'posts.id',
+                    'posts.stock',
+                    'posts.name',
+                    'posts.slug',
+                    'posts.image',
+                    'posts.brand_id',
+                    'posts.best',
+                    'posts.is_new'
+                ];
+                // Aggregate variant info to a single row per product
+                $variantAggregateColumns = [
+                    DB::raw('MIN(variants.price) as price'),
+                    DB::raw('MIN(variants.size_id) as size_id'),
+                    DB::raw('MIN(variants.color_id) as color_id'),
+                ];
+                $productSelect = array_merge($baseProductColumns, $variantAggregateColumns);
+
                 // Get top selling products from all orders (except cancelled)
                 // Tính tổng số lượng đã bán từ tất cả đơn hàng (trừ đơn hàng đã hủy - status = 4)
                 $topProducts = DB::table('orderdetail')
@@ -419,14 +437,10 @@ class ProductController extends Controller
                     // Get product details with Eager Loading for brand
                     $productsFromOrders = Product::with(['brand:id,name,slug'])
                         ->join('variants', 'variants.product_id', '=', 'posts.id')
-                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
-                                 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id',
-                                 'variants.color_id as color_id', 'posts.best', 'posts.is_new')
+                        ->select($productSelect)
                         ->where([['posts.status', '1'], ['posts.type', ProductType::PRODUCT->value]])
                         ->whereIn('posts.id', $topProductIds)
-                        ->groupBy('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
-                                  'variants.price', 'variants.sale', 'variants.size_id', 'variants.color_id', 
-                                  'posts.best', 'posts.is_new')
+                        ->groupBy($baseProductColumns)
                         ->get();
                     
                     // Add total_sold to each product and sort by original order
@@ -444,18 +458,14 @@ class ProductController extends Controller
                 if ($neededCount > 0) {
                     $bestProducts = Product::with(['brand:id,name,slug'])
                         ->join('variants', 'variants.product_id', '=', 'posts.id')
-                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
-                                 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id',
-                                 'variants.color_id as color_id', 'posts.best', 'posts.is_new')
+                        ->select($productSelect)
                         ->where([['posts.status', '1'], ['posts.type', ProductType::PRODUCT->value], ['posts.best', '1']]);
                     
                     if (!empty($topProductIds)) {
                         $bestProducts->whereNotIn('posts.id', $topProductIds);
                     }
                     
-                    $bestProducts = $bestProducts->groupBy('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
-                                  'variants.price', 'variants.sale', 'variants.size_id', 'variants.color_id', 
-                                  'posts.best', 'posts.is_new')
+                    $bestProducts = $bestProducts->groupBy($baseProductColumns)
                         ->limit($neededCount)
                         ->orderBy('posts.created_at', 'desc')
                         ->get();
@@ -473,13 +483,9 @@ class ProductController extends Controller
                 if ($productsFromOrders->isEmpty()) {
                     $productsFromOrders = Product::with(['brand:id,name,slug'])
                         ->join('variants', 'variants.product_id', '=', 'posts.id')
-                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
-                                 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id',
-                                 'variants.color_id as color_id', 'posts.best', 'posts.is_new')
+                        ->select($productSelect)
                         ->where([['posts.status', '1'], ['posts.type', ProductType::PRODUCT->value]])
-                        ->groupBy('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
-                                  'variants.price', 'variants.sale', 'variants.size_id', 'variants.color_id', 
-                                  'posts.best', 'posts.is_new')
+                        ->groupBy($baseProductColumns)
                         ->limit($limit)
                         ->orderBy('posts.best', 'desc')
                         ->orderBy('posts.created_at', 'desc')
@@ -496,7 +502,7 @@ class ProductController extends Controller
                     'products' => $productsFromOrders->take($limit),
                     'totalSoldMap' => $totalSoldMap
                 ];
-            });
+            })();
             
             $products = $result['products'];
             $totalSoldMap = $result['totalSoldMap'] ?? [];
@@ -571,21 +577,20 @@ class ProductController extends Controller
         try {
             $limit = (int) $request->get('limit', 20);
             
-            $products = Cache::remember("api_products_by_category_{$id}_{$limit}", 1800, function () use ($id, $limit) {
-                return Product::with(['brand:id,name,slug'])
-                    ->join('variants', 'variants.product_id', '=', 'posts.id')
-                    ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
-                             'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id',
-                             'variants.color_id as color_id', 'posts.best', 'posts.is_new')
-                    ->where([['posts.status', '1'], ['posts.type', ProductType::PRODUCT->value], ['posts.stock', '1']])
-                    ->where('posts.cat_id', 'like', '%"' . $id . '"%')
-                    ->orderBy('posts.created_at', 'desc')
-                    ->groupBy('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
-                              'variants.price', 'variants.sale', 'variants.size_id', 'variants.color_id', 
-                              'posts.best', 'posts.is_new')
-                    ->limit($limit)
-                    ->get();
-            });
+            // Bypass cache for real-time data integrity
+            $products = Product::with(['brand:id,name,slug'])
+                ->join('variants', 'variants.product_id', '=', 'posts.id')
+                ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
+                         'variants.price as price', 'variants.size_id as size_id',
+                         'variants.color_id as color_id', 'posts.best', 'posts.is_new')
+                ->where([['posts.status', '1'], ['posts.type', ProductType::PRODUCT->value], ['posts.stock', '1']])
+                ->where('posts.cat_id', 'like', '%"' . $id . '"%')
+                ->orderBy('posts.created_at', 'desc')
+                ->groupBy('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
+                          'variants.price', 'variants.size_id', 'variants.color_id', 
+                          'posts.best', 'posts.is_new')
+                ->limit($limit)
+                ->get();
             
             // Format products for response using optimized helper method
             $formattedProducts = $products->map(function($product) {
@@ -646,7 +651,8 @@ class ProductController extends Controller
                 ], 200);
             }
             
-            $products = Cache::remember("api_flash_sale_products_{$flash->id}_v3", 300, function () use ($flash) {
+            // Bypass cache for real-time data integrity
+            $products = (function () use ($flash) {
                 // Get ProductSales with variants support - only available ones
                 $productSales = ProductSale::where('flashsale_id', $flash->id)
                     ->whereRaw('buy < number')
@@ -706,7 +712,6 @@ class ProductController extends Controller
                                     'brand_name' => $brandName,
                                     'brand_slug' => $brandSlug,
                                     'price' => $variant->price,
-                                    'sale' => $variant->sale,
                                     'size_id' => $variant->size_id,
                                     'color_id' => $variant->color_id,
                                     'price_sale' => $bestProductSale->price_sale,
@@ -738,7 +743,6 @@ class ProductController extends Controller
                                     'brand_name' => $brandName,
                                     'brand_slug' => $brandSlug,
                                     'price' => $variant->price,
-                                    'sale' => $variant->sale,
                                     'size_id' => $variant->size_id,
                                     'color_id' => $variant->color_id,
                                     'price_sale' => $productSale->price_sale,
@@ -757,7 +761,7 @@ class ProductController extends Controller
                 return $result->sortByDesc(function($item) {
                     return $item->id;
                 })->take(20)->values();
-            });
+            })();
             
             // Format products for response using optimized helper method
             $formattedProducts = $products->map(function($product) {
@@ -845,7 +849,6 @@ class ProductController extends Controller
                 'success' => true,
                 'data' => [
                     'price' => $variant ? (float) $variant->price : 0,
-                    'sale' => $variant ? (float) $variant->sale : 0,
                     'price_info' => $priceInfo ? [
                         'price' => $priceInfo->price ?? 0,
                         'original_price' => $priceInfo->original_price ?? 0,
@@ -881,11 +884,10 @@ class ProductController extends Controller
     public function getDetailBySlug(string $slug): JsonResponse
     {
         try {
-            $product = Cache::remember("api_product_detail_{$slug}", 1800, function () use ($slug) {
-                return Product::with(['brand', 'origin', 'variants.color', 'variants.size'])
-                    ->where([['slug', $slug], ['status', '1'], ['type', ProductType::PRODUCT->value]])
-                    ->first();
-            });
+            // Bypass cache for real-time data integrity
+            $product = Product::with(['brand', 'origin', 'variants.color', 'variants.size'])
+                ->where([['slug', $slug], ['status', '1'], ['type', ProductType::PRODUCT->value]])
+                ->first();
             
             if (!$product) {
                 return response()->json([
@@ -972,7 +974,6 @@ class ProductController extends Controller
                     'option1_value' => $variant->option1_value,
                     'image' => $this->formatImageUrl($variant->image ?? null),
                     'price' => (float) $variant->price,
-                    'sale' => (float) $variant->sale,
                     'stock' => (int) ($variant->stock ?? 0), // Original stock from variants table
                     'warehouse_stock' => $warehouseStock, // Current stock from warehouse
                     'is_out_of_stock' => $warehouseStock <= 0,
@@ -1031,6 +1032,25 @@ class ProductController extends Controller
                     $saleDeals = $saleDealsData->map(function($saleDeal) {
                         $dealProduct = Product::find($saleDeal->product_id);
                         $dealVariant = Variant::where('product_id', $saleDeal->product_id)->first();
+
+                        // Tính remaining_quota và tồn kho vật lý cho deal item
+                        $remaining = max(0, ((int)$saleDeal->qty) - ((int)($saleDeal->buy ?? 0)));
+                        $stock = 0;
+                        try {
+                            if ($dealVariant) {
+                                $stockData = $this->warehouseService->getVariantStock($dealVariant->id);
+                                $stock = (int)($stockData['current_stock'] ?? 0);
+                            } elseif ($dealProduct) {
+                                $stock = (int)($dealProduct->stock ?? 0);
+                            }
+                        } catch (\Exception $e) {
+                            Log::warning('Failed to get warehouse stock for deal sale item', [
+                                'sale_deal_id' => $saleDeal->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+
+                        $available = $remaining > 0 && $stock > 0;
                         
                         return [
                             'id' => $saleDeal->id,
@@ -1040,6 +1060,9 @@ class ProductController extends Controller
                             'variant_id' => $dealVariant ? $dealVariant->id : null,
                             'price' => (float) $saleDeal->price,
                             'original_price' => $dealVariant ? (float) $dealVariant->price : 0,
+                            'remaining_quota' => $remaining,
+                            'physical_stock' => $stock,
+                            'available' => $available,
                         ];
                     })->toArray();
                     
@@ -1058,13 +1081,13 @@ class ProductController extends Controller
                 $relatedProductsData = Product::join('variants', 'variants.product_id', '=', 'posts.id')
                     ->leftJoin('brands', 'brands.id', '=', 'posts.brand_id')
                     ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
-                             'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id',
+                             'variants.price as price', 'variants.size_id as size_id',
                              'variants.color_id as color_id', 'posts.best', 'posts.is_new',
                              'brands.name as brand_name', 'brands.slug as brand_slug')
                     ->where([['posts.status', '1'], ['posts.type', ProductType::PRODUCT->value], ['posts.id', '!=', $product->id]])
                     ->where('posts.cat_id', 'like', '%"' . $catId . '"%')
                     ->groupBy('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
-                              'variants.price', 'variants.sale', 'variants.size_id', 'variants.color_id', 
+                              'variants.price', 'variants.size_id', 'variants.color_id', 
                               'posts.best', 'posts.is_new', 'brands.name', 'brands.slug')
                     ->limit(9)
                     ->orderBy('posts.created_at', 'desc')
@@ -1098,7 +1121,6 @@ class ProductController extends Controller
                         'brand_name' => $brandName,
                         'brand_slug' => $brandSlug,
                         'price' => $variantPrice,
-                        'sale' => (float) $p->sale,
                         'stock' => (int) $p->stock,
                         'best' => (int) $p->best,
                         'is_new' => (int) ($p->is_new ?? 0),

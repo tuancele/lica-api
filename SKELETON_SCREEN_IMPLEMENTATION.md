@@ -181,3 +181,103 @@
 ## 总结
 
 骨架屏技术已成功实现，显著提升了首页的加载体验。用户现在可以立即看到页面布局，而不是等待加载完成。这有助于提高用户满意度和SEO评分。
+
+## 全站“生存级”规则（Sống còn Rules）
+
+以下规则适用于所有使用 Skeleton + 异步加载（AJAX / API）的模块（包括但不限于 Flash Sale、Recommendations、Brands、Top Selling、Deal Sốc 等），违反这些规则容易导致 UI 状态丢失或布局错乱。
+
+### 规则 1：Container Integrity（容器完整性）
+
+- **绝对禁止**替换父级容器（container）本身：
+  - 不允许：
+    - `outerHTML = ...`
+    - `$(container).replaceWith(...)`
+    - 删除并重新创建根容器元素
+- **唯一允许的写法**：
+  - 只修改容器内部内容：
+    - JavaScript:
+      - `container.innerHTML = newHtml`
+      - 或通过 `SkeletonManager.hideAndShow(container, newHtml)`（内部也只使用 `innerHTML`）
+    - jQuery:
+      - `$(container).html(newHtml)`
+- 原因：
+  - 避免丢失：
+    - 事件监听器（绑定在父容器上的 click/scroll 等）
+    - Carousel / LazyLoad / Tracking 等实例状态
+    - 与容器相关的元数据（data-* attributes、CSS 状态）
+
+### 规则 2：State First（先渲染状态，再隐藏 Skeleton）
+
+- **所有产品状态必须优先根据 API 字段渲染**，然后再隐藏 Skeleton：
+  - 推荐字段：
+    - `is_available`（bool）
+    - 或 `available`（bool）
+    - 或 `stock`（库存数，`<= 0` 视为不可售）
+- 渲染规则：
+  - 如果 `is_available === false` 或 `available === false` 或 `stock <= 0`：
+    - 必须在真正内容插入 DOM 时立即：
+      - 添加类名（示例）：
+        - `.product-unavailable`
+        - `.is-sold-out`（如有）
+      - 显示醒目的状态文案：
+        - `"HẾT HÀNG"`（无库存）
+        - `"HẾT QUÀ"`（Deal Sốc / quà tặng已用尽）
+      - 禁用对应的交互控件：
+        - 按钮：`disabled` + 文案更新
+        - checkbox/radio：`disabled`
+  - 只有在 **状态已经正确渲染** 后，才允许：
+    - 隐藏 Skeleton（淡出 `.lazy-placeholder` / `.js-skeleton`）
+    - 显示内容区块（淡入 `.lazy-hidden-content` 或真实列表容器）
+- 核心目标：
+  - 确保用户**永远不会**看到“已售罄却仍可点击购买”的中间态；
+  - Skeleton 只是视觉占位，**权威状态由 API 决定**，不得在前端自行“修正”为有货。
+
+### 规则 3：Sync over Async（Flash Sale 作为标准参考流）
+
+- Flash Sale 的实现是整个站点 Skeleton + 异步加载的**参考标准**。所有新模块必须遵守相同的流程：
+
+1. **Blade Skeleton（预置占位）**
+   - 使用 Blade 模板（例如 `skeleton-item.blade.php`）在页面初始就输出完整的 skeleton 网格：
+     - Recommendations：预置 12 个 item
+     - Top Selling / Deal Sốc 列表：预置 10+ item（填满一屏）
+   - 页面结构必须统一：
+     ```blade
+     <section data-lazy-load="section">
+         <div class="lazy-placeholder">
+             <!-- Skeleton 列表 -->
+         </div>
+         <div class="lazy-hidden-content" style="display:none">
+             <!-- 真实内容容器（由 JS/API 填充） -->
+         </div>
+     </section>
+     ```
+
+2. **API Fetch（从后端获取数据）**
+   - 通过专用 API（Flash Sale / Recommendations / Deals / Brands 等）获取数据。
+   - 响应中必须包含：
+     - 状态字段：`is_available` / `available` / `stock`
+     - 价格与标签字段：`price` / `original_price` / `label` 等
+
+3. **State Validate（状态校验与 UI 决策）**
+   - 在渲染 HTML 之前，对每个 item 做状态校验：
+     - 是否可售？
+     - 是否还有 quà / quota？
+     - 是否需要添加 “HẾT HÀNG” / “HẾT QUÀ” / 禁用按钮？
+   - 所有 UI 状态（类名、标签、disabled）必须**只根据 API 数据**得出，不进行前端“猜测”。
+
+4. **Fade Transition（渐隐 Skeleton，渐显内容）**
+   - 使用统一工具进行过渡：
+     - `LazyLoad.loadSection`：对 section 级别的 `.lazy-placeholder` / `.lazy-hidden-content` 作 fadeOut/fadeIn。
+     - `SkeletonManager.hideAndShow(container, newHtml)`：对具体列表容器执行：
+       - `fadeOut` 旧内容（可能包括 Skeleton 或旧数据）
+       - `innerHTML = newHtml`
+       - `fadeIn` 新内容
+   - 在 fade 阶段中，同时：
+     - 重新初始化必要的插件：
+       - OWL Carousel（通过 `initCarousels`）
+       - Skeleton 尺寸调整（`initSmartSkeleton`）
+     - 保证不破坏容器本身（参见规则 1）。
+
+> 总结：  
+> **容器不动，状态优先，流程对齐 Flash Sale。**  
+> 任何新模块（Recommendations、Brands、Deal Sốc 等）上线前，必须对照以上 3 条规则自查，避免出现“布局跳动、状态错误、事件丢失”等经典问题。

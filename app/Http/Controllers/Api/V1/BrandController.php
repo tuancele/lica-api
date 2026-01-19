@@ -406,15 +406,12 @@ class BrandController extends Controller
                 $limit = 14;
             }
 
-            // Get featured brands (same logic as home page)
-            // Cache for 1 hour to match home page cache
-            $brands = \Illuminate\Support\Facades\Cache::remember('api_v1_brands_featured_' . $limit, 3600, function () use ($limit) {
-                return Brand::select('id', 'name', 'slug', 'image')
-                    ->where('status', '1')
-                    ->orderBy('sort', 'asc')
-                    ->limit($limit)
-                    ->get();
-            });
+            // Bypass cache for real-time data integrity
+            $brands = Brand::select('id', 'name', 'slug', 'image')
+                ->where('status', '1')
+                ->orderBy('sort', 'asc')
+                ->limit($limit)
+                ->get();
 
             // Format response with BrandResource
             $formattedBrands = BrandResource::collection($brands);

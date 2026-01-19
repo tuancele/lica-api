@@ -14,6 +14,7 @@ use App\Modules\Compare\Models\Compare;
 use App\Modules\Deal\Models\Deal;
 use App\Modules\Deal\Models\ProductDeal;
 use App\Modules\Deal\Models\SaleDeal;
+use App\Services\Warehouse\WarehouseServiceInterface;
 use Session;
 
 class ProductController extends Controller
@@ -40,7 +41,6 @@ class ProductController extends Controller
             if (!$first) {
                 $first = new Variant();
                 $first->price = 0;
-                $first->sale = 0;
                 $first->sku = '';
             }
             $data['variants'] = $variants;
@@ -52,7 +52,7 @@ class ProductController extends Controller
             $data['rates'] = Rate::where([['status', '1'], ['product_id', $post->id]])->orderBy('created_at', 'desc')->limit(5)->get();
             $data['category'] = Post::select('id', 'name', 'slug', 'cat_id')->where([['type', 'taxonomy'], ['id', $catid]])->first();
             $data['products'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id')
+                ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
                 ->where([['status', '1'], ['type', 'product'], ['posts.id', '!=', $post->id]])
                 ->where('cat_id', 'like', '%"' . $catid . '"%')
                 ->groupBy('product_id')
@@ -64,7 +64,7 @@ class ProductController extends Controller
             
             if (Session::has('product_watched')) {
                 $data['watchs'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                    ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'posts.stock', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id')
+                    ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'posts.stock', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
                     ->where([['status', '1'], ['type', 'product']])
                     ->whereIn('posts.id', Session::get('product_watched'))
                     ->groupBy('product_id')
@@ -90,7 +90,32 @@ class ProductController extends Controller
             $deal = Deal::whereIn('id', $deal_id)->where([['status', '1'], ['start', '<=', $now], ['end', '>=', $now]])->first();
             if ($deal) {
                 $data['deal'] = $deal;
-                $data['saledeals'] = SaleDeal::where([['deal_id', $deal->id], ['status', '1']])->get();
+                $saledeals = SaleDeal::with(['product', 'variant'])->where([['deal_id', $deal->id], ['status', '1']])->get();
+
+                // Gắn trạng thái tồn kho/quỹ cho từng sản phẩm mua kèm
+                $warehouse = app(WarehouseServiceInterface::class);
+                $saledeals = $saledeals->map(function ($sale) use ($warehouse) {
+                    $remaining = max(0, ((int)$sale->qty) - ((int)($sale->buy ?? 0)));
+                    $stock = 0;
+                    try {
+                        if ($sale->variant_id) {
+                            $stockInfo = $warehouse->getVariantStock($sale->variant_id);
+                            $stock = (int)($stockInfo['current_stock'] ?? 0);
+                        } elseif ($sale->product) {
+                            $stock = (int)($sale->product->stock ?? 0);
+                        }
+                    } catch (\Throwable $e) {
+                        // Nếu lỗi kho, coi như hết để an toàn
+                        $stock = 0;
+                    }
+
+                    $sale->remaining_quota = $remaining;
+                    $sale->physical_stock = $stock;
+                    $sale->available = $remaining > 0 && $stock > 0;
+                    return $sale;
+                });
+
+                $data['saledeals'] = $saledeals;
             }
 
             return view('Website::product.detail', $data);

@@ -98,11 +98,6 @@ class StoreProductRequest extends FormRequest
                 'numeric',
                 'min:0'
             ],
-            'sale' => [
-                'nullable',
-                'numeric',
-                'min:0'
-            ],
             'stock_qty' => [
                 'nullable',
                 'integer',
@@ -190,8 +185,6 @@ class StoreProductRequest extends FormRequest
             'imageOther.*.url' => 'URL hình ảnh không hợp lệ',
             'price.numeric' => 'Giá phải là số',
             'price.min' => 'Giá không được nhỏ hơn 0',
-            'sale.numeric' => 'Giá khuyến mãi phải là số',
-            'sale.min' => 'Giá khuyến mãi không được nhỏ hơn 0',
         ];
     }
 
@@ -220,12 +213,6 @@ class StoreProductRequest extends FormRequest
         if ($this->has('price') && is_string($this->price)) {
             $this->merge([
                 'price' => (float) str_replace(',', '', $this->price)
-            ]);
-        }
-
-        if ($this->has('sale') && is_string($this->sale)) {
-            $this->merge([
-                'sale' => (float) str_replace(',', '', $this->sale)
             ]);
         }
 

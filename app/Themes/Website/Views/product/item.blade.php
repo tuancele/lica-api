@@ -12,7 +12,7 @@
             // 计算折扣百分比 - 使用与 checkSale 相同的逻辑
             $date = strtotime(date('Y-m-d H:i:s'));
             $flash = App\Modules\FlashSale\Models\FlashSale::where([['status','1'],['start','<=',$date],['end','>=',$date]])->first();
-            $variant = App\Modules\Product\Models\Variant::select('price','sale')->where('product_id', $product->id)->first();
+            $variant = App\Modules\Product\Models\Variant::select('price')->where('product_id', $product->id)->first();
             $discountPercent = 0;
             $hasDiscount = false;
             
@@ -42,11 +42,7 @@
                     }
                 }
                 
-                // 检查普通折扣
-                if(!$hasDiscount && $variant->sale > 0 && $variant->price > $variant->sale) {
-                    $discountPercent = round(($variant->price - $variant->sale)/($variant->price/100));
-                    $hasDiscount = true;
-                }
+                // Legacy "sale" field is ignored
             }
         @endphp
         @if($hasDiscount && $discountPercent > 0)

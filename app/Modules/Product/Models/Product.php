@@ -133,26 +133,18 @@ class Product extends Model
             })->first();
 
         if ($campaignProduct) {
+            $campaignPrice = (float) ($campaignProduct->price ?? 0);
+            if ($campaignPrice > 0 && $campaignPrice < (float) $originalPrice) {
             return (object) [
-                'price' => $campaignProduct->price,
+                'price' => $campaignPrice,
                 'original_price' => $originalPrice,
-                'type' => 'campaign',
+                'type' => 'promotion',
                 'label' => 'Khuyến mại'
             ];
+            }
         }
 
         // 3. Normal Price
-        // Check if variant has 'sale' price (old promotion logic)
-        $salePrice = $variant ? $variant->sale : 0;
-        if($salePrice > 0 && $salePrice < $originalPrice){
-             return (object) [
-                'price' => $salePrice,
-                'original_price' => $originalPrice,
-                'type' => 'sale',
-                'label' => 'Giảm giá'
-            ];
-        }
-
         return (object) [
             'price' => $originalPrice,
             'original_price' => $originalPrice,

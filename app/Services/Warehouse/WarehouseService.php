@@ -744,8 +744,8 @@ class WarehouseService implements WarehouseServiceInterface
         $lastPrice = null;
         
         if ($type === 'export') {
-            // For export, use variant sale price or price
-            $suggestedPrice = $variant->sale > 0 ? $variant->sale : $variant->price;
+            // For export, use base price only (do not use legacy "sale" field)
+            $suggestedPrice = $variant->price;
             
             // Get last export price
             $lastExport = ProductWarehouse::where('variant_id', $variantId)
@@ -773,7 +773,7 @@ class WarehouseService implements WarehouseServiceInterface
             'price_type' => $type,
             'last_price' => $lastPrice ? (float) $lastPrice : null,
             'variant_price' => $variant->price ? (float) $variant->price : null,
-            'variant_sale' => $variant->sale ? (float) $variant->sale : null,
+            'variant_sale' => null,
         ];
     }
 
@@ -1058,8 +1058,8 @@ class WarehouseService implements WarehouseServiceInterface
                 'user_id' => Auth::id() ?? 1,
             ]);
             
-            // Get variant price for export
-            $variantPrice = $variant->sale > 0 ? $variant->sale : $variant->price;
+            // Get variant price for export (base price only)
+            $variantPrice = $variant->price;
             
             // Create product warehouse item
             ProductWarehouse::create([

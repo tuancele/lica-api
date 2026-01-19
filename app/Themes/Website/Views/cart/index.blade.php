@@ -72,13 +72,23 @@
                                                             @if($variant['item']->color)<span class="mt-2 me-3">Màu sắc: {{$variant['item']->color->name}}</span>@endif
                                                             @if($variant['item']->size)<span class="mt-2">Kích thước: {{$variant['item']->size->name}}{{$variant['item']->size->unit}}</span>@endif
                                                         </div>
+                                                        @php
+                                                            $variantId = $variant['item']['id'];
+                                                            $priceData = $productsWithPrice[$variantId] ?? null;
+                                                            $totalPriceForUnit = $priceData['total_price'] ?? ($variant['price'] * $variant['qty']);
+                                                            $unitPrice = $variant['qty'] > 0 ? ($totalPriceForUnit / $variant['qty']) : $variant['price'];
+                                                        @endphp
                                                         <div class="show-for-small mobile-product-price">
-                                                            <span class="commerce-Price-amount amount">{{number_format($variant['price'])}}đ</span>
+                                                            <span class="commerce-Price-amount amount item-unit-{{$variantId}}">
+                                                                {{number_format($unitPrice)}}đ
+                                                            </span>
                                                         </div>
                                                     </td>
 
                                                     <td class="product-price" data-title="Giá">
-                                                        <span class="commerce-Price-amount amount">{{number_format($variant['price'])}}đ</span>
+                                                        <span class="commerce-Price-amount amount item-unit-{{$variantId}}">
+                                                            {{number_format($unitPrice)}}đ
+                                                        </span>
                                                     </td>
 
                                                     <td class="product-quantity" data-title="Số lượng">
@@ -125,6 +135,7 @@
                                                     $variantId = $variant['item']['id'];
                                                     $priceData = $productsWithPrice[$variantId] ?? null;
                                                     $hasWarning = $priceData && !empty($priceData['warning']);
+                                                    $hasDealWarning = $priceData && !empty($priceData['deal_warning']);
                                                 @endphp
                                                 @if($hasWarning)
                                                 <tr class="flash-sale-warning-row-{{$variantId}}">
@@ -149,6 +160,21 @@
                                                 @else
                                                 <tr class="flash-sale-warning-row-{{$variantId}}" style="display: none;">
                                                     <td colspan="6" class="flash-sale-warning-container-{{$variantId}}" style="padding: 10px 15px;"></td>
+                                                </tr>
+                                                @endif
+                                                @if($hasDealWarning)
+                                                <tr class="deal-warning-row-{{$variantId}}">
+                                                    <td colspan="6" class="deal-warning-container-{{$variantId}}" style="padding: 10px 15px;">
+                                                        <div class="deal-warning" style="padding: 10px; background-color: #ffeaea; border-left: 3px solid #dc3545; border-radius: 4px; font-size: 12px; color: #b02a37;">
+                                                            <i class="fa fa-times-circle" style="color: #b02a37; margin-right: 5px;"></i>
+                                                            <strong>Quà tặng Deal Sốc đã hết</strong>
+                                                            <div style="margin-top: 4px;">{{$priceData['deal_warning']}}</div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                @else
+                                                <tr class="deal-warning-row-{{$variantId}}" style="display: none;">
+                                                    <td colspan="6" class="deal-warning-container-{{$variantId}}" style="padding: 10px 15px;"></td>
                                                 </tr>
                                                 @endif
                                                 @endif
@@ -215,12 +241,23 @@
                                                         <span class="text-danger fw-bold fs-16">{{number_format($saledeal->price)}}đ</span>
                                                         <del class="fs-12 text-muted ms-2">{{number_format($saledeal->product->variant($saledeal->product->id)->price ?? 0)}}đ</del>
                                                     </div>
+                                                    @if(isset($saledeal->available) && !$saledeal->available)
+                                                        <div class="text-danger fs-12 mt-1">Deal đã hết quà hoặc hết kho</div>
+                                                    @endif
                                                 </div>
                                                 <div class="action_deal">
                                                     <button type="button" class="btn btn-danger btn-sm px-3 br-20 fw-bold addDealCart" 
                                                         data-id="{{$saledeal->product->variant($saledeal->product->id)->id ?? ''}}"
                                                         data-deal-id="{{$deal->id}}"
-                                                        data-limited="{{$deal->limited}}">THÊM NGAY</button>
+                                                        data-limited="{{$deal->limited}}"
+                                                        @if(isset($saledeal->available) && !$saledeal->available) disabled @endif
+                                                    >
+                                                        @if(isset($saledeal->available) && !$saledeal->available)
+                                                            HẾT QUÀ
+                                                        @else
+                                                            THÊM NGAY
+                                                        @endif
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>

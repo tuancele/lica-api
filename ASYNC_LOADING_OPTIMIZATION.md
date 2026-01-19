@@ -503,3 +503,17 @@ img[data-src].loaded {
 2. **用户体验**：显示加载状态，避免空白
 3. **降级方案**：不支持IntersectionObserver的浏览器直接加载
 4. **性能监控**：监控加载时间和错误率
+
+---
+
+## Disable Cache for Data Integrity
+
+Goal: ensure Admin and Public APIs always return real-time pricing, inventory, and Deal availability.
+
+- Bypass server cache in API controllers/services that return pricing/inventory sensitive data.
+- Add response headers for all API responses:
+  - Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0
+  - Pragma: no-cache
+  - Expires: Sat, 26 Jul 1997 05:00:00 GMT
+
+Note: this may reduce performance but prevents stale data (price mismatch, sold-out Deal not locked).

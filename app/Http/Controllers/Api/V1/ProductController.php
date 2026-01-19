@@ -18,7 +18,6 @@ use App\Services\PriceCalculationService;
 use App\Services\Warehouse\WarehouseServiceInterface;
 use App\Enums\ProductType;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
@@ -128,25 +127,23 @@ class ProductController extends Controller
     public function show(string $slug): JsonResponse
     {
         try {
-            // Cache product with all relationships (Eager Loading)
-            $product = Cache::remember("api_v1_product_detail_{$slug}", 1800, function () use ($slug) {
-                return Product::with([
-                    'brand:id,name,slug,image,logo',
-                    'origin:id,name',
-                    'variants' => function($query) {
-                        $query->orderBy('position', 'asc')
-                              ->orderBy('id', 'asc')
-                              ->with(['color:id,name,color', 'size:id,name,unit']);
-                    },
-                    'rates' => function($query) {
-                        $query->where('status', '1')
-                              ->orderBy('created_at', 'desc')
-                              ->limit(5);
-                    }
-                ])
-                ->where([['slug', $slug], ['status', '1'], ['type', ProductType::PRODUCT->value]])
-                ->first();
-            });
+            // Bypass cache for real-time data integrity
+            $product = Product::with([
+                'brand:id,name,slug,image,logo',
+                'origin:id,name',
+                'variants' => function($query) {
+                    $query->orderBy('position', 'asc')
+                          ->orderBy('id', 'asc')
+                          ->with(['color:id,name,color', 'size:id,name,unit']);
+                },
+                'rates' => function($query) {
+                    $query->where('status', '1')
+                          ->orderBy('created_at', 'desc')
+                          ->limit(5);
+                }
+            ])
+            ->where([['slug', $slug], ['status', '1'], ['type', ProductType::PRODUCT->value]])
+            ->first();
             
             if (!$product) {
                 return response()->json([
@@ -231,8 +228,11 @@ class ProductController extends Controller
                     'sku' => $variant->sku,
                     'option1_value' => $variant->option1_value,
                     'image' => $this->formatImageUrl($variant->image ?? null),
-                    'price' => (float) $variant->price,
-                    'sale' => (float) $variant->sale,
+                    // Keep single source of truth: always expose final price from PriceEngine
+                    'price' => (float) ($variantPriceInfo['final_price'] ?? (float) $variant->price),
+                    'final_price' => (float) ($variantPriceInfo['final_price'] ?? (float) $variant->price),
+                    'original_price' => (float) ($variantPriceInfo['original_price'] ?? (float) $variant->price),
+                    'price_type' => (string) ($variantPriceInfo['type'] ?? 'normal'),
                     'stock' => (int) ($variant->stock ?? 0), // Original stock from variants table
                     'warehouse_stock' => $warehouseStock, // Current stock from warehouse (import - export)
                     'weight' => (float) $variant->weight,
@@ -273,6 +273,8 @@ class ProductController extends Controller
             })->toArray();
             
             // Prepare additional data for ProductDetailResource
+            $firstVariantPriceInfo = $firstVariant ? $this->getVariantPriceInfo($firstVariant->id, $product->id) : null;
+
             $additionalData = [
                 'category' => $category ? [
                     'id' => $category->id,
@@ -282,8 +284,12 @@ class ProductController extends Controller
                 'first_variant' => $firstVariant ? [
                     'id' => $firstVariant->id,
                     'sku' => $firstVariant->sku,
-                    'price' => (float) $firstVariant->price,
-                    'sale' => (float) $firstVariant->sale,
+                    // Always expose final price from PriceEngine to prevent JS overwriting with base price
+                    'price' => (float) (($firstVariantPriceInfo['final_price'] ?? null) ?: (float) $firstVariant->price),
+                    'final_price' => (float) (($firstVariantPriceInfo['final_price'] ?? null) ?: (float) $firstVariant->price),
+                    'original_price' => (float) (($firstVariantPriceInfo['original_price'] ?? null) ?: (float) $firstVariant->price),
+                    'price_type' => (string) (($firstVariantPriceInfo['type'] ?? null) ?: 'normal'),
+                    'price_info' => $firstVariantPriceInfo,
                     'stock' => (int) ($firstVariant->stock ?? 0),
                 ] : null,
                 'variants' => $variants->toArray(),
@@ -328,130 +334,52 @@ class ProductController extends Controller
     }
 
     /**
-     * Get variant price info with priority: Flash Sale > Marketing Campaign > Sale > Normal
-     * 
-     * @param int $variantId
-     * @param int $productId
-     * @return array
+     * Get variant price info (Pricing Engine only).
      */
     private function getVariantPriceInfo(int $variantId, int $productId): array
     {
         try {
-            $variant = Variant::find($variantId);
-            if (!$variant) {
+            $priceInfo = app(\App\Services\Pricing\PriceEngineServiceInterface::class)
+                ->calculateDisplayPrice($productId, $variantId);
+
+            $finalPrice = (float) ($priceInfo['price'] ?? 0);
+            $originalPrice = (float) ($priceInfo['original_price'] ?? 0);
+            $type = (string) ($priceInfo['type'] ?? 'normal');
+            $label = (string) ($priceInfo['label'] ?? '');
+            $percent = (int) ($priceInfo['discount_percent'] ?? 0);
+
+            if ($type === 'normal') {
                 return [
-                    'final_price' => 0,
-                    'original_price' => 0,
-                    'type' => 'normal',
-                    'label' => '',
+                    'final_price' => $finalPrice,
+                    'original_price' => $originalPrice,
+                    'type' => $type,
+                    'label' => $label,
                     'discount_percent' => 0,
-                    'html' => '<p>Liên hệ</p>'
+                    'html' => '<p>' . number_format($finalPrice) . 'đ</p>',
                 ];
             }
-            
-            $originalPrice = (float) $variant->price;
-            $finalPrice = $originalPrice;
-            $percent = 0;
-            $type = 'normal';
-            $label = '';
-            
-            // 1. Check Flash Sale
-            $date = strtotime(date('Y-m-d H:i:s'));
-            $flash = FlashSale::where([['status', '1'], ['start', '<=', $date], ['end', '>=', $date]])->first();
-            if ($flash) {
-                $productSale = ProductSale::where([['flashsale_id', $flash->id], ['product_id', $productId]])
-                    ->where(function($q) use ($variantId) {
-                        $q->whereNull('variant_id')
-                          ->orWhere('variant_id', $variantId);
-                    })
-                    ->first();
-                
-                if ($productSale && $productSale->buy < $productSale->number) {
-                    $finalPrice = (float) $productSale->price_sale;
-                    $percent = $originalPrice > 0 
-                        ? round(($originalPrice - $finalPrice) / ($originalPrice / 100)) 
-                        : 0;
-                    $type = 'flashsale';
-                    $label = 'Flash Sale';
-                    
-                    return [
-                        'final_price' => $finalPrice,
-                        'original_price' => $originalPrice,
-                        'type' => $type,
-                        'label' => $label,
-                        'discount_percent' => $percent,
-                        'html' => '<p>' . number_format($finalPrice) . 'đ</p><del>' . number_format($originalPrice) . 'đ</del><div class="tag"><span>-' . $percent . '%</span></div>'
-                    ];
-                }
-            }
-            
-            // 2. Check Marketing Campaign
-            $nowDate = \Carbon\Carbon::now();
-            $campaignProduct = \App\Modules\Marketing\Models\MarketingCampaignProduct::where('product_id', $productId)
-                ->whereHas('campaign', function ($q) use ($nowDate) {
-                    $q->where('status', 1)
-                      ->where('start_at', '<=', $nowDate)
-                      ->where('end_at', '>=', $nowDate);
-                })->first();
-            
-            if ($campaignProduct) {
-                $finalPrice = (float) $campaignProduct->price;
-                $percent = $originalPrice > 0 
-                    ? round(($originalPrice - $finalPrice) / ($originalPrice / 100)) 
-                    : 0;
-                $type = 'campaign';
-                $label = 'Khuyến mại';
-                
-                return [
-                    'final_price' => $finalPrice,
-                    'original_price' => $originalPrice,
-                    'type' => $type,
-                    'label' => $label,
-                    'discount_percent' => $percent,
-                    'html' => '<p>' . number_format($finalPrice) . 'đ</p><del>' . number_format($originalPrice) . 'đ</del><div class="tag"><span>-' . $percent . '%</span></div>'
-                ];
-            }
-            
-            // 3. Use sale price
-            if ($variant->sale > 0 && $variant->sale < $originalPrice) {
-                $finalPrice = (float) $variant->sale;
-                $percent = round(($originalPrice - $finalPrice) / ($originalPrice / 100));
-                $type = 'sale';
-                $label = 'Giảm giá';
-                
-                return [
-                    'final_price' => $finalPrice,
-                    'original_price' => $originalPrice,
-                    'type' => $type,
-                    'label' => $label,
-                    'discount_percent' => $percent,
-                    'html' => '<p>' . number_format($finalPrice) . 'đ</p><del>' . number_format($originalPrice) . 'đ</del><div class="tag"><span>-' . $percent . '%</span></div>'
-                ];
-            }
-            
-            // 4. Return original price
+
             return [
-                'final_price' => $originalPrice,
+                'final_price' => $finalPrice,
                 'original_price' => $originalPrice,
                 'type' => $type,
                 'label' => $label,
-                'discount_percent' => 0,
-                'html' => '<p>' . number_format($originalPrice) . 'đ</p>'
+                'discount_percent' => $percent,
+                'html' => '<p>' . number_format($finalPrice) . 'đ</p><del>' . number_format($originalPrice) . 'đ</del><div class="tag"><span>-' . number_format($percent) . '%</span></div>',
             ];
-            
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Get variant price info failed: ' . $e->getMessage(), [
                 'variant_id' => $variantId,
-                'product_id' => $productId
+                'product_id' => $productId,
             ]);
-            
+
             return [
                 'final_price' => 0,
                 'original_price' => 0,
                 'type' => 'normal',
                 'label' => '',
                 'discount_percent' => 0,
-                'html' => '<p>Liên hệ</p>'
+                'html' => '<p>Liên hệ</p>',
             ];
         }
     }
@@ -534,7 +462,7 @@ class ProductController extends Controller
                     return null;
                 }
                 
-                // Get first variant (sorted by position, then id) - same logic as Product::variant() but with proper ordering
+                // Get first variant (sorted by position, then id)
                 $dealVariant = Variant::where('product_id', $saleDeal->product_id)
                     ->orderBy('position', 'asc')
                     ->orderBy('id', 'asc')
@@ -543,6 +471,23 @@ class ProductController extends Controller
                 if (!$dealVariant) {
                     return null;
                 }
+
+                // Tính quỹ còn lại và tồn kho vật lý
+                $remaining = max(0, ((int)$saleDeal->qty) - ((int)($saleDeal->buy ?? 0)));
+                $stock = 0;
+                try {
+                    $stockData = $this->warehouseService->getVariantStock($dealVariant->id);
+                    $stock = (int)($stockData['current_stock'] ?? 0);
+                } catch (\Exception $e) {
+                    Log::warning('Get warehouse stock for deal sale failed', [
+                        'sale_deal_id' => $saleDeal->id,
+                        'variant_id' => $dealVariant->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $stock = (int)($dealVariant->stock ?? 0);
+                }
+
+                $available = $remaining > 0 && $stock > 0;
                 
                 return [
                     'id' => $saleDeal->id,
@@ -551,7 +496,10 @@ class ProductController extends Controller
                     'product_image' => $this->formatImageUrl($dealProduct->image ?? null),
                     'variant_id' => $dealVariant->id,
                     'price' => (float) $saleDeal->price,
-                    'original_price' => (float) $dealVariant->price, // Use variant price (original), not sale price
+                    'original_price' => (float) $dealVariant->price,
+                    'remaining_quota' => $remaining,
+                    'physical_stock' => $stock,
+                    'available' => $available,
                 ];
             })->filter()->values()->toArray(); // Remove null values and reindex array
             
@@ -591,12 +539,12 @@ class ProductController extends Controller
             $relatedProductsData = Product::with(['brand:id,name,slug'])
                 ->join('variants', 'variants.product_id', '=', 'posts.id')
                 ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
-                         'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id',
+                         'variants.price as price', 'variants.size_id as size_id',
                          'variants.color_id as color_id', 'posts.best', 'posts.is_new')
                 ->where([['posts.status', '1'], ['posts.type', ProductType::PRODUCT->value], ['posts.id', '!=', $excludeProductId]])
                 ->where('posts.cat_id', 'like', '%"' . $catId . '"%')
                 ->groupBy('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
-                          'variants.price', 'variants.sale', 'variants.size_id', 'variants.color_id', 
+                          'variants.price', 'variants.size_id', 'variants.color_id', 
                           'posts.best', 'posts.is_new')
                 ->limit(9)
                 ->orderBy('posts.created_at', 'desc')

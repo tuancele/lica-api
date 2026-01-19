@@ -842,13 +842,16 @@
                     </div>
                     <div class="buy-x-get-y-body">
                         @foreach($saledeals as $saledeal)
-                        @php $product_deal = $saledeal->product; @endphp
-                        <div class="item_deal_row">
+                        @php 
+                            $product_deal = $saledeal->product; 
+                            $isAvailableDeal = $saledeal->available ?? true;
+                        @endphp
+                        <div class="item_deal_row @if(!$isAvailableDeal) text-muted @endif">
                             <div class="item_deal_action me-3">
                                 @if($deal->limited == 1)
-                                    <input type="radio" name="deal_item" class="deal-checkbox-custom" id="deal_{{$saledeal->id}}" value="{{$product_deal->variant($product_deal->id)->id ?? ''}}">
+                                    <input type="radio" name="deal_item" class="deal-checkbox-custom" id="deal_{{$saledeal->id}}" value="{{$product_deal->variant($product_deal->id)->id ?? ''}}" @if(!$isAvailableDeal) disabled @endif>
                                 @else
-                                    <input type="checkbox" name="deal_item[]" class="deal-checkbox-custom" id="deal_{{$saledeal->id}}" value="{{$product_deal->variant($product_deal->id)->id ?? ''}}">
+                                    <input type="checkbox" name="deal_item[]" class="deal-checkbox-custom" id="deal_{{$saledeal->id}}" value="{{$product_deal->variant($product_deal->id)->id ?? ''}}" @if(!$isAvailableDeal) disabled @endif>
                                 @endif
                                 <label for="deal_{{$saledeal->id}}" class="deal-checkmark"></label>
                             </div>
@@ -864,6 +867,9 @@
                                         <span class="curr-price">{{number_format($saledeal->price)}}đ</span>
                                         <del class="old-price">{{number_format($product_deal->variant($product_deal->id)->price ?? 0)}}đ</del>
                                     </div>
+                                    @if(!$isAvailableDeal)
+                                        <div class="text-danger fs-12 mt-1">Deal đã hết quà hoặc hết kho</div>
+                                    @endif
                                 </div>
                             </div>
                         </div>
@@ -1883,6 +1889,7 @@
             // 使用预计算的HTML价格（包含闪购/促销/原价的完整显示）
             $('#variant-price-display').html(priceHtml);
             $('#variant-price-fix').html(priceHtml);
+            console.log('Price Sync:', price);
 
             // Update main slider first image (best-effort)
             if(img){
@@ -2915,14 +2922,14 @@
                     priceHtml = `<div class="price-detail"><div class="price" id="variant-price-display">${firstVariant.price_info.html}</div></div>`;
                 }
             } else {
-                // Simple product - use first variant price
+                // Simple product - ALWAYS use PriceEngine price_info from API if present
                 if (product.first_variant) {
-                    const price = product.first_variant.price;
-                    const sale = product.first_variant.sale;
-                    if (sale > 0 && sale < price) {
-                        const percent = Math.round(((price - sale) / price) * 100);
-                        priceHtml = `<div class="price-detail"><div class="price"><p>${formatPrice(sale)}đ</p><del>${formatPrice(price)}đ</del><div class="tag"><span>-${percent}%</span></div></div></div>`;
+                    if (product.first_variant.price_info && product.first_variant.price_info.html) {
+                        console.log('Price Sync:', product.first_variant.price_info.final_price);
+                        priceHtml = `<div class="price-detail"><div class="price" id="variant-price-display">${product.first_variant.price_info.html}</div></div>`;
                     } else {
+                        const price = product.first_variant.price;
+                        console.log('Price Sync:', price);
                         priceHtml = `<div class="price-detail"><div class="price"><p>${formatPrice(price)}đ</p></div></div>`;
                     }
                 }
@@ -3044,11 +3051,11 @@
                         </div>
                         <div class="buy-x-get-y-body">
                             ${product.deal.sale_deals.map(sd => `
-                                <div class="item_deal_row">
+                                <div class="item_deal_row ${sd.available === false ? 'text-muted' : ''}">
                                     <div class="item_deal_action me-3">
                                         ${product.deal.limited === 1 
-                                            ? `<input type="radio" name="deal_item" class="deal-checkbox-custom" id="deal_${sd.id}" value="${sd.variant_id || ''}">`
-                                            : `<input type="checkbox" name="deal_item[]" class="deal-checkbox-custom" id="deal_${sd.id}" value="${sd.variant_id || ''}">`
+                                            ? `<input type="radio" name="deal_item" class="deal-checkbox-custom" id="deal_${sd.id}" value="${sd.variant_id || ''}" ${sd.available === false ? 'disabled' : ''}>`
+                                            : `<input type="checkbox" name="deal_item[]" class="deal-checkbox-custom" id="deal_${sd.id}" value="${sd.variant_id || ''}" ${sd.available === false ? 'disabled' : ''}>`
                                         }
                                         <label for="deal_${sd.id}" class="deal-checkmark"></label>
                                     </div>
@@ -3064,6 +3071,7 @@
                                                 <span class="curr-price">${formatPrice(sd.price)}đ</span>
                                                 <del class="old-price">${formatPrice(sd.original_price)}đ</del>
                                             </div>
+                                            ${sd.available === false ? '<div class="text-danger fs-12 mt-1">Deal đã hết quà hoặc hết kho</div>' : ''}
                                         </div>
                                     </div>
                                 </div>
@@ -3476,6 +3484,7 @@
             const dealRows = document.querySelectorAll('.item_deal_row');
             const dealCheckboxes = document.querySelectorAll('.deal-checkbox-custom');
             const buyDealButton = document.querySelector('.btnBuyDealSốc');
+            let toastShown = false;
             
             if (dealRows.length === 0) {
                 console.warn('[API] No deal rows found');
@@ -3501,6 +3510,17 @@
             // Handle checkbox/radio change
             dealCheckboxes.forEach(checkbox => {
                 checkbox.addEventListener('change', function() {
+                    // Nếu backend trả available=false nhưng checkbox vẫn đang được check (do cache hoặc click trước đó), uncheck + toast
+                    if (this.disabled && this.checked) {
+                        this.checked = false;
+                        if (!toastShown) {
+                            showDealToast('Rất tiếc, quà tặng này vừa hết suất ưu đãi!');
+                            toastShown = true;
+                        }
+                        updateBuyDealButton();
+                        return;
+                    }
+
                     const checkedCount = document.querySelectorAll('.deal-checkbox-custom:checked').length;
                     const limited = deal.limited || 1;
                     
@@ -3525,14 +3545,31 @@
                 });
             });
             
+            // Ngay khi khởi tạo, uncheck các input đã bị disable (hết quà) và thông báo 1 lần nếu cần
+            dealCheckboxes.forEach(cb => {
+                if (cb.disabled && cb.checked) {
+                    cb.checked = false;
+                    if (!toastShown) {
+                        showDealToast('Rất tiếc, quà tặng này vừa hết suất ưu đãi!');
+                        toastShown = true;
+                    }
+                }
+            });
+            
             // Update button state function
             function updateBuyDealButton() {
                 const checkedCount = document.querySelectorAll('.deal-checkbox-custom:checked').length;
+                const hasAvailableDeal = Array.from(document.querySelectorAll('.deal-checkbox-custom')).some(cb => !cb.disabled && (parseInt(cb.closest('.item_deal_row')?.dataset.remainingQuota || '1', 10) > 0));
                 if (buyDealButton) {
-                    if (checkedCount === 0) {
+                    if (!hasAvailableDeal) {
                         buyDealButton.disabled = true;
+                        buyDealButton.textContent = 'HẾT QUÀ';
+                    } else if (checkedCount === 0) {
+                        buyDealButton.disabled = true;
+                        buyDealButton.textContent = 'MUA DEAL SỐC';
                     } else {
                         buyDealButton.disabled = false;
+                        buyDealButton.textContent = 'MUA DEAL SỐC';
                     }
                 }
             }
@@ -3541,6 +3578,31 @@
             updateBuyDealButton();
             
             console.log('[API] Deal controls initialized');
+        }
+
+        function showDealToast(message) {
+            try {
+                const toast = document.createElement('div');
+                toast.textContent = message;
+                toast.style.position = 'fixed';
+                toast.style.bottom = '20px';
+                toast.style.right = '20px';
+                toast.style.background = 'rgba(0,0,0,0.8)';
+                toast.style.color = '#fff';
+                toast.style.padding = '10px 14px';
+                toast.style.borderRadius = '6px';
+                toast.style.zIndex = '9999';
+                toast.style.fontSize = '14px';
+                document.body.appendChild(toast);
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.transition = 'opacity 0.4s';
+                    setTimeout(() => toast.remove(), 400);
+                }, 2000);
+            } catch (e) {
+                console.warn('Toast display failed, fallback to alert', e);
+                alert(message);
+            }
         }
     })();
 </script>

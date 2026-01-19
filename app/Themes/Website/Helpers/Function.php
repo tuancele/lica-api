@@ -60,14 +60,9 @@ if (! function_exists('formatPrice')) {
 
 if (! function_exists('getPrice')) {
 	function getPrice($id){
-		$variant = App\Modules\Product\Models\Variant::select('price','sale')->where('product_id',$id)->first();
+		$variant = App\Modules\Product\Models\Variant::select('price')->where('product_id',$id)->first();
 		if(isset($variant) && !empty($variant)){
-			if($variant->sale != 0){
-				$percent = round(($variant->price - $variant->sale)/($variant->price/100));
-				return '<p>'.number_format($variant->sale).'đ</p><del>'.number_format($variant->price).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>';
-			}else{
-				return '<p>'.number_format($variant->price).'đ</p>';
-			}
+			return '<p>'.number_format($variant->price).'đ</p>';
 		}else{
 			return '<p>Liên hệ</p>';
 		}
@@ -76,12 +71,7 @@ if (! function_exists('getPrice')) {
 
 if (! function_exists('getPrice2')) {
 	function getPrice2($price,$sale){
-		if($sale != 0){
-			$percent = round(($price - $sale)/($price/100));
-			return '<p>'.number_format($sale).'đ</p><del>'.number_format($price).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>';
-		}else{
-			return '<p>'.number_format($price).'đ</p>';
-		}
+		return '<p>'.number_format($price).'đ</p>';
 	}
 }
 
@@ -93,7 +83,7 @@ if (! function_exists('getVariantFinalPrice')) {
 	 * @return array ['final_price' => 最终价格, 'original_price' => 原价, 'html' => HTML格式]
 	 */
 	function getVariantFinalPrice($variantId, $productId = null) {
-		$variant = App\Modules\Product\Models\Variant::select('id', 'product_id', 'price', 'sale')->where('id', $variantId)->first();
+		$variant = App\Modules\Product\Models\Variant::select('id', 'product_id', 'price')->where('id', $variantId)->first();
 		if(!$variant) {
 			return ['final_price' => 0, 'original_price' => 0, 'html' => '<p>Liên hệ</p>'];
 		}
@@ -141,18 +131,7 @@ if (! function_exists('getVariantFinalPrice')) {
 			];
 		}
 
-		// 3. 使用原价或sale价格
-		if($variant->sale != 0 && $variant->sale < $originalPrice){
-			$finalPrice = $variant->sale;
-			$percent = round(($originalPrice - $finalPrice)/($originalPrice/100));
-			return [
-				'final_price' => $finalPrice,
-				'original_price' => $originalPrice,
-				'html' => '<p>'.number_format($finalPrice).'đ</p><del>'.number_format($originalPrice).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>'
-			];
-		}
-
-		// 4. 返回原价
+		// 3. 返回原价
 		return [
 			'final_price' => $originalPrice,
 			'original_price' => $originalPrice,
@@ -166,7 +145,7 @@ if (! function_exists('checkSale')) {
         // 1. Check Flash Sale
 		$date = strtotime(date('Y-m-d H:i:s'));
 		$flash = App\Modules\FlashSale\Models\FlashSale::where([['status','1'],['start','<=',$date],['end','>=',$date]])->first();
-		$variant = App\Modules\Product\Models\Variant::select('price','sale')->where('product_id',$id)->first();
+		$variant = App\Modules\Product\Models\Variant::select('price')->where('product_id',$id)->first();
         if(!$variant) return '<p>Liên hệ</p>';
 
 		if(isset($flash) && !empty($flash)){
@@ -193,8 +172,8 @@ if (! function_exists('checkSale')) {
             return '<p>'.number_format($campaignProduct->price).'đ</p><del>'.number_format($variant->price).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>';
         }
 
-        // 3. Fallback to Original/Old Sale
-		return getPrice($id);
+        // 3. Fallback to original price
+		return '<p>'.number_format($variant->price).'đ</p>';
 	}
 } 
 
@@ -245,11 +224,7 @@ if (! function_exists('checkFlash')) {
 
 if (! function_exists('getSale')) {
 	function getSale($price,$sale){
-		if($sale > 0 && $price > $sale){
-			return 	'<div class="sale">-' .round(($price - $sale)/($price / 100)).'%</div>';
-		}else{
-			return '';
-		}
+		return '';
 	}
 }
 

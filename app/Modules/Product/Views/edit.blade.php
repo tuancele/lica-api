@@ -241,12 +241,6 @@
                         </div>
                         <div class="col-md-4">
                             <div class="form-item">
-                                <label class="form-label">Giá khuyến mại</label>
-                                <input type="text" name="sale" class="shopee-input price" value="{{number_format($defaultVariant->sale ?? 0,0,'',',')}}">
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-item">
                                 <label class="form-label required">Kho hàng <small class="text-muted">(Tự động từ hệ thống kho)</small></label>
                                 <input type="number" name="stock_qty" id="single_stock_qty" class="shopee-input" value="{{ (int)($defaultVariant->stock ?? 0) }}" min="0" readonly style="background-color: #f5f5f5; cursor: not-allowed;">
                                 <input type="hidden" name="stock" value="1">

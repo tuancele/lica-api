@@ -41,6 +41,7 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\EncryptCookies::class, // Thêm để đọc cookie session
             \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
             \Illuminate\Session\Middleware\StartSession::class, // QUAN TRỌNG: Kích hoạt session
+            \App\Http\Middleware\NoCacheApiResponse::class,
             'throttle:60,1',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
@@ -65,6 +66,7 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'admin' => \App\Http\Middleware\AdminMiddleware::class,
         'member' => \App\Http\Middleware\MemberLogin::class,
+        'no_cache_api' => \App\Http\Middleware\NoCacheApiResponse::class,
     ];
 
     /**

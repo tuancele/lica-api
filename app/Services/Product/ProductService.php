@@ -101,7 +101,6 @@ class ProductService implements ProductServiceInterface
                     'sku' => $data['sku'] ?? 'SKU-' . time() . '-' . rand(10, 99),
                     'image' => $image,
                     'price' => $this->parsePrice($data['price'] ?? 0),
-                    'sale' => $this->parsePrice($data['sale'] ?? 0),
                     'weight' => $data['weight'] ?? 0,
                     'stock' => (int)($data['stock_qty'] ?? 0),
                 ]);
@@ -256,7 +255,6 @@ class ProductService implements ProductServiceInterface
                 $this->syncSingleVariant($id, [
                     'sku' => $data['sku'] ?? null,
                     'price' => $this->parsePrice($data['price'] ?? 0),
-                    'sale' => $this->parsePrice($data['sale'] ?? 0),
                     'weight' => $data['weight'] ?? 0,
                     'stock' => (int)($data['stock_qty'] ?? 0),
                     'image' => $image,
@@ -419,7 +417,6 @@ class ProductService implements ProductServiceInterface
             'color_id' => 0,
             'weight' => $data['weight'] ?? 0,
             'price' => $data['price'],
-            'sale' => $data['sale'],
             'stock' => $stock,
             'position' => 0,
             'user_id' => auth()->id(),
@@ -512,7 +509,6 @@ class ProductService implements ProductServiceInterface
                 'image' => $image,
                 'weight' => 0,
                 'price' => $this->parsePrice($v['price'] ?? 0),
-                'sale' => 0,
                 'stock' => (int)($v['stock'] ?? 0),
                 'position' => (int)($v['position'] ?? $pos),
                 'user_id' => auth()->id(),
@@ -572,7 +568,6 @@ class ProductService implements ProductServiceInterface
                 'sku' => $data['sku'] ?? ('SKU-' . time() . '-' . rand(10, 99)),
                 'image' => $data['image'] ?? null,
                 'price' => $data['price'] ?? 0,
-                'sale' => $data['sale'] ?? 0,
                 'weight' => $data['weight'] ?? 0,
                 'stock' => $data['stock'] ?? 0,
             ]);
@@ -602,7 +597,6 @@ class ProductService implements ProductServiceInterface
             'option1_value' => null,
             'image' => $data['image'] ?? $variant->image,
             'price' => $data['price'] ?? $variant->price,
-            'sale' => $data['sale'] ?? $variant->sale,
             'weight' => $data['weight'] ?? $variant->weight,
             'stock' => (int)($data['stock'] ?? ($variant->stock ?? 0)),
             'position' => 0,

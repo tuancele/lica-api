@@ -57,6 +57,24 @@
                             </div>
                         </div>
                         <div class="load-product"></div>
+                        <div class="updateSale">
+                            <table class="table table-bordered table-striped box-body">
+                                <thead>
+                                    <tr>
+                                        <th width="5%" style="text-align: center;"><input type="checkbox" id="checkall2" class="wgr-checkbox"></th>
+                                        <th width="40%">Sản phẩm</th>
+                                        <th width="10%">Giá gốc</th>
+                                        <th width="10%">Giá khuyến mại</th>
+                                        <th width="10%">Số lượng</th>
+                                        <th width="10%">Trạng thái</th>
+                                        <th width="10%">Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- rows được append từ marketing-product-search.js -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
                 <div class="panel panel-default">
@@ -70,6 +88,24 @@
                             </div>
                         </div>
                         <div class="load-product2"></div>
+                        <div class="updateSale2">
+                            <table class="table table-bordered table-striped box-body">
+                                <thead>
+                                    <tr>
+                                        <th width="5%" style="text-align: center;"><input type="checkbox" id="checkall3" class="wgr-checkbox"></th>
+                                        <th width="40%">Sản phẩm</th>
+                                        <th width="10%">Giá gốc</th>
+                                        <th width="10%">Giá khuyến mại</th>
+                                        <th width="10%">Số lượng</th>
+                                        <th width="10%">Trạng thái</th>
+                                        <th width="10%">Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- rows được append từ marketing-product-search.js -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>

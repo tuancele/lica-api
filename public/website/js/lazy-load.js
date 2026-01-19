@@ -59,29 +59,77 @@
             return;
         }
         
-        // 隐藏占位符
-        if (placeholder) {
-            placeholder.style.display = 'none';
-        }
+        // 使用 jQuery 时，采用 fadeOut/fadeIn 实现平滑过渡
+        const hasJquery = typeof window.jQuery !== 'undefined';
         
-        // 显示隐藏的内容
-        hiddenContent.style.display = '';
-        
-        // 使用 requestAnimationFrame 优化初始化时机
-        requestAnimationFrame(function() {
-            requestAnimationFrame(function() {
-                initCarousels(element);
-                
-                // 初始化新显示内容的 skeleton 优化器
-                if (window.initSmartSkeleton) {
-                    // 查找新显示内容中的所有 skeleton 元素
-                    const newSkeletons = element.querySelectorAll('.js-skeleton:not([data-skeleton-processed])');
-                    if (newSkeletons.length > 0) {
-                        window.initSmartSkeleton();
-                    }
-                }
+        if (hasJquery) {
+            const $ = window.jQuery;
+            const $placeholder = placeholder ? $(placeholder) : null;
+            const $hidden = $(hiddenContent);
+
+            // 先确保内容块处于可淡入状态
+            $hidden.css({
+                display: '',
+                opacity: 0
             });
-        });
+
+            // 占位符淡出，内容淡入
+            if ($placeholder && $placeholder.length) {
+                $placeholder.stop(true, true).fadeOut(150, function() {
+                    // 使用 requestAnimationFrame 确保 DOM 更新后再初始化插件
+                    requestAnimationFrame(function() {
+                        requestAnimationFrame(function() {
+                            initCarousels(element);
+                            
+                            if (window.initSmartSkeleton) {
+                                const newSkeletons = element.querySelectorAll('.js-skeleton:not([data-skeleton-processed])');
+                                if (newSkeletons.length > 0) {
+                                    window.initSmartSkeleton();
+                                }
+                            }
+                            
+                            $hidden.stop(true, true).fadeTo(150, 1);
+                        });
+                    });
+                });
+            } else {
+                // 没有占位符时，直接淡入内容
+                requestAnimationFrame(function() {
+                    requestAnimationFrame(function() {
+                        initCarousels(element);
+                        
+                        if (window.initSmartSkeleton) {
+                            const newSkeletons = element.querySelectorAll('.js-skeleton:not([data-skeleton-processed])');
+                            if (newSkeletons.length > 0) {
+                                window.initSmartSkeleton();
+                            }
+                        }
+                        
+                        $hidden.stop(true, true).fadeTo(150, 1);
+                    });
+                });
+            }
+        } else {
+            // 无 jQuery 时：保持原来的无动画行为，保证稳定
+            if (placeholder) {
+                placeholder.style.display = 'none';
+            }
+            
+            hiddenContent.style.display = '';
+            
+            requestAnimationFrame(function() {
+                requestAnimationFrame(function() {
+                    initCarousels(element);
+                    
+                    if (window.initSmartSkeleton) {
+                        const newSkeletons = element.querySelectorAll('.js-skeleton:not([data-skeleton-processed])');
+                        if (newSkeletons.length > 0) {
+                            window.initSmartSkeleton();
+                        }
+                    }
+                });
+            });
+        }
     }
 
     /**

@@ -337,7 +337,7 @@ class RecommendationService
 
         $query = Product::with(['brand', 'rates'])
             ->join('variants', 'variants.product_id', '=', 'posts.id')
-            ->select('posts.*', 'variants.price', 'variants.sale')
+            ->select('posts.*', 'variants.price')
             ->where('posts.status', '1')
             ->where('posts.type', 'product')
             ->whereNotIn('posts.id', $recentProducts)
@@ -368,7 +368,7 @@ class RecommendationService
     {
         return Product::with(['brand', 'rates'])
             ->join('variants', 'variants.product_id', '=', 'posts.id')
-            ->select('posts.*', 'variants.price', 'variants.sale')
+            ->select('posts.*', 'variants.price')
             ->where('posts.status', '1')
             ->where('posts.type', 'product')
             ->whereNotIn('posts.id', $excludeProductIds)
@@ -386,7 +386,7 @@ class RecommendationService
     {
         return Product::with(['brand', 'rates'])
             ->join('variants', 'variants.product_id', '=', 'posts.id')
-            ->select('posts.*', 'variants.price', 'variants.sale')
+            ->select('posts.*', 'variants.price')
             ->where('posts.status', '1')
             ->where('posts.type', 'product')
             ->whereNotIn('posts.id', $excludeProductIds)
@@ -403,7 +403,7 @@ class RecommendationService
     {
         return Product::with(['brand', 'rates'])
             ->join('variants', 'variants.product_id', '=', 'posts.id')
-            ->select('posts.*', 'variants.price', 'variants.sale')
+            ->select('posts.*', 'variants.price')
             ->whereIn('posts.id', $productIds)
             ->where('posts.status', '1')
             ->where('posts.type', 'product')

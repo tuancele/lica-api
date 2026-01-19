@@ -7,7 +7,6 @@ use App\Http\Resources\Product\CategoryResource;
 use App\Modules\Product\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class CategoryController extends Controller
@@ -24,12 +23,11 @@ class CategoryController extends Controller
     public function getFeaturedCategories(Request $request): JsonResponse
     {
         try {
-            $categories = Cache::remember('api_featured_categories_v1', 3600, function () {
-                return Product::select('id', 'name', 'slug', 'image')
-                    ->where([['status', '1'], ['type', 'taxonomy'], ['feature', '1']])
-                    ->orderBy('sort', 'asc')
-                    ->get();
-            });
+            // Bypass cache for real-time data integrity
+            $categories = Product::select('id', 'name', 'slug', 'image')
+                ->where([['status', '1'], ['type', 'taxonomy'], ['feature', '1']])
+                ->orderBy('sort', 'asc')
+                ->get();
 
             // 使用 Resource 类格式化响应，保持一致性
             $formattedCategories = CategoryResource::collection($categories);

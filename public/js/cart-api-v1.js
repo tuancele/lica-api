@@ -342,8 +342,10 @@
 
             const summary = cartData.data.summary || {};
             
-            // Update total price
-            if (summary.subtotal !== undefined) {
+            // Update total price: luôn tin vào số từ Backend (Single Source of Truth)
+            if (summary.total !== undefined) {
+                $('.total-price').text(this.formatCurrency(summary.total));
+            } else if (summary.subtotal !== undefined) {
                 $('.total-price').text(this.formatCurrency(summary.subtotal));
             }
 
@@ -352,12 +354,29 @@
                 $('.count-cart').text(summary.total_qty);
             }
 
-            // Update item subtotals
+            // Update item prices & subtotals
             if (cartData.data.items) {
                 cartData.data.items.forEach(function(item) {
+                    // Subtotal
                     $('.item-total-' + item.variant_id).text(
                         CartAPI.formatCurrency(item.subtotal)
                     );
+
+                    // Unit price (đơn giá sau khuyến mãi)
+                    if (item.price !== undefined) {
+                        $('.item-unit-' + item.variant_id).text(
+                            CartAPI.formatCurrency(item.price)
+                        );
+                    }
+
+                    // Optional: original price gạch bỏ nếu có giảm giá
+                    if (item.original_price !== undefined && item.original_price > item.price) {
+                        $('.item-original-' + item.variant_id)
+                            .text(CartAPI.formatCurrency(item.original_price))
+                            .show();
+                    } else {
+                        $('.item-original-' + item.variant_id).hide();
+                    }
                 });
             }
         }

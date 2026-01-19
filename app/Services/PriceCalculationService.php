@@ -16,8 +16,7 @@ use Carbon\Carbon;
  * Centralized service for calculating product prices with priority:
  * 1. Flash Sale (highest priority)
  * 2. Marketing Campaign
- * 3. Variant Sale Price
- * 4. Normal Price
+ * 3. Normal Price
  */
 class PriceCalculationService
 {
@@ -149,20 +148,7 @@ class PriceCalculationService
             ];
         }
 
-        // 3. Check Variant Sale Price
-        $salePrice = $variant ? $variant->sale : 0;
-        if ($salePrice > 0 && $salePrice < $originalPrice) {
-            return (object) [
-                'price' => $salePrice,
-                'original_price' => $originalPrice,
-                'type' => 'sale',
-                'label' => 'Giảm giá',
-                'discount_percent' => round(($originalPrice - $salePrice) / ($originalPrice / 100)),
-                'variant_id' => $variant->id ?? null,
-            ];
-        }
-
-        // 4. Normal Price
+        // 3. Normal Price
         return (object) [
             'price' => $originalPrice,
             'original_price' => $originalPrice,

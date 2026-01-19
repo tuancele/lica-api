@@ -12,7 +12,8 @@ Hệ thống tính giá theo thứ tự ưu tiên sau:
 
 1. **Priority 1: Flash Sale** (nếu trong khung giờ và còn stock)
 2. **Priority 2: Promotion/Marketing Campaign** (nếu trong khung giờ)
-3. **Priority 3: Base Price** (giá gốc từ variant hoặc product)
+3. **Priority 3: Deal Sốc** (áp dụng cho sản phẩm mua kèm trong Deal, nếu rẻ hơn giá gốc và không có Flash Sale / Promo)
+4. **Priority 4: Base Price** (giá gốc từ variant hoặc product)
 
 ### 1.2. Cơ chế tính giá hỗn hợp (Mixed Pricing)
 

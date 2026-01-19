@@ -411,6 +411,11 @@
             // 如果容器有 recommendations-grid-3x6 或 recommendations-grid-6x6 类，使用与首页相同的结构
             if (isHomePage || isGrid3x6 || isGrid6x6) {
                 const html = products.map(product => {
+                    const isAvailable = (typeof product.is_available !== 'undefined')
+                        ? !!product.is_available
+                        : (typeof product.available !== 'undefined'
+                            ? !!product.available
+                            : (product.stock === undefined ? true : product.stock > 0));
                     const hasDiscount = product.original_price > product.price;
                     const discountPercent = hasDiscount ? Math.round((1 - product.price / product.original_price) * 100) : 0;
                     
@@ -424,7 +429,7 @@
                     const formattedSold = new Intl.NumberFormat('vi-VN').format(totalSold);
                     
                     return `
-                        <div class="item-product text-center" data-product-id="${product.id}">
+                        <div class="item-product text-center ${!isAvailable ? 'product-unavailable' : ''}" data-product-id="${product.id}">
                             <div class="card-cover">
                                 <a href="${product.url}">
                                     <div class="skeleton--img-md js-skeleton">
@@ -441,7 +446,7 @@
                                 ${hasDiscount && discountPercent > 0 ? `
                                 <div class="tag tag-discount"><span>-${discountPercent}%</span></div>
                                 ` : ''}
-                                ${product.stock === 0 ? `
+                                ${!isAvailable ? `
                                 <div class="out-stock">Hết hàng</div>
                                 ` : ''}
                                 ${product.price_label ? `
@@ -484,106 +489,56 @@
                 }).join('');
 
                 if (append) {
+                    // 附加模式：保持 container 不变，只追加内容
                     container.insertAdjacentHTML('beforeend', html);
-                    // 在追加模式下，确保新添加的产品也应用网格布局样式
-                    const newItems = container.querySelectorAll('.item-product');
-                    if (newItems.length > 0) {
-                        newItems.forEach(item => {
-                            item.style.minWidth = 'auto';
-                            item.style.width = '100%';
-                            item.style.maxWidth = '100%';
-                            item.style.marginRight = '0';
-                            item.style.marginBottom = '0';
-                        });
-                    }
-                    // 初始化新添加产品的 skeleton 优化器
-                    if (window.initSmartSkeleton) {
-                        setTimeout(function() {
-                            window.initSmartSkeleton();
-                        }, 100);
-                    }
-                    
-                    // 确保图片加载后初始化 skeleton
-                    container.querySelectorAll('.js-skeleton-img').forEach(function(img) {
-                        const imgSrc = img.getAttribute('src');
-                        
-                        if (!imgSrc || imgSrc === '') {
-                            // 如果没有图片源，隐藏 skeleton 容器
-                            const skeletonContainer = img.closest('.js-skeleton');
-                            if (skeletonContainer) {
-                                skeletonContainer.style.display = 'none';
-                            }
-                            return;
-                        }
-                        
-                        if (img.complete && img.naturalWidth > 0) {
-                            // 图片已加载
-                            if (window.initSmartSkeleton) {
-                                window.initSmartSkeleton();
-                            }
-                        } else {
-                            // 等待图片加载
-                            img.addEventListener('load', function() {
-                                if (window.initSmartSkeleton) {
-                                    window.initSmartSkeleton();
-                                }
-                            }, { once: true });
-                            
-                            // 图片加载失败时也初始化 skeleton（使用默认尺寸）
-                            img.addEventListener('error', function() {
-                                if (window.initSmartSkeleton) {
-                                    window.initSmartSkeleton();
-                                }
-                            }, { once: true });
-                        }
-                    });
                 } else {
-                    container.innerHTML = html;
-                    this.initCarousel(container);
-                    // 设置加载更多按钮事件
-                    this.setupLoadMoreButton(container);
-                    // 初始化 skeleton 优化器
-                    if (window.initSmartSkeleton) {
-                        setTimeout(function() {
-                            window.initSmartSkeleton();
-                        }, 100);
+                    // 非附加模式：使用 SkeletonManager.hideAndShow 渐隐/渐现
+                    if (window.SkeletonManager && typeof window.SkeletonManager.hideAndShow === 'function') {
+                        window.SkeletonManager.hideAndShow(container, html);
+                    } else {
+                        // 降级：直接替换 innerHTML
+                        container.innerHTML = html;
+                    }
+                }
+
+                // 通用：初始化图片与 skeleton 尺寸
+                container.querySelectorAll('.js-skeleton-img').forEach(function(img) {
+                    const imgSrc = img.getAttribute('src');
+                    
+                    if (!imgSrc || imgSrc === '') {
+                        // 如果没有图片源，隐藏 skeleton 容器但保持 card 结构
+                        const skeletonContainer = img.closest('.js-skeleton');
+                        if (skeletonContainer) {
+                            skeletonContainer.style.backgroundColor = '#f0f0f0';
+                            img.style.display = 'none';
+                        }
+                        return;
                     }
                     
-                    // 确保图片加载后初始化 skeleton
-                    container.querySelectorAll('.js-skeleton-img').forEach(function(img) {
-                        const imgSrc = img.getAttribute('src');
-                        
-                        if (!imgSrc || imgSrc === '') {
-                            // 如果没有图片源，隐藏 skeleton 容器
-                            const skeletonContainer = img.closest('.js-skeleton');
-                            if (skeletonContainer) {
-                                skeletonContainer.style.display = 'none';
-                            }
-                            return;
+                    if (img.complete && img.naturalWidth > 0) {
+                        if (window.initSmartSkeleton) {
+                            window.initSmartSkeleton();
                         }
-                        
-                        if (img.complete && img.naturalWidth > 0) {
-                            // 图片已加载
+                    } else {
+                        img.addEventListener('load', function() {
                             if (window.initSmartSkeleton) {
                                 window.initSmartSkeleton();
                             }
-                        } else {
-                            // 等待图片加载
-                            img.addEventListener('load', function() {
-                                if (window.initSmartSkeleton) {
-                                    window.initSmartSkeleton();
-                                }
-                            }, { once: true });
-                            
-                            // 图片加载失败时也初始化 skeleton（使用默认尺寸）
-                            img.addEventListener('error', function() {
-                                if (window.initSmartSkeleton) {
-                                    window.initSmartSkeleton();
-                                }
-                            }, { once: true });
-                        }
-                    });
-                }
+                        }, { once: true });
+                        
+                        img.addEventListener('error', function() {
+                            // 图片加载失败时，保持 skeleton 背景以避免 card 变形
+                            const skeletonContainer = img.closest('.js-skeleton');
+                            if (skeletonContainer) {
+                                skeletonContainer.style.backgroundColor = '#f0f0f0';
+                                img.style.display = 'none';
+                            }
+                            if (window.initSmartSkeleton) {
+                                window.initSmartSkeleton();
+                            }
+                        }, { once: true });
+                    }
+                });
             } else {
                 const html = products.map(product => `
                     <div class="recommended-product-item" data-product-id="${product.id}">

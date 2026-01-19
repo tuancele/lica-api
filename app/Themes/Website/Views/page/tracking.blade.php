@@ -64,7 +64,7 @@
             @foreach($parents as $p => $parent)
             @if($p == 0)
             <div class="tab-pane fade show active " id="taxonomy-{{$parent->id}}" role="tabpanel" aria-labelledby="taxonomy-tab-{{$parent->id}}" tabindex="0">
-                @php $products = App\Modules\Product\Models\Product::join('variants','variants.product_id','=','posts.id')->select('posts.id','posts.stock','posts.name','posts.slug','posts.image','posts.brand_id','variants.price as price','variants.sale as sale','variants.size_id as size_id','variants.color_id as color_id')->where([['status','1'],['type','product'],['stock','1']])->where('cat_id','like','%'.$parent->id.'%')->orderBy('posts.created_at','desc')->limit('20')->get(); @endphp
+                @php $products = App\Modules\Product\Models\Product::join('variants','variants.product_id','=','posts.id')->select('posts.id','posts.stock','posts.name','posts.slug','posts.image','posts.brand_id','variants.price as price','variants.size_id as size_id','variants.color_id as color_id')->where([['status','1'],['type','product'],['stock','1']])->where('cat_id','like','%'.$parent->id.'%')->orderBy('posts.created_at','desc')->limit('20')->get(); @endphp
                 @if($products->count() > 0)
                 <div class="list-watch mt-3">
                 @foreach($products as $product)
@@ -84,7 +84,7 @@
             @endforeach
         </div>
         @else
-        @php $products = App\Modules\Product\Models\Product::join('variants','variants.product_id','=','posts.id')->select('posts.id','posts.stock','posts.name','posts.slug','posts.image','posts.brand_id','variants.price as price','variants.sale as sale','variants.size_id as size_id','variants.color_id as color_id')->where([['status','1'],['type','product'],['stock','1']])->where('cat_id','like','%'.$taxonomy->id.'%')->orderBy('posts.created_at','desc')->limit('20')->get(); @endphp
+        @php $products = App\Modules\Product\Models\Product::join('variants','variants.product_id','=','posts.id')->select('posts.id','posts.stock','posts.name','posts.slug','posts.image','posts.brand_id','variants.price as price','variants.size_id as size_id','variants.color_id as color_id')->where([['status','1'],['type','product'],['stock','1']])->where('cat_id','like','%'.$taxonomy->id.'%')->orderBy('posts.created_at','desc')->limit('20')->get(); @endphp
         @if($products->count() > 0)
         <div class="list-watch mt-3">
         @foreach($products as $product)

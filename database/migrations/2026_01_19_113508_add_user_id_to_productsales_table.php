@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (!Schema::hasTable('productsales')) {
+            return;
+        }
+
         Schema::table('productsales', function (Blueprint $table) {
             if (!Schema::hasColumn('productsales', 'user_id')) {
                 $table->unsignedBigInteger('user_id')->nullable()->after('buy');
@@ -24,6 +28,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (!Schema::hasTable('productsales')) {
+            return;
+        }
+
         Schema::table('productsales', function (Blueprint $table) {
             if (Schema::hasColumn('productsales', 'user_id')) {
                 $table->dropForeign(['user_id']);

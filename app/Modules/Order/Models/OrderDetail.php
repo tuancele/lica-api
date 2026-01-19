@@ -7,6 +7,22 @@ use Illuminate\Database\Eloquent\Model;
 class OrderDetail extends Model
 {
     protected $table = "orderdetail";
+    protected $fillable = [
+        'order_id',
+        'product_id',
+        'brand_id',
+        'color_id',
+        'size_id',
+        'variant_id',
+        'name',
+        'price',
+        'qty',
+        'weight',
+        'image',
+        'subtotal',
+        'deal_id',
+        'dealsale_id',
+    ];
     public function variant(){
     	return $this->belongsTo('App\Modules\Product\Models\Variant','variant_id','id');
     }

@@ -229,12 +229,6 @@
                         </div>
                         <div class="col-md-4">
                             <div class="form-item">
-                                <label class="form-label">Giá khuyến mại</label>
-                                <input type="text" name="sale" class="shopee-input price" value="0">
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-item">
                                 <label class="form-label required">Kho hàng</label>
                                 <input type="number" name="stock_qty" class="shopee-input" value="0" min="0">
                                 <input type="hidden" name="stock" value="1">

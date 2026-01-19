@@ -19,6 +19,7 @@ class SaleDeal extends Model
         'variant_id',
         'price',
         'qty',
+        'buy',
         'status',
     ];
     

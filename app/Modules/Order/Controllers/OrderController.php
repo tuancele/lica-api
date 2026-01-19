@@ -151,33 +151,71 @@ class OrderController extends Controller
         } else {
             $oldStatus = $order->status;
             $oldShip = $order->ship;
-            
-            Order::where('id', $order->id)->update([
-                'content' => $req->content,
-                'status' => $req->status,
-                'payment' => $req->payment,
-                'ship' => $req->ship,
-                'user_id' => Auth::id()
+
+            // Debug status change for cancel flow
+            Log::info('[Order_Cancel_Debug] Status Change', [
+                'code' => $order->code,
+                'old'  => $oldStatus,
+                'new'  => $req->status,
             ]);
-            
-            // Auto create import receipt if order is cancelled or returned
-            // Only create if status/ship changed to cancelled/returned
-            if (($req->status == 2 && $oldStatus != 2) || ($req->ship == 3 && $oldShip != 3)) {
-                try {
-                    // Reload order to get updated values
-                    $order->refresh();
-                    $this->createImportReceiptFromOrder($order);
-                } catch (\Exception $e) {
-                    Log::error("Auto create import receipt error for order " . $order->code . ": " . $e->getMessage());
-                    // Don't fail the order update if import receipt creation fails
+
+            DB::beginTransaction();
+            try {
+                Order::where('id', $order->id)->update([
+                    'content' => $req->content,
+                    'status' => $req->status,
+                    'payment' => $req->payment,
+                    'ship' => $req->ship,
+                    'user_id' => Auth::id()
+                ]);
+
+                $order->refresh();
+
+                // Cancel-like statuses (config dependent): treat both 2 and 4 as "cancel/failed"
+                $cancelStatuses = [2, 4];
+
+                // Nếu đơn bị hủy/thất bại lần đầu (trước đó không nằm trong nhóm cancel) => hoàn quỹ Deal + trả kho
+                if (in_array((int) $req->status, $cancelStatuses, true)
+                    && !in_array((int) $oldStatus, $cancelStatuses, true)) {
+                    try {
+                        $this->rollbackDealQuota($order);
+                        // Tạo phiếu nhập lại kho (tương tự luồng hủy/hoàn)
+                        $this->createImportReceiptFromOrder($order);
+                    } catch (\Exception $e) {
+                        DB::rollBack();
+                        Log::error("Rollback deal quota error for order {$order->code}: " . $e->getMessage());
+                        return response()->json([
+                            'status' => 'error',
+                            'errors' => ['alert' => ['0' => 'Hoàn quỹ Deal thất bại: ' . $e->getMessage()]]
+                        ]);
+                    }
                 }
+
+                // Auto create import receipt nếu ship/status thay đổi theo rule cũ
+                if (($req->status == 2 && $oldStatus != 2) || ($req->ship == 3 && $oldShip != 3)) {
+                    try {
+                        $this->createImportReceiptFromOrder($order);
+                    } catch (\Exception $e) {
+                        Log::error("Auto create import receipt error for order " . $order->code . ": " . $e->getMessage());
+                        // Không rollback vì chỉ là phụ trợ
+                    }
+                }
+
+                DB::commit();
+
+                return response()->json([
+                    'status' => 'success',
+                    'alert' => 'Cập nhật thành công!',
+                    'url' => '/admin/order/view/' . $req->code
+                ]);
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error("Order update failed for code {$order->code}: " . $e->getMessage());
+                return response()->json([
+                    'status' => 'error',
+                    'errors' => ['alert' => ['0' => 'Cập nhật thất bại: ' . $e->getMessage()]]
+                ]);
             }
-            
-            return response()->json([
-                'status' => 'success',
-                'alert' => 'Cập nhật thành công!',
-                'url' => '/admin/order/view/' . $req->code
-            ]);
         }
     }
 
@@ -274,6 +312,66 @@ class OrderController extends Controller
                 'status' => 'error',
                 'alert' => 'Xóa không thành công!',
             ]);
+        }
+    }
+
+    /**
+     * Hoàn quỹ Deal Sốc khi hủy đơn.
+     * Cộng lại deal_sales.qty và giảm deal_sales.buy theo số lượng dealsale_id trong orderdetail.
+     * Chốt chặn: Chỉ hoàn quỹ 1 lần duy nhất cho mỗi đơn hàng (kiểm tra oldStatus != 4).
+     */
+    private function rollbackDealQuota(Order $order): void
+    {
+        $details = OrderDetail::where('order_id', $order->id)
+            ->whereNotNull('dealsale_id')
+            ->where('dealsale_id', '>', 0)
+            ->get();
+
+        if ($details->isEmpty()) {
+            Log::info('[DEAL_REFUND] Order: ' . $order->code . ' | No deal items found, skip rollback');
+            return;
+        }
+
+        foreach ($details as $detail) {
+            $qty = (int) ($detail->qty ?? 0);
+            if ($qty <= 0) {
+                continue;
+            }
+
+            Log::info('[Order_Cancel_Debug] Checking detail for refund', [
+                'order_code'  => $order->code,
+                'detail_id'   => $detail->id,
+                'dealsale_id' => $detail->dealsale_id,
+                'qty'         => $qty,
+            ]);
+
+            // Lock row để tránh race condition
+            $saleDeal = \App\Modules\Deal\Models\SaleDeal::where('id', $detail->dealsale_id)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$saleDeal) {
+                Log::warning('[DEAL_REFUND] Order: ' . $order->code . ' | DealID: ' . $detail->dealsale_id . ' not found');
+                continue;
+            }
+
+            // Ghi nhận giá trị trước khi hoàn quỹ
+            $oldQty = (int) ($saleDeal->qty ?? 0);
+            $oldBuy = (int) ($saleDeal->buy ?? 0);
+
+            // Cộng lại suất vào qty (numbersale)
+            $saleDeal->increment('qty', $qty);
+            
+            // Trừ bớt số lượng đã mua (buy)
+            $newBuy = max(0, $oldBuy - $qty);
+            $saleDeal->buy = $newBuy;
+            $saleDeal->save();
+
+            // Log chi tiết
+            Log::info('[DEAL_REFUND] Order: ' . $order->code . ' | DealID: ' . $saleDeal->id . 
+                ' | Suất được trả lại: ' . $qty . 
+                ' | Qty trước: ' . $oldQty . ' → Qty sau: ' . ($oldQty + $qty) .
+                ' | Buy trước: ' . $oldBuy . ' → Buy sau: ' . $newBuy);
         }
     }
 }

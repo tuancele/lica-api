@@ -70,9 +70,8 @@ class Cart
         $date = strtotime(date('Y-m-d H:i:s'));
         $nowDate = Carbon::now();
 
-        // 1. Determine Base Price (Original or Sale)
-        // Note: item is a Variant
-        $unit_price = ($item->sale != 0) ? $item->sale : $item->price;
+        // Base price (do not use legacy "sale" field)
+        $unit_price = (float) ($item->price ?? 0);
 
         // 2. Check Marketing Campaign (Priority > Base/Sale)
         $campaignProduct = MarketingCampaignProduct::where('product_id', $item->product_id)
@@ -100,25 +99,34 @@ class Cart
             }
         }
         
-        // Handle Deal Logic (passed from Controller, usually for specific deal campaigns)
-        // If is_deal is 1, Controller might have already set the price on $item?
-        // In Controller: "if ($saledeal) { $variant->price = $saledeal->price; $variant->sale = 0; }"
-        // But here we are recalculating $unit_price based on $item->sale/price.
-        // If Controller modified $item->price, then $unit_price starts with that.
-        // However, FlashSale/MarketingCampaign might override it. 
-        // Usually Deals (like bundling) might have specific rules.
-        // Assuming if is_deal=1, we should respect the deal price if valid?
-        // But FlashSale is usually top priority. 
-        // Let's stick to the requested priority: FlashSale > Campaign > Original/Sale.
-        // Deal is a bit ambiguous in the prompt ("Giá khuyến mại trong chương trình").
-        // "Deal Sốc" seems to be another module. Prompt requirements focus on "Chương trình khuyến mại" (Campaign).
-        // If is_deal=1, it means it comes from "Mua kèm deal sốc" or similar.
-        // Let's assume Flash/Campaign overrides everything for consistency, 
-        // OR if is_deal is strictly for "Bundles", maybe it should persist?
-        // But the prompt says: "Priority: Flashsale -> Campaign -> Original".
-        // It doesn't mention "Deals". I will proceed with Flash > Campaign logic.
+        // Deal items: capture dealsale_id/deal_id if available for downstream order detail
+        $dealId = null;
+        $dealSaleId = null;
+        if ($is_deal == 1) {
+            $now = strtotime(date('Y-m-d H:i:s'));
+            $saleDealRow = \App\Modules\Deal\Models\SaleDeal::where('product_id', $item->product_id)
+                ->whereHas('deal', function ($q) use ($now) {
+                    $q->where('status', '1')
+                        ->where('start', '<=', $now)
+                        ->where('end', '>=', $now);
+                })
+                ->where('status', '1')
+                ->first();
+            if ($saleDealRow) {
+                $dealId = $saleDealRow->deal_id;
+                $dealSaleId = $saleDealRow->id;
+                $item->price = $saleDealRow->price; // align price with deal
+            }
+        }
 
-        $cart = ['qty' => 0, 'price' => $unit_price, 'item' => $item, 'is_deal' => $is_deal];
+        $cart = [
+            'qty' => 0,
+            'price' => $unit_price,
+            'item' => $item,
+            'is_deal' => $is_deal,
+            'deal_id' => $dealId,
+            'dealsale_id' => $dealSaleId,
+        ];
         
         if ($this->items) {
             if (array_key_exists($id, $this->items)) {

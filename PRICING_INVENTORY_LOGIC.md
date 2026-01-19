@@ -1,3 +1,46 @@
+## Remove legacy sale price - migrate to Marketing-only pricing
+
+### Scope
+
+- Legacy "sale" field is deprecated across Product/Variant/Admin UI.
+- Database columns are NOT removed to avoid breaking existing queries.
+- Pricing must be computed by Marketing channels only.
+
+### Single Source of Truth (Pricing)
+
+Pricing priority:
+
+- Flash Sale
+- Marketing Campaign (Promo)
+- Deal (only for deal bundle sale items, and only when current price type is normal)
+- Base price (variants.price)
+
+Rules:
+
+- Never read `variants.sale` or `posts.sale` for pricing.
+- If no Flash Sale / Campaign applies, show one price only (base price).
+
+### Refactor notes (2026-01-19)
+
+- Models:
+  - Removed `sale` from `Variant::$fillable`.
+  - Removed legacy sale logic from `Product::getPriceInfoAttribute`.
+- Admin UI:
+  - Removed `<input name="sale">` from Product create/edit and variant create view.
+- Requests/Validation:
+  - Removed `sale` validation rules and normalization.
+- Services:
+  - `PriceCalculationService`: removed legacy sale branch.
+  - `WarehouseService`: export suggested price uses base price only.
+  - `ProductService`: stopped writing `sale` during create/update/sync variants.
+- Frontend:
+  - Helper functions (`checkSale`, `getPrice`, `getVariantFinalPrice`, `getSale`) ignore legacy sale.
+  - Variant price ajax in `HomeController` uses `PriceEngineServiceInterface::calculateDisplayPrice`.
+
+### Compatibility
+
+- Keep DB columns for now.
+- Any remaining old templates that pass `$product->sale` are tolerated but ignored by helpers.
 # Logic Tính Giá và Quản lý Tồn kho - Hệ thống E-commerce
 
 ## Tổng quan

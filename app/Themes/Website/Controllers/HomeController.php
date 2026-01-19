@@ -126,7 +126,7 @@ class HomeController extends Controller
                     
                     $target_id = ($child_tabs->count() > 0) ? $child_tabs[0]->id : $taxonomy->id;
                     $initial_products = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id')
+                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
                         ->where([['status', '1'], ['type', 'product'], ['posts.stock', '1']])
                         ->where('cat_id', 'like', '%'.$target_id.'%')
                         ->orderBy('posts.created_at', 'desc')
@@ -144,7 +144,7 @@ class HomeController extends Controller
 
             if (Session::has('product_watched')) {
                 $data['watchs'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                    ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id')
+                    ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
                     ->where([['status', '1'], ['type', 'product']])
                     ->whereIn('posts.id', Session::get('product_watched'))
                     ->groupBy('posts.id')
@@ -173,7 +173,7 @@ class HomeController extends Controller
                     // Lấy thông tin sản phẩm từ danh sách ID đã sắp xếp theo số lượng bán
                     // Chỉ lấy sản phẩm còn active và có variant
                     $productsFromOrders = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
+                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
                         ->where([['posts.status', '1'], ['posts.type', 'product']])
                         ->whereIn('posts.id', $topProductIds)
                         ->groupBy('posts.id')
@@ -191,7 +191,7 @@ class HomeController extends Controller
                 if ($neededCount > 0) {
                     // Thử lấy từ sản phẩm best trước
                     $bestProductsQuery = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
+                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
                         ->where([['posts.status', '1'], ['posts.type', 'product'], ['posts.best', '1']]);
                     
                     // Loại trừ các sản phẩm đã có từ đơn hàng
@@ -208,7 +208,7 @@ class HomeController extends Controller
                     $remainingCount = $neededCount - $bestProducts->count();
                     if ($remainingCount > 0) {
                         $additionalProductsQuery = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                            ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
+                            ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
                             ->where([['posts.status', '1'], ['posts.type', 'product']]);
                         
                         // Loại trừ các sản phẩm đã có
@@ -232,7 +232,7 @@ class HomeController extends Controller
                 // Nếu vẫn không có sản phẩm nào, fallback về sản phẩm best hoặc mới nhất
                 if ($productsFromOrders->isEmpty()) {
                     $fallbackProducts = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
+                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
                         ->where([['posts.status', '1'], ['posts.type', 'product']])
                         ->groupBy('posts.id')
                         ->limit(10)
@@ -252,7 +252,7 @@ class HomeController extends Controller
                     $moreNeeded = 10 - $finalProducts->count();
                     
                     $moreProducts = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
+                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id', 'best', 'is_new')
                         ->where([['posts.status', '1'], ['posts.type', 'product']])
                         ->whereNotIn('posts.id', $currentIds)
                         ->groupBy('posts.id')
@@ -308,7 +308,7 @@ class HomeController extends Controller
                     $filter = Session::get('filter');
                     $orderby = $this->sortBy();
                     $data['products'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id')
+                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
                         ->where([['status', '1'], ['type', 'product'], ['posts.stock', '1']])
                         ->where('cat_id', 'like', '%"' . $post->id . '"%')
                         ->where(function ($query) use ($filter) {
@@ -320,7 +320,7 @@ class HomeController extends Controller
                         ->appends(request()->query());
                     
                     $data['stocks'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id')
+                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
                         ->where([['status', '1'], ['type', 'product'], ['posts.stock', '0']])
                         ->where('cat_id', 'like', '%"' . $post->id . '"%')
                         ->orderBy($orderby[0], $orderby[1])
@@ -346,7 +346,7 @@ class HomeController extends Controller
                     $data['rates'] = Rate::where([['status', '1'], ['product_id', $post->id]])->orderBy('created_at', 'desc')->limit(5)->get();
                     $data['category'] = Post::select('id', 'name', 'slug', 'cat_id')->where([['type', 'taxonomy'], ['id', $catid]])->first();
                     $data['products'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id')
+                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
                         ->where([['status', '1'], ['type', 'product'], ['posts.id', '!=', $post->id]])
                         ->where('cat_id', 'like', '%"' . $catid . '"%')
                         ->groupBy('product_id')
@@ -357,7 +357,7 @@ class HomeController extends Controller
                     
                     if (Session::has('product_watched')) {
                         $data['watchs'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                            ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'posts.stock', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id')
+                            ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'posts.stock', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
                             ->where([['status', '1'], ['type', 'product']])
                             ->whereIn('posts.id', Session::get('product_watched'))
                             ->groupBy('product_id')
@@ -399,7 +399,7 @@ class HomeController extends Controller
                         $filter = Session::get('filter');
                         $orderby = $this->sortBy();
                         $data['products'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                            ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id')
+                            ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
                             ->where([['status', '1'], ['type', 'product'], ['stock', '1']])
                             ->where(function ($query) use ($filter) {
                                 $this->applyFilter($query, $filter);
@@ -472,7 +472,7 @@ class HomeController extends Controller
             $mang = $products->pluck('product_id')->toArray();
             $data['products'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
                 ->join('productsales', 'productsales.product_id', '=', 'posts.id')
-                ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'productsales.price_sale as price_sale')
+                ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id', 'productsales.price_sale as price_sale')
                 ->where([['status', '1'], ['type', 'product'], ['stock', '1']])
                 ->whereIn('posts.id', $mang)
                 ->where(function ($query) use ($filter) {
@@ -535,7 +535,7 @@ class HomeController extends Controller
         $filter = Session::get('filter');
         $orderby = $this->sortBy();
         $data['products'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-            ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'posts.stock')
+            ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id', 'posts.stock')
             ->where([['status', '1'], ['type', 'product'], ['posts.stock', '1']])
             ->where('posts.name', 'like', '%' . $request->s . '%')
             ->where(function ($query) use ($filter) {
@@ -547,7 +547,7 @@ class HomeController extends Controller
             ->appends(request()->query());
             
         $data['stocks'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-            ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id', 'posts.stock')
+            ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id', 'posts.stock')
             ->where([['status', '1'], ['type', 'product'], ['posts.stock', '0']])
             ->where('posts.name', 'like', '%' . $request->s . '%')
             ->orderBy($orderby[0], $orderby[1])
@@ -734,7 +734,7 @@ class HomeController extends Controller
         $filter = Session::get('filter');
         
         $query = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-            ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id')
+            ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
             ->where([['status', '1'], ['type', 'product']]);
             
         // Simplified Logic: Merge "loadProduct" complexity
@@ -754,7 +754,7 @@ class HomeController extends Controller
                  if($flash){
                      $products = ProductSale::select('product_id')->where('flashsale_id',$flash->id)->get();
                      $mang = $products->pluck('product_id')->toArray();
-                     $data['products'] = Product::join('variants','variants.product_id','=','posts.id')->join('productsales','productsales.product_id','=','posts.id')->select('posts.id','posts.stock','posts.name','posts.slug','posts.image','posts.brand_id','variants.price as price','variants.sale as sale','variants.size_id as size_id','variants.color_id as color_id','productsales.price_sale as price_sale')->where([['status','1'],['type','product'],['posts.stock','1']])->whereIn('posts.id',$mang)->where(function ($query) use ($filter) {
+                     $data['products'] = Product::join('variants','variants.product_id','=','posts.id')->join('productsales','productsales.product_id','=','posts.id')->select('posts.id','posts.stock','posts.name','posts.slug','posts.image','posts.brand_id','variants.price as price','variants.size_id as size_id','variants.color_id as color_id','productsales.price_sale as price_sale')->where([['status','1'],['type','product'],['posts.stock','1']])->whereIn('posts.id',$mang)->where(function ($query) use ($filter) {
                         // Filter logic for flash sale
                          $this->applyFilter($query, $filter); // Note: filter logic might need adjustment for price_sale
                      })->orderBy($orderby[0],$orderby[1])->groupBy('variants.product_id')->paginate(40)->withPath($url);
@@ -763,7 +763,7 @@ class HomeController extends Controller
                  }
             } else {
                 // Normal filter
-                $data['products'] = Product::join('variants','variants.product_id','=','posts.id')->select('posts.id','posts.stock','posts.name','posts.slug','posts.image','posts.brand_id','variants.price as price','variants.sale as sale','variants.size_id as size_id','variants.color_id as color_id')->where([['status','1'],['type','product'],['posts.stock','1']])->where(function ($query) use ($filter,$type,$catid) {
+                $data['products'] = Product::join('variants','variants.product_id','=','posts.id')->select('posts.id','posts.stock','posts.name','posts.slug','posts.image','posts.brand_id','variants.price as price','variants.size_id as size_id','variants.color_id as color_id')->where([['status','1'],['type','product'],['posts.stock','1']])->where(function ($query) use ($filter,$type,$catid) {
                     if($type == 'taxonomy') $query->where('cat_id','like','%'.$catid.'%');
                     if($type == 'brand') $query->where('brand_id',$catid);
                     if($type == 'origin') $query->where('origin_id',$catid);
@@ -780,12 +780,12 @@ class HomeController extends Controller
                  if($flash){
                      $products = ProductSale::select('product_id')->where('flashsale_id',$flash->id)->get();
                      $mang = $products->pluck('product_id')->toArray();
-                     $data['products'] = Product::join('variants','variants.product_id','=','posts.id')->join('productsales','productsales.product_id','=','posts.id')->select('posts.id','posts.stock','posts.name','posts.slug','posts.image','posts.brand_id','variants.price as price','variants.sale as sale','variants.size_id as size_id','variants.color_id as color_id','productsales.price_sale as price_sale')->where([['status','1'],['type','product'],['posts.stock','1']])->whereIn('posts.id',$mang)->orderBy($orderby[0],$orderby[1])->groupBy('variants.product_id')->paginate(40)->withPath($url);
+                     $data['products'] = Product::join('variants','variants.product_id','=','posts.id')->join('productsales','productsales.product_id','=','posts.id')->select('posts.id','posts.stock','posts.name','posts.slug','posts.image','posts.brand_id','variants.price as price','variants.size_id as size_id','variants.color_id as color_id','productsales.price_sale as price_sale')->where([['status','1'],['type','product'],['posts.stock','1']])->whereIn('posts.id',$mang)->orderBy($orderby[0],$orderby[1])->groupBy('variants.product_id')->paginate(40)->withPath($url);
                  } else {
                      $data['products'] = [];
                  }
              } else {
-                 $data['products'] = Product::join('variants','variants.product_id','=','posts.id')->select('posts.id','posts.stock','posts.name','posts.slug','posts.image','variants.price as price','variants.sale as sale')->where([['status','1'],['type','product'],['cat_id','like','%'.$catid.'%']])->orderBy($orderby[0],$orderby[1])->groupBy('product_id')->paginate(40)->withPath($url);
+                 $data['products'] = Product::join('variants','variants.product_id','=','posts.id')->select('posts.id','posts.stock','posts.name','posts.slug','posts.image','variants.price as price')->where([['status','1'],['type','product'],['cat_id','like','%'.$catid.'%']])->orderBy($orderby[0],$orderby[1])->groupBy('product_id')->paginate(40)->withPath($url);
              }
         }
 
@@ -810,11 +810,13 @@ class HomeController extends Controller
     {
         $variant = Variant::where([['product_id', $request->product], ['color_id', $request->color], ['size_id', $request->size]])->first();
         if ($variant) {
-            if ($variant->sale != 0) {
-                $percent = round(($variant->price - $variant->sale) / ($variant->price / 100));
-                $html = '<div class="price"><p>' . number_format($variant->sale) . 'đ</p><del>' . number_format($variant->price) . 'đ</del><div class="tag"><span>-' . $percent . '%</span></div></div>';
+            $priceInfo = app(\App\Services\Pricing\PriceEngineServiceInterface::class)
+                ->calculateDisplayPrice((int)$request->product, (int)$variant->id);
+
+            if (($priceInfo['type'] ?? 'normal') === 'normal') {
+                $html = '<div class="price"><p>' . number_format($priceInfo['price'] ?? 0) . 'đ</p></div>';
             } else {
-                $html = '<div class="price"><p>' . number_format($variant->price) . 'đ</p></div>';
+                $html = '<div class="price"><p>' . number_format($priceInfo['price'] ?? 0) . 'đ</p><del>' . number_format($priceInfo['original_price'] ?? 0) . 'đ</del><div class="tag"><span>-' . number_format((int)($priceInfo['discount_percent'] ?? 0)) . '%</span></div></div>';
             }
             return response()->json([
                 'sku' => $variant->sku,
@@ -829,11 +831,13 @@ class HomeController extends Controller
         $variant = Variant::where([['product_id', $request->product], ['color_id', $request->color]])->first();
         $price = $variantid = $html = $sku = "";
         if ($variant) {
-            if ($variant->sale != 0) {
-                $percent = round(($variant->price - $variant->sale) / ($variant->price / 100));
-                $html = '<div class="price"><p>' . number_format($variant->sale) . 'đ</p><del>' . number_format($variant->price) . 'đ</del><div class="tag"><span>-' . $percent . '%</span></div></div>';
+            $priceInfo = app(\App\Services\Pricing\PriceEngineServiceInterface::class)
+                ->calculateDisplayPrice((int)$request->product, (int)$variant->id);
+
+            if (($priceInfo['type'] ?? 'normal') === 'normal') {
+                $html = '<div class="price"><p>' . number_format($priceInfo['price'] ?? 0) . 'đ</p></div>';
             } else {
-                $html = '<div class="price"><p>' . number_format($variant->price) . 'đ</p></div>';
+                $html = '<div class="price"><p>' . number_format($priceInfo['price'] ?? 0) . 'đ</p><del>' . number_format($priceInfo['original_price'] ?? 0) . 'đ</del><div class="tag"><span>-' . number_format((int)($priceInfo['discount_percent'] ?? 0)) . '%</span></div></div>';
             }
             $sku = $variant->sku;
             $price = $html;
@@ -1053,7 +1057,7 @@ class HomeController extends Controller
     public function loadOwl(Request $request)
     {
         $data['products'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-            ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.sale as sale', 'variants.size_id as size_id', 'variants.color_id as color_id')
+            ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
             ->where([['status', '1'], ['type', 'product'], ['stock', '1']])
             ->where('cat_id', 'like', '%' . $request->id . '%')
             ->orderBy('posts.created_at', 'desc')

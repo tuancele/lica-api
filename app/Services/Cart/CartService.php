@@ -5,6 +5,7 @@ namespace App\Services\Cart;
 use App\Services\PriceCalculationService;
 use App\Services\Pricing\PriceEngineServiceInterface;
 use App\Services\Warehouse\WarehouseServiceInterface;
+use Illuminate\Support\Facades\DB;
 use App\Modules\Product\Models\Variant;
 use App\Modules\Product\Models\Product;
 use App\Modules\Promotion\Models\Promotion;
@@ -40,6 +41,7 @@ class CartService
     protected FlashSaleStockService $flashSaleStockService;
     protected PriceEngineServiceInterface $priceEngine;
     protected WarehouseServiceInterface $warehouseService;
+    private const DEAL_EXHAUSTED_MESSAGE = 'Quà tặng Deal Sốc đã hết, giá được chuyển về giá thường/khuyến mại.';
 
     public function __construct(
         PriceCalculationService $priceService,
@@ -95,8 +97,34 @@ class CartService
             $oldSubtotal = $oldPrice * $quantity;
             
             // Sử dụng giá mới từ PriceEngineService
-            $newPrice = $priceWithQuantity['total_price'] / $quantity; // Giá trung bình
+            $newPrice = $quantity > 0 ? ($priceWithQuantity['total_price'] / $quantity) : 0; // Giá trung bình
             $newSubtotal = (float)$priceWithQuantity['total_price'];
+
+            // Deal Sốc pricing & fallback:
+            // - Nếu là quà Deal Sốc và còn quota/kho: áp dụng giá Deal theo thứ tự ưu tiên
+            //   Flash Sale > Promotion > Deal > Base (Deal chỉ override khi đang ở price type = normal)
+            // - Nếu quỹ/kho đã hết: hạ về giá thường/promo (giữ PriceEngine), gắn cảnh báo
+            $dealUnavailable = false;
+            $dealWarning = null;
+            if (!empty($item['is_deal'])) {
+                $dealCheck = $this->validateDealAvailability($product->id, $variantId, $quantity);
+                if (!$dealCheck['available']) {
+                    $dealUnavailable = true;
+                    $dealWarning = $dealCheck['message'];
+                    // Giữ newPrice/newSubtotal từ PriceEngine (đã là giá thường/promo)
+                } else {
+                    // Áp dụng giá Deal nếu thỏa điều kiện ưu tiên
+                    $dealPricing = $this->applyDealPriceForCartItem($product->id, $variantId, $quantity, $priceWithQuantity);
+                    if ($dealPricing !== null) {
+                        $newPrice = $dealPricing['unit_price'];
+                        $newSubtotal = $dealPricing['total_price'];
+                        // Ghi đè breakdown để FE hiển thị đúng
+                        if (isset($dealPricing['price_breakdown'])) {
+                            $priceWithQuantity['price_breakdown'] = $dealPricing['price_breakdown'];
+                        }
+                    }
+                }
+            }
             
             // Log nếu giá thay đổi
             if (abs($oldSubtotal - $newSubtotal) > 0.01) {
@@ -113,7 +141,7 @@ class CartService
                 ]);
             }
             
-            // Get stock
+            // Get stock (fallback cho UI; stock thực đã được PriceEngine/Warehouse check)
             $stock = isset($variant->stock) && $variant->stock !== null 
                 ? (int)$variant->stock 
                 : (isset($product->stock) && $product->stock == 1 ? 999 : 0);
@@ -146,6 +174,8 @@ class CartService
                 'original_price' => (float)$priceInfo->original_price,
                 'subtotal' => $newSubtotal, // Tổng giá đã tính lại
                 'is_deal' => isset($item['is_deal']) ? (int)$item['is_deal'] : 0,
+                'deal_unavailable' => $dealUnavailable,
+                'deal_warning' => $dealWarning,
                 'price_info' => [
                     'price' => (float)$priceInfo->price,
                     'original_price' => (float)$priceInfo->original_price,
@@ -156,7 +186,7 @@ class CartService
                 // Thêm thông tin Mixed Price từ PriceEngineService
                 'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
                 'flash_sale_remaining' => $priceWithQuantity['flash_sale_remaining'] ?? 0,
-                'warning' => $priceWithQuantity['warning'] ?? null,
+                'warning' => $dealWarning ?: ($priceWithQuantity['warning'] ?? null),
                 'stock' => $stock,
                 'available' => $stock > 0,
             ];
@@ -193,6 +223,188 @@ class CartService
             'coupon' => $coupon,
             'available_deals' => $availableDeals,
         ];
+    }
+
+    /**
+     * Validate Deal availability for a given product/variant and quantity.
+     */
+    private function validateDealAvailability(int $productId, int $variantId, int $quantity): array
+    {
+        $now = time();
+
+        $saleDealQuery = SaleDeal::where('product_id', $productId)
+            ->whereHas('deal', function ($q) use ($now) {
+                $q->where('status', '1')
+                    ->where('start', '<=', $now)
+                    ->where('end', '>=', $now);
+            });
+
+        if ($variantId) {
+            $saleDealQuery->where(function ($q) use ($variantId) {
+                $q->where('variant_id', $variantId)
+                    ->orWhereNull('variant_id');
+            });
+        } else {
+            $saleDealQuery->whereNull('variant_id');
+        }
+
+        $saleDeal = $saleDealQuery->first();
+        if (!$saleDeal) {
+            return [
+                'available' => false,
+                'message' => self::DEAL_EXHAUSTED_MESSAGE,
+            ];
+        }
+
+        // Quỹ deal (Shopee style): qty là số suất còn lại
+        if ((int) $saleDeal->qty < $quantity) {
+            return [
+                'available' => false,
+                'message' => self::DEAL_EXHAUSTED_MESSAGE,
+            ];
+        }
+
+        // Kiểm tra tồn kho vật lý
+        try {
+            $stockInfo = $this->warehouseService->getVariantStock($variantId);
+            $phy = (int) ($stockInfo['current_stock'] ?? 0);
+            if ($phy <= 0) {
+                return [
+                    'available' => false,
+                    'message' => self::DEAL_EXHAUSTED_MESSAGE,
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[CartService] validateDealAvailability stock check failed', [
+                'product_id' => $productId,
+                'variant_id' => $variantId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return [
+            'available' => true,
+            'message' => null,
+        ];
+    }
+
+    /**
+     * Áp dụng giá Deal Sốc cho item trong giỏ hàng (khi còn quota/kho).
+     *
+     * Rule:
+     * - Đọc giá hiện tại từ PriceEngine (priceWithQuantity)
+     * - Nếu đang ở trạng thái flashsale/promotion => KHÔNG override bằng Deal (ưu tiên Flash/Promo)
+     * - Nếu đang ở trạng thái normal:
+     *   + Lấy SaleDeal.price làm dealPrice
+     *   + Nếu dealPrice > 0 && dealPrice < original_price => dùng dealPrice
+     *   + Nếu dealPrice == 0 && original_price > 0 => dùng 0đ
+     *
+     * @param int   $productId
+     * @param int   $variantId
+     * @param int   $quantity
+     * @param array $priceWithQuantity
+     * @return array|null
+     */
+    private function applyDealPriceForCartItem(int $productId, int $variantId, int $quantity, array $priceWithQuantity): ?array
+    {
+        if ($quantity <= 0) {
+            return null;
+        }
+
+        if (empty($priceWithQuantity['price_breakdown']) || !is_array($priceWithQuantity['price_breakdown'])) {
+            return null;
+        }
+
+        $breakdown = $priceWithQuantity['price_breakdown'];
+
+        // Nếu có bất kỳ dòng flashsale/promotion => giữ nguyên, Deal không override
+        $hasFlashSale = false;
+        $hasPromotion = false;
+        foreach ($breakdown as $bd) {
+            if (($bd['type'] ?? null) === 'flashsale') {
+                $hasFlashSale = true;
+            }
+            if (($bd['type'] ?? null) === 'promotion') {
+                $hasPromotion = true;
+            }
+        }
+
+        if ($hasFlashSale || $hasPromotion) {
+            return null;
+        }
+
+        // Đến đây tức là toàn bộ breakdown đang là "normal"
+        $firstLine = $breakdown[0];
+        $originalPrice = (float)($firstLine['unit_price'] ?? 0);
+
+        // Tìm SaleDeal tương ứng để lấy giá Deal
+        $now = time();
+        $saleDealQuery = SaleDeal::where('product_id', $productId)
+            ->whereHas('deal', function ($q) use ($now) {
+                $q->where('status', '1')
+                    ->where('start', '<=', $now)
+                    ->where('end', '>=', $now);
+            });
+
+        if ($variantId) {
+            $saleDealQuery->where(function ($q) use ($variantId) {
+                $q->where('variant_id', $variantId)
+                    ->orWhereNull('variant_id');
+            });
+        } else {
+            $saleDealQuery->whereNull('variant_id');
+        }
+
+        /** @var SaleDeal|null $saleDeal */
+        $saleDeal = $saleDealQuery->first();
+        if (!$saleDeal) {
+            return null;
+        }
+
+        $dealPrice = (float)($saleDeal->price ?? 0);
+
+        if ($originalPrice <= 0) {
+            return null;
+        }
+
+        // Deal price > 0 & rẻ hơn giá gốc => áp dụng Deal
+        if ($dealPrice > 0 && $dealPrice < $originalPrice) {
+            $total = $dealPrice * $quantity;
+
+            return [
+                'unit_price' => $dealPrice,
+                'total_price' => $total,
+                'price_breakdown' => [
+                    [
+                        'type' => 'deal',
+                        'quantity' => $quantity,
+                        'unit_price' => $dealPrice,
+                        'subtotal' => $total,
+                    ],
+                ],
+            ];
+        }
+
+        // Case Deal 0đ: cho phép nếu originalPrice > 0
+        if ($dealPrice == 0.0 && $originalPrice > 0) {
+            $total = 0.0;
+
+            return [
+                'unit_price' => 0.0,
+                'total_price' => $total,
+                'price_breakdown' => [
+                    [
+                        'type' => 'deal',
+                        'quantity' => $quantity,
+                        'unit_price' => 0.0,
+                        'subtotal' => $total,
+                    ],
+                ],
+            ];
+        }
+
+        // Không lời hơn Base => không dùng Deal
+        return null;
     }
 
     /**
@@ -240,7 +452,6 @@ class CartService
             
             if ($saledeal) {
                 $variant->price = $saledeal->price;
-                $variant->sale = 0;
             }
         }
         

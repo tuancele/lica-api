@@ -108,10 +108,6 @@
                             <input type="text" name="price" class="form-control price" value="@if(!empty($first)){{number_format($first->price)}} @else  0 @endif">
                         </div>
                         <div class="col-md-3">
-                            <label>Giá khuyến mại</label>
-                            <input type="text" name="sale" class="form-control price" value="@if(!empty($first)){{number_format($first->sale)}}@else  0 @endif">
-                        </div>
-                        <div class="col-md-3">
                             <label>Trọng lượng (kg)</label>
                             <input type="text" name="weight" class="form-control" value="@if(!empty($first)){{$first->weight}}@endif">
                         </div>

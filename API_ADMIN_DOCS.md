@@ -895,7 +895,170 @@ Product/
 
 ---
 
+### 19. GET /api/v1/deals/active-bundles
+
+**Mục tiêu:** 获取正在进行中的 Deal Sốc 列表（主品 + 搭配品 bundle），用于前台展示。
+
+**Tham số đầu vào (Query Params):** 无
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "Deal sốc tháng 2",
+      "start": 1706745600,
+      "end": 1709337599,
+      "status": "1",
+      "limited": 3,
+      "is_active": true,
+      "products": [
+        {
+          "id": 10,
+          "product_id": 5,
+          "variant_id": 12,
+          "status": "1",
+          "product": {
+            "id": 5,
+            "name": "Sản phẩm chính A",
+            "slug": "san-pham-chinh-a",
+            "image": "https://cdn.lica.vn/uploads/images/a.jpg",
+            "has_variants": 1
+          },
+          "variant": {
+            "id": 12,
+            "sku": "SKU-A-500",
+            "option1_value": "500ml"
+          }
+        }
+      ],
+      "sale_products": [
+        {
+          "id": 20,
+          "product_id": 8,
+          "variant_id": 15,
+          "qty": 2,
+          "status": "1",
+          "product": {
+            "id": 8,
+            "name": "Sản phẩm mua kèm B",
+            "slug": "san-pham-b",
+            "image": "https://cdn.lica.vn/uploads/images/b.jpg",
+            "has_variants": 1
+          },
+          "variant": {
+            "id": 15,
+            "sku": "SKU-B-250",
+            "option1_value": "250ml"
+          },
+          "deal_price": 150000,
+          "effective_price": {
+            "price": 150000,
+            "original_price": 200000,
+            "type": "deal",
+            "label": "Deal Sốc",
+            "discount_percent": 25
+          },
+          "stock": 30
+        }
+      ]
+    }
+  ],
+  "count": 1
+}
+```
+
+**Trạng thái:** Hoàn thành
+
 ---
+
+### 20. GET /api/v1/deals/{id}/bundle
+
+**Mục tiêu:** 获取单个 Deal Sốc 的 bundle 详情，供前台 landing / 弹窗使用。
+
+**Tham số đầu vào:**
+- `id` (integer, required): Deal ID（URL参数）
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "name": "Deal sốc tháng 2",
+    "start": 1706745600,
+    "end": 1709337599,
+    "status": "1",
+    "limited": 3,
+    "is_active": true,
+    "products": [
+      {
+        "id": 10,
+        "product_id": 5,
+        "variant_id": 12,
+        "status": "1",
+        "product": {
+          "id": 5,
+          "name": "Sản phẩm chính A",
+          "slug": "san-pham-chinh-a",
+          "image": "https://cdn.lica.vn/uploads/images/a.jpg",
+          "has_variants": 1
+        },
+        "variant": {
+          "id": 12,
+          "sku": "SKU-A-500",
+          "option1_value": "500ml"
+        }
+      }
+    ],
+    "sale_products": [
+      {
+        "id": 20,
+        "product_id": 8,
+        "variant_id": 15,
+        "qty": 2,
+        "status": "1",
+        "product": {
+          "id": 8,
+          "name": "Sản phẩm mua kèm B",
+          "slug": "san-pham-b",
+          "image": "https://cdn.lica.vn/uploads/images/b.jpg",
+          "has_variants": 1
+        },
+        "variant": {
+          "id": 15,
+          "sku": "SKU-B-250",
+          "option1_value": "250ml"
+        },
+        "deal_price": 150000,
+        "effective_price": {
+          "price": 150000,
+          "original_price": 200000,
+          "type": "deal",
+          "label": "Deal Sốc",
+          "discount_percent": 25
+        },
+        "stock": 30
+      }
+    ]
+  }
+}
+```
+
+**Phản hồi lỗi (404):**
+```json
+{
+  "success": false,
+  "message": "Deal không tồn tại hoặc không còn hoạt động"
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
 
 ## Flash Sale Management API
 

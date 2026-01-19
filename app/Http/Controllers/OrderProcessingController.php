@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Services\Pricing\PriceEngineServiceInterface;
 use App\Services\Inventory\InventoryServiceInterface;
 use App\Services\Warehouse\WarehouseServiceInterface;
+use App\Modules\Deal\Models\SaleDeal;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -126,7 +128,7 @@ class OrderProcessingController extends Controller
                 'items.*.product_id' => 'required|exists:posts,id',
                 'items.*.variant_id' => 'nullable|exists:variants,id',
                 'items.*.quantity' => 'required|integer|min:1',
-                'items.*.order_type' => 'required|in:flashsale,promotion,normal',
+                'items.*.order_type' => 'required|in:flashsale,promotion,normal,deal',
             ]);
             
             if ($validator->fails()) {
@@ -137,75 +139,105 @@ class OrderProcessingController extends Controller
                 ], 422);
             }
             
-            // Tính giá cho từng sản phẩm và xác định order_type
-            $orderItems = [];
-            $warnings = [];
-            
-            foreach ($request->items as $index => $item) {
-                // Tính giá với số lượng để kiểm tra cảnh báo
-                $priceWithQuantity = $this->priceEngine->calculatePriceWithQuantity(
-                    $item['product_id'],
-                    $item['variant_id'] ?? null,
-                    $item['quantity']
-                );
+            DB::beginTransaction();
+            try {
+                // Tính giá cho từng sản phẩm và xác định order_type
+                $orderItems = [];
+                $warnings = [];
                 
-                // Tính giá hiển thị
-                $priceInfo = $this->priceEngine->calculateDisplayPrice(
-                    $item['product_id'],
-                    $item['variant_id'] ?? null
-                );
-                
-                // Xác định order_type dựa trên giá hiện tại
-                $orderType = $priceInfo['type'] === 'flashsale' ? 'flashsale' : 'normal';
-                
-                // Kiểm tra cảnh báo khi mua vượt hạn mức Flash Sale
-                if ($orderType === 'flashsale' && $priceWithQuantity['warning']) {
-                    $warnings[] = [
-                        'item_index' => $index,
+                foreach ($request->items as $index => $item) {
+                    // Tính giá với số lượng để kiểm tra cảnh báo
+                    $priceWithQuantity = $this->priceEngine->calculatePriceWithQuantity(
+                        $item['product_id'],
+                        $item['variant_id'] ?? null,
+                        $item['quantity']
+                    );
+                    
+                    // Tính giá hiển thị
+                    $priceInfo = $this->priceEngine->calculateDisplayPrice(
+                        $item['product_id'],
+                        $item['variant_id'] ?? null
+                    );
+                    
+                    // Xác định order_type dựa trên giá hiện tại nếu chưa phải deal
+                    $orderType = $item['order_type'];
+                    if ($orderType !== 'deal') {
+                        $orderType = $priceInfo['type'] === 'flashsale' ? 'flashsale' : 'normal';
+                    }
+
+                    // Nếu là Deal Sốc: lock sale_deals và kiểm tra quỹ, đồng thời lấy dealsale_id
+                    if ($orderType === 'deal') {
+                        try {
+                            $dealSaleId = $this->assertDealAvailableOrFail(
+                                $item['product_id'],
+                                $item['variant_id'] ?? null,
+                                $item['quantity']
+                            );
+                        } catch (\Exception $dealEx) {
+                            DB::rollBack();
+                            return response()->json([
+                                'success' => false,
+                                'message' => $dealEx->getMessage(),
+                            ], 400);
+                        }
+                    }
+                    
+                    // Kiểm tra cảnh báo khi mua vượt hạn mức Flash Sale
+                    if ($orderType === 'flashsale' && $priceWithQuantity['warning']) {
+                        $warnings[] = [
+                            'item_index' => $index,
+                            'product_id' => $item['product_id'],
+                            'variant_id' => $item['variant_id'] ?? null,
+                            'message' => $priceWithQuantity['warning'],
+                            'flash_remaining' => $priceWithQuantity['flash_sale_remaining'],
+                        ];
+                    }
+                    
+                    $orderItems[] = [
                         'product_id' => $item['product_id'],
                         'variant_id' => $item['variant_id'] ?? null,
-                        'message' => $priceWithQuantity['warning'],
-                        'flash_remaining' => $priceWithQuantity['flash_sale_remaining'],
+                        'quantity' => $item['quantity'],
+                        'order_type' => $orderType,
+                        'dealsale_id' => $dealSaleId ?? null,
+                        'price_info' => $priceInfo,
+                        'price_with_quantity' => $priceWithQuantity,
                     ];
                 }
                 
-                $orderItems[] = [
-                    'product_id' => $item['product_id'],
-                    'variant_id' => $item['variant_id'] ?? null,
-                    'quantity' => $item['quantity'],
-                    'order_type' => $orderType,
-                    'price_info' => $priceInfo,
-                    'price_with_quantity' => $priceWithQuantity,
-                ];
-            }
+                // Xử lý đơn hàng và trừ tồn kho
+                $result = $this->inventoryService->processOrder($orderItems);
+
+                if (!$result['success']) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => $result['message'],
+                    ], 400);
+                }
+
+                DB::commit();
             
-            // Xử lý đơn hàng và trừ tồn kho
-            $result = $this->inventoryService->processOrder($orderItems);
-            
-            if (!$result['success']) {
+                // Thu thập cảnh báo từ kết quả xử lý
+                $processedWarnings = [];
+                if (isset($result['warnings']) && is_array($result['warnings'])) {
+                    $processedWarnings = $result['warnings'];
+                }
+                
                 return response()->json([
-                    'success' => false,
-                    'message' => $result['message'],
-                ], 400);
+                    'success' => true,
+                    'message' => 'Xử lý đơn hàng thành công',
+                    'data' => [
+                        'items' => $orderItems,
+                        'flash_sale_exhausted' => collect($orderItems)->contains(function($item) use ($result) {
+                            return isset($result['flash_sale_exhausted']) && $result['flash_sale_exhausted'];
+                        }),
+                        'warnings' => array_merge($warnings, $processedWarnings),
+                    ],
+                ]);
+            } catch (\Exception $ex) {
+                DB::rollBack();
+                throw $ex;
             }
-            
-            // Thu thập cảnh báo từ kết quả xử lý
-            $processedWarnings = [];
-            if (isset($result['warnings']) && is_array($result['warnings'])) {
-                $processedWarnings = $result['warnings'];
-            }
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Xử lý đơn hàng thành công',
-                'data' => [
-                    'items' => $orderItems,
-                    'flash_sale_exhausted' => collect($orderItems)->contains(function($item) use ($result) {
-                        return isset($result['flash_sale_exhausted']) && $result['flash_sale_exhausted'];
-                    }),
-                    'warnings' => array_merge($warnings, $processedWarnings),
-                ],
-            ]);
             
         } catch (\Exception $e) {
             Log::error('Process Order Error: ' . $e->getMessage(), [
@@ -218,5 +250,61 @@ class OrderProcessingController extends Controller
                 'message' => 'Lỗi xử lý đơn hàng: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Lock và kiểm tra quỹ Deal Sốc.
+     */
+    private function assertDealAvailableOrFail(int $productId, ?int $variantId, int $quantity): int
+    {
+        $now = time();
+
+        $saleDealQuery = SaleDeal::where('product_id', $productId)
+            ->lockForUpdate()
+            ->whereHas('deal', function ($q) use ($now) {
+                $q->where('status', '1')
+                    ->where('start', '<=', $now)
+                    ->where('end', '>=', $now);
+            });
+
+        if ($variantId) {
+            $saleDealQuery->where(function ($q) use ($variantId) {
+                $q->where('variant_id', $variantId)
+                    ->orWhereNull('variant_id');
+            });
+        } else {
+            $saleDealQuery->whereNull('variant_id');
+        }
+
+        $saleDeal = $saleDealQuery->first();
+        if (!$saleDeal) {
+            throw new \Exception('Suất quà tặng vừa hết');
+        }
+
+        // Shopee style: qty là số suất còn lại, buy là thống kê đã dùng
+        $remaining = (int) $saleDeal->qty;
+        if ($remaining < $quantity) {
+            throw new \Exception('Suất quà tặng vừa hết');
+        }
+
+        Log::info('[DealQuota] before decrement', [
+            'sale_deal_id' => $saleDeal->id,
+            'qty' => $saleDeal->qty,
+            'buy' => $saleDeal->buy,
+            'quantity_request' => $quantity,
+        ]);
+
+        // Trừ trực tiếp suất còn lại và tăng buy để báo cáo
+        $saleDeal->decrement('qty', $quantity);
+        $saleDeal->increment('buy', $quantity);
+
+        $saleDeal->refresh();
+        Log::info('[DealQuota] after decrement', [
+            'sale_deal_id' => $saleDeal->id,
+            'qty' => $saleDeal->qty,
+            'buy' => $saleDeal->buy,
+        ]);
+
+        return (int) $saleDeal->id;
     }
 }
