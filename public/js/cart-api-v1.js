@@ -36,7 +36,7 @@
          * @param {number} qty - Quantity
          * @param {boolean} isDeal - Is deal item
          */
-        addItem: function(variantId, qty, isDeal = false) {
+        addItem: function(variantId, qty, isDeal = false, forceRefresh = false) {
             // Validate inputs
             if (!variantId || variantId <= 0) {
                 return $.Deferred().reject({
@@ -49,8 +49,14 @@
                 });
             }
             
+            // Bước 3: Thêm tham số force_refresh vào API call
+            var url = this.baseUrl + '/items';
+            if (forceRefresh === true) {
+                url += '?force_refresh=1';
+            }
+            
             return $.ajax({
-                url: this.baseUrl + '/items',
+                url: url,
                 method: 'POST',
                 timeout: 10000, // 10 seconds timeout
                 headers: {

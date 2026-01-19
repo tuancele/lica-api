@@ -104,11 +104,15 @@ class CartController extends Controller
                 ], 400);
             }
             
+            // Bước 4: Nhận tham số force_refresh từ query string
+            $forceRefresh = (bool)$request->input('force_refresh', false);
+            
             $result = $this->cartService->addItem(
                 $request->variant_id,
                 $request->qty,
                 $request->is_deal ?? false,
-                $userId
+                $userId,
+                $forceRefresh
             );
             
             // Ensure session is saved before returning response

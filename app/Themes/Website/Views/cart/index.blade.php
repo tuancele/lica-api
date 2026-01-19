@@ -290,6 +290,46 @@
 <script src="{{asset('js/cart-api-v1.js')}}"></script>
 <script>
     window.dealCounts = @json($deal_counts ?? []);
+    
+    // Bước 1: Quản lý trạng thái Deal bằng JavaScript
+    // Tạo mảng toàn cục để theo dõi các Deal đang có trong giỏ
+    window.activeDeals = [];
+    
+    // Khởi tạo khi trang vừa tải
+    $(document).ready(function() {
+        // Duyệt toàn bộ các dòng có .is-deal-row, lấy variant-id và deal-id
+        $('.is-deal-row').each(function() {
+            var $row = $(this);
+            var variantId = $row.find('.remove-item-cart').data('id');
+            // Tìm deal-id từ button addDealCart trong cùng deal section hoặc từ data attribute
+            var dealId = $row.closest('.deal-section').find('.addDealCart').first().attr('data-deal-id');
+            
+            if (variantId) {
+                // Nếu không tìm thấy dealId từ button, thử lấy từ row data
+                if (!dealId) {
+                    dealId = $row.attr('data-deal-id');
+                }
+                
+                if (dealId) {
+                    var dealInfo = {
+                        variantId: parseInt(variantId),
+                        dealId: parseInt(dealId)
+                    };
+                    
+                    // Kiểm tra xem đã có trong mảng chưa
+                    var exists = window.activeDeals.some(function(item) {
+                        return item.variantId === dealInfo.variantId && item.dealId === dealInfo.dealId;
+                    });
+                    
+                    if (!exists) {
+                        window.activeDeals.push(dealInfo);
+                    }
+                }
+            }
+        });
+        
+        console.log('[CART DEBUG] Active deals initialized:', window.activeDeals);
+    });
 </script>
 <style>
     .is-deal-row { background-color: #fff9f9; }
@@ -442,6 +482,42 @@
                             response: response,
                             removedVariantIds: removedVariantIds,
                             variantId: variantId
+                        });
+                        
+                        // Bước 2: Chặn và Cập nhật tức thì khi Xóa (Frontend Sync)
+                        // Ghi nhận ID Deal vừa xóa và xóa khỏi mảng window.activeDeals
+                        removedVariantIds.forEach(function(id) {
+                            // Xóa khỏi mảng activeDeals
+                            window.activeDeals = window.activeDeals.filter(function(deal) {
+                                return deal.variantId !== parseInt(id);
+                            });
+                            
+                            // Xóa DOM ngay lập tức
+                            $(`.item-cart-${id}`).remove();
+                            $(`tr[class*="item-cart-${id}"]`).remove();
+                        });
+                        
+                        console.log('[CART DEBUG] Active deals after remove:', window.activeDeals);
+                        
+                        // QUAN TRỌNG: Cập nhật lại giao diện các nút "THÊM NGAY" ngay lập tức
+                        // Kiểm tra và enable các nút addDealCart nếu deal đã được xóa
+                        $('.addDealCart').each(function() {
+                            var $btn = $(this);
+                            var btnDealId = parseInt($btn.attr('data-deal-id'));
+                            var btnVariantId = parseInt($btn.attr('data-id'));
+                            
+                            // Kiểm tra xem deal này còn trong activeDeals không
+                            var dealStillActive = window.activeDeals.some(function(deal) {
+                                return deal.dealId === btnDealId && deal.variantId === btnVariantId;
+                            });
+                            
+                            // Nếu deal không còn trong giỏ, enable button
+                            if (!dealStillActive && $btn.prop('disabled') && !$btn.hasClass('btn-loading')) {
+                                $btn.prop('disabled', false);
+                                if ($btn.text().trim() === 'HẾT QUÀ') {
+                                    $btn.text('THÊM NGAY');
+                                }
+                            }
                         });
                         
                         // Remove all rows for removed variant IDs
@@ -885,16 +961,47 @@
                 return;
             }
 
-            if (currentCount >= limited) {
+            // Bước 3: Kiểm tra tại nút "THÊM NGAY" (The Gatekeeper)
+            // Kiểm tra mảng window.activeDeals thay vì chỉ dựa vào Response của Server
+            var dealInfo = {
+                variantId: parseInt(variantId),
+                dealId: parseInt(dealId)
+            };
+            
+            var dealExistsInCart = window.activeDeals.some(function(deal) {
+                return deal.variantId === dealInfo.variantId && deal.dealId === dealInfo.dealId;
+            });
+            
+            // Nếu deal đã tồn tại trong giỏ (theo frontend state), kiểm tra limit
+            if (dealExistsInCart && currentCount >= limited) {
                 CartAPI.showError('Bạn đã đạt giới hạn tối đa ' + limited + ' sản phẩm cho chương trình Deal này.');
                 return;
             }
-
+            
+            // Nếu mảng đã sạch (vừa xóa xong), cho phép gửi Request addItem đi
+            // Thêm tham số force_refresh=1 để ép backend đọc lại session từ storage
             $btn.prop('disabled', true).addClass('btn-loading').html('<span class="spinner-border spinner-border-sm"></span>');
             
-            CartAPI.addItem(variantId, 1, true)
+            CartAPI.addItem(variantId, 1, true, true) // Thêm tham số force_refresh=true
                 .done(function(response) {
                     if (response.success) {
+                        // Bước 2: Cập nhật window.activeDeals khi thêm thành công
+                        var dealInfo = {
+                            variantId: parseInt(variantId),
+                            dealId: parseInt(dealId)
+                        };
+                        
+                        // Kiểm tra xem đã có trong mảng chưa
+                        var exists = window.activeDeals.some(function(deal) {
+                            return deal.variantId === dealInfo.variantId && deal.dealId === dealInfo.dealId;
+                        });
+                        
+                        if (!exists) {
+                            window.activeDeals.push(dealInfo);
+                        }
+                        
+                        console.log('[CART DEBUG] Active deals after add:', window.activeDeals);
+                        
                         CartAPI.showSuccess('Đã thêm sản phẩm deal vào giỏ hàng');
                         // Reload to update deal counts and cart
                         setTimeout(function() {

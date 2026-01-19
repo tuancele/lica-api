@@ -44,30 +44,22 @@ class CartService
     private const DEAL_EXHAUSTED_MESSAGE = 'Quà tặng Deal Sốc đã hết, giá được chuyển về giá thường/khuyến mại.';
     
     /**
-     * Internal cart items cache (synced from session)
-     * CRITICAL: Must be synced before use to avoid stale data
-     */
-    protected array $items = [];
-    
-    /**
-     * Sync cart data from session (no caching, always fresh)
-     * CRITICAL: This ensures we always read the latest session state, not stale memory
+     * Get cart items directly from session (no caching, always fresh)
+     * Bước 1: Loại bỏ thuộc tính $items khỏi bộ nhớ Service
      * 
-     * @return void
+     * @return array
      */
-    private function syncWithSession(): void
+    private function getCartItemsFromSession(): array
     {
-        // Force read directly from session, no intermediate variables
-        $oldCart = Session::has('cart') ? Session::get('cart') : null;
+        $oldCart = session()->has('cart') ? session()->get('cart') : null;
         $cart = new Cart($oldCart);
+        $items = $cart->items ?? [];
         
-        // Sync items array from Cart object
-        $this->items = $cart->items ?? [];
-        
-        // Ensure items is always an array
-        if (!is_array($this->items)) {
-            $this->items = [];
+        if (!is_array($items)) {
+            $items = [];
         }
+        
+        return $items;
     }
 
     public function __construct(
@@ -95,11 +87,9 @@ class CartService
      */
     public function getCart(?int $userId = null): array
     {
-        // CRITICAL: Always sync with session first (no memory cache)
-        $this->syncWithSession();
-        
-        // Get Cart object from synced session
-        $oldCart = Session::has('cart') ? Session::get('cart') : null;
+        // CRITICAL: Single Source of Truth - Always read directly from session first
+        // Bước 3: Đảm bảo "Single Source of Truth" cho Cart Summary
+        $oldCart = session()->has('cart') ? session()->get('cart') : null;
         $cart = new Cart($oldCart);
         
         $items = [];
@@ -447,10 +437,21 @@ class CartService
      * @param int|null $userId
      * @return array
      */
-    public function addItem(int $variantId, int $qty, bool $isDeal = false, ?int $userId = null): array
+    public function addItem(int $variantId, int $qty, bool $isDeal = false, ?int $userId = null, bool $forceRefresh = false): array
     {
-        // CRITICAL: Sync with session first to ensure fresh data
-        $this->syncWithSession();
+        // Bước 4: Vá lỗi Backend (addItem Force Refresh)
+        // Nếu nhận được tham số force_refresh, ép Laravel phải mở lại file session từ đĩa cứng
+        if ($forceRefresh) {
+            // Ép Laravel phải mở lại file session từ đĩa cứng để lấy dữ liệu mới nhất
+            session()->save(); // Flush any pending writes
+            session()->regenerate(false); // Reload from storage (false = keep same ID)
+            Log::info('[CartService] Force refresh session triggered', [
+                'variant_id' => $variantId,
+                'session_id' => session()->getId(),
+            ]);
+        }
+        
+        // Bước 1: Đọc trực tiếp từ Session (không dùng biến tạm trong bộ nhớ)
         
         $variant = Variant::with('product')->find($variantId);
         if (!$variant || !$variant->product) {
@@ -467,8 +468,9 @@ class CartService
             throw new \Exception('Phân loại đã hết hàng');
         }
         
-        // Check current cart qty from synced items
-        $currentQty = isset($this->items[$variantId]) ? ($this->items[$variantId]['qty'] ?? 0) : 0;
+        // Bước 1: Đọc trực tiếp từ Session (không dùng biến tạm trong bộ nhớ)
+        $currentCartItems = $this->getCartItemsFromSession();
+        $currentQty = isset($currentCartItems[$variantId]) ? ($currentCartItems[$variantId]['qty'] ?? 0) : 0;
         
         if ($variantStock > 0 && ($currentQty + $qty) > $variantStock) {
             throw new \Exception('Số lượng vượt quá tồn kho của phân loại');
@@ -476,16 +478,34 @@ class CartService
         
         // Handle Deal price & per-order limit
         if ($isDeal) {
-            // CRITICAL: Force sync with session right before deal limit check (no memory cache)
-            $this->syncWithSession();
+            // Bước 3: Sửa logic Validation trong addItem - dùng biến local từ Session
+            // CRITICAL: Force flush session before reading to ensure latest data
+            session()->save();
+            
+            // Đọc trực tiếp từ Session (không dùng biến tạm)
+            $currentCart = session()->get('cart', null);
+            $currentCartItems = [];
+            if ($currentCart) {
+                if (is_object($currentCart)) {
+                    $currentCartItems = $currentCart->items ?? [];
+                } elseif (is_array($currentCart) && isset($currentCart['items'])) {
+                    $currentCartItems = $currentCart['items'];
+                } elseif (is_array($currentCart)) {
+                    $currentCartItems = $currentCart;
+                }
+            }
+            if (!is_array($currentCartItems)) {
+                $currentCartItems = [];
+            }
             
             // DEBUG: Log cart state before deal limit check
             Log::info('[CartService] addItem - Cart state before deal limit check', [
                 'variant_id' => $variantId,
                 'is_deal' => true,
-                'this_items_count' => count($this->items),
-                'this_items_keys' => array_keys($this->items),
-                'session_has_cart' => Session::has('cart'),
+                'current_cart_items_count' => count($currentCartItems),
+                'current_cart_items_keys' => array_keys($currentCartItems),
+                'session_has_cart' => session()->has('cart'),
+                'session_id' => session()->getId(),
             ]);
 
             $now = strtotime(date('Y-m-d H:i:s'));
@@ -499,29 +519,39 @@ class CartService
                 // deal_sales.qty là remaining quota, deals.limited là per-order limit
                 $dealLimit = (int)($saledeal->deal->limited ?? 0);
                 if ($dealLimit > 0) {
-                    // CRITICAL: Count deal items from $this->items (synced from session)
+                    // Bước 3: Sửa logic Validation trong addItem - dùng biến local từ Session
+                    // Đếm số lượng deal items từ currentCartItems (đã đọc từ session ở trên)
                     $currentDealQty = 0;
-                    foreach ($this->items as $cartVariantId => $cartItem) {
-                        if (!empty($cartItem['is_deal'])) {
-                            $existingSaleDeal = SaleDeal::where('product_id', $cartItem['item']['product_id'] ?? 0)
-                                ->where('deal_id', $saledeal->deal_id)
-                                ->first();
-                            if ($existingSaleDeal) {
-                                $currentDealQty += (int)($cartItem['qty'] ?? 0);
+                    $dealItemsInCart = [];
+                    foreach ($currentCartItems as $cartVariantId => $cartItem) {
+                        // Check if item is a deal item with the same deal_id
+                        if (!empty($cartItem['is_deal']) && isset($cartItem['deal_id'])) {
+                            if ((int)$cartItem['deal_id'] === (int)$saledeal->deal_id) {
+                                $itemQty = (int)($cartItem['qty'] ?? 0);
+                                $currentDealQty += $itemQty;
+                                $dealItemsInCart[] = [
+                                    'variant_id' => $cartVariantId,
+                                    'product_id' => $cartItem['item']['product_id'] ?? null,
+                                    'qty' => $itemQty,
+                                    'deal_id' => $cartItem['deal_id'],
+                                ];
                             }
                         }
                     }
                     
-                    // FINAL CHECK: Log items count right before limit check
-                    Log::info('[Cart_Final_Check] Items count: ' . count($this->items), [
+                    // Bước 4: Logs đối soát
+                    Log::info('[CART_VALIDATION] Kiểm tra Deal ID: ' . $saledeal->deal_id . ' | Số lượng trong giỏ FRESH: ' . $currentDealQty, [
                         'variant_id' => $variantId,
                         'deal_id' => $saledeal->deal_id,
                         'deal_limit' => $dealLimit,
                         'current_deal_qty' => $currentDealQty,
-                        'this_items_count' => count($this->items),
+                        'current_cart_items_count' => count($currentCartItems),
+                        'deal_items_in_cart' => $dealItemsInCart,
+                        'all_current_cart_items_keys' => array_keys($currentCartItems),
                     ]);
-                    // Check if variant already in cart (from synced $this->items)
-                    $alreadyInCart = isset($this->items[$variantId]) && !empty($this->items[$variantId]['is_deal']);
+                    
+                    // Check if variant already in cart (from currentCartItems read from session)
+                    $alreadyInCart = isset($currentCartItems[$variantId]) && !empty($currentCartItems[$variantId]['is_deal']);
                     $remaining = $dealLimit - $currentDealQty;
 
                     // Nếu variant đã có trong giỏ: không throw cứng, chỉ clamp hoặc no-op
@@ -575,8 +605,7 @@ class CartService
         session()->save();
         Session::save();
         
-        // Sync $this->items after adding
-        $this->syncWithSession();
+        // Session đã được persist ở trên, không cần sync
         
         return [
             'total_qty' => $cart->totalQty,
@@ -680,21 +709,18 @@ class CartService
      */
     public function removeItem(int $variantId, ?int $userId = null): array
     {
-        // CRITICAL: Always sync with session first (no memory cache)
-        $this->syncWithSession();
-        
+        // Bước 1: Đọc trực tiếp từ Session (không dùng biến tạm trong bộ nhớ)
         // Get Cart object from session for operations
-        $oldCart = Session::has('cart') ? Session::get('cart') : null;
+        $oldCart = session()->has('cart') ? session()->get('cart') : null;
         $cart = new Cart($oldCart);
         
         // DEBUG: Log cart state before removal
         Log::info('[CartService] removeItem - Cart state before', [
             'variant_id' => $variantId,
-            'this_items_count' => count($this->items),
             'cart_items_count' => count($cart->items),
             'cart_items_keys' => array_keys($cart->items),
             'item_exists' => isset($cart->items[$variantId]),
-            'session_has_cart' => Session::has('cart'),
+            'session_has_cart' => session()->has('cart'),
             'session_id' => session()->getId(),
         ]);
         
@@ -736,25 +762,18 @@ class CartService
         // Remove the item (simple - just call Cart model's removeItem)
         $cart->removeItem($variantId);
 
-        // CRITICAL: Update $this->items from Cart object after removal
-        $this->items = $cart->items ?? [];
-        if (!is_array($this->items)) {
-            $this->items = [];
-        }
-
+        // Bước 2: Ép ghi Session vật lý trong removeItem
         // IMPORTANT: persist session immediately after removal to avoid needing F5 for next add
+        // Thứ tự thực hiện: unset -> put -> save
         if (count($cart->items) > 0) {
-            Session::put('cart', $cart);
+            session()->put('cart', $cart);
         } else {
-            Session::forget('cart');
-            Session::forget('ss_counpon');
+            session()->forget('cart');
+            session()->forget('ss_counpon');
         }
-        // Force flush session to disk/database immediately
-        session()->save();
-        Session::save();
         
-        // CRITICAL: Sync back to ensure memory is updated (no stale data)
-        $this->syncWithSession();
+        // CRITICAL: Ép PHP ghi xuống file session ngay lập tức
+        session()->save();
         
         // DEBUG: Log cart state after removal (including session verification)
         $sessionCartAfter = Session::has('cart') ? Session::get('cart') : null;
