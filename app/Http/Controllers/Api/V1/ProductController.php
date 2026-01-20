@@ -129,21 +129,21 @@ class ProductController extends Controller
         try {
             // Bypass cache for real-time data integrity
             $product = Product::with([
-                'brand:id,name,slug,image,logo',
-                'origin:id,name',
-                'variants' => function($query) {
-                    $query->orderBy('position', 'asc')
-                          ->orderBy('id', 'asc')
-                          ->with(['color:id,name,color', 'size:id,name,unit']);
-                },
-                'rates' => function($query) {
-                    $query->where('status', '1')
-                          ->orderBy('created_at', 'desc')
-                          ->limit(5);
-                }
-            ])
-            ->where([['slug', $slug], ['status', '1'], ['type', ProductType::PRODUCT->value]])
-            ->first();
+                    'brand:id,name,slug,image,logo',
+                    'origin:id,name',
+                    'variants' => function($query) {
+                        $query->orderBy('position', 'asc')
+                              ->orderBy('id', 'asc')
+                              ->with(['color:id,name,color', 'size:id,name,unit']);
+                    },
+                    'rates' => function($query) {
+                        $query->where('status', '1')
+                              ->orderBy('created_at', 'desc')
+                              ->limit(5);
+                    }
+                ])
+                ->where([['slug', $slug], ['status', '1'], ['type', ProductType::PRODUCT->value]])
+                ->first();
             
             if (!$product) {
                 return response()->json([
@@ -358,7 +358,7 @@ class ProductController extends Controller
                     'html' => '<p>' . number_format($finalPrice) . 'đ</p>',
                 ];
             }
-
+            
             return [
                 'final_price' => $finalPrice,
                 'original_price' => $originalPrice,
@@ -372,7 +372,7 @@ class ProductController extends Controller
                 'variant_id' => $variantId,
                 'product_id' => $productId,
             ]);
-
+            
             return [
                 'final_price' => 0,
                 'original_price' => 0,

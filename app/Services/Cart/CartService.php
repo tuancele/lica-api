@@ -160,28 +160,48 @@ class CartService
                         }
                     }
 
-                    // ===== CRITICAL: Fallback nếu là Deal Sốc nhưng subtotal vẫn = 0 =====
-                    // Tránh case cấu hình giá hoặc PriceEngine trả sai dẫn tới 0đ ngoài ý muốn
+                    // ===== CRITICAL: Xử lý Deal Sốc 0đ - CHẤP NHẬN giá 0đ, không fallback về giá gốc =====
+                    // Nếu là Deal Sốc (is_deal = 1) và subtotal = 0, CHẤP NHẬN giá 0đ
+                    // CHỈ fallback về giá gốc nếu KHÔNG phải Deal Sốc
                     if ($newSubtotal <= 0.0) {
-                        try {
-                            $dealPrice = $this->getDealPrice($product->id, $variantId);
-                        } catch (\Throwable $e) {
-                            $dealPrice = 0.0;
-                            Log::warning('[CartService] getDealPrice failed, fallback to variant/base price', [
-                                'product_id' => $product->id,
-                                'variant_id' => $variantId,
-                                'error' => $e->getMessage(),
-                            ]);
-                        }
-
-                        if ($dealPrice > 0) {
-                            $newPrice = $dealPrice;
-                            $newSubtotal = $dealPrice * $quantity;
-                        } elseif (!empty($variant->price) && (float)$variant->price > 0) {
-                            // Fallback cuối: dùng giá variant gốc * qty
-                            $basePrice = (float)$variant->price;
-                            $newPrice = $basePrice;
-                            $newSubtotal = $basePrice * $quantity;
+                        // Kiểm tra xem có phải Deal Sốc không (dựa vào cờ is_deal)
+                        $isDealItem = !empty($item['is_deal']) && (int)$item['is_deal'] === 1;
+                        
+                        if ($isDealItem) {
+                            // Nếu là Deal Sốc, CHẤP NHẬN giá 0đ (không fallback về giá gốc)
+                            try {
+                                $dealPrice = $this->getDealPrice($product->id, $variantId);
+                                // Deal Sốc hợp lệ (kể cả 0đ)
+                                $newPrice = $dealPrice;
+                                $newSubtotal = $dealPrice * $quantity;
+                                Log::info('[CartService] Deal Sốc price applied (including 0đ)', [
+                                    'product_id' => $product->id,
+                                    'variant_id' => $variantId,
+                                    'deal_price' => $dealPrice,
+                                    'subtotal' => $newSubtotal,
+                                ]);
+                            } catch (\Throwable $e) {
+                                // Nếu lỗi khi lấy Deal price, vẫn giữ giá 0đ cho Deal Sốc
+                                $newPrice = 0.0;
+                                $newSubtotal = 0.0;
+                                Log::warning('[CartService] getDealPrice failed for Deal Sốc, keeping 0đ', [
+                                    'product_id' => $product->id,
+                                    'variant_id' => $variantId,
+                                    'error' => $e->getMessage(),
+                                ]);
+                            }
+                        } else {
+                            // CHỈ fallback về giá gốc nếu KHÔNG phải Deal Sốc
+                            if (!empty($variant->price) && (float)$variant->price > 0) {
+                                $basePrice = (float)$variant->price;
+                                $newPrice = $basePrice;
+                                $newSubtotal = $basePrice * $quantity;
+                                Log::warning('[CartService] Fallback to variant price (not a Deal)', [
+                                    'product_id' => $product->id,
+                                    'variant_id' => $variantId,
+                                    'base_price' => $basePrice,
+                                ]);
+                            }
                         }
                     }
                 }
@@ -350,6 +370,76 @@ class CartService
     }
 
     /**
+     * Bước 2: Đồng bộ hóa mảng Items trong CartService
+     * Quét lại toàn bộ sản phẩm Deal Sốc trong giỏ hàng và cập nhật trạng thái is_available
+     * Nếu sản phẩm đó đã được bổ sung số lượng trong Admin, cập nhật is_available = true trong Session
+     * 
+     * @return void
+     */
+    public function syncDealItemsAvailability(): void
+    {
+        $oldCart = session()->has('cart') ? session()->get('cart') : null;
+        if (!$oldCart) {
+            return;
+        }
+        
+        $cart = new Cart($oldCart);
+        $hasChanges = false;
+        
+        foreach ($cart->items as $variantId => $item) {
+            // Chỉ xử lý các item là Deal Sốc
+            if (empty($item['is_deal']) || (int)$item['is_deal'] !== 1) {
+                continue;
+            }
+            
+            $productId = null;
+            if (is_object($item['item'] ?? null)) {
+                $productId = $item['item']->product_id ?? null;
+            } elseif (is_array($item['item'] ?? null)) {
+                $productId = $item['item']['product_id'] ?? null;
+            }
+            
+            if (!$productId) {
+                continue;
+            }
+            
+            $quantity = (int)($item['qty'] ?? 1);
+            
+            // Validate Deal availability với dữ liệu mới nhất từ Database
+            $dealCheck = $this->validateDealAvailability($productId, $variantId, $quantity);
+            
+            // Nếu Deal đã available (Admin đã tăng số lượng), cập nhật lại Session
+            if ($dealCheck['available']) {
+                // Đảm bảo item có cờ is_deal = 1 và dealsale_id
+                if (!isset($item['is_deal']) || (int)$item['is_deal'] !== 1) {
+                    $cart->items[$variantId]['is_deal'] = 1;
+                    $hasChanges = true;
+                }
+                
+                Log::info('[CartService] Deal item synced - now available', [
+                    'product_id' => $productId,
+                    'variant_id' => $variantId,
+                    'quantity' => $quantity,
+                ]);
+            } else {
+                Log::warning('[CartService] Deal item still unavailable after sync', [
+                    'product_id' => $productId,
+                    'variant_id' => $variantId,
+                    'quantity' => $quantity,
+                    'message' => $dealCheck['message'],
+                ]);
+            }
+        }
+        
+        // Nếu có thay đổi, persist lại vào Session
+        if ($hasChanges) {
+            session()->put('cart', $cart);
+            session()->save();
+            Log::info('[CartService] Cart session updated after Deal items sync');
+        }
+    }
+
+    /**
      * Validate Deal availability for a given product/variant and quantity.
      */
     private function validateDealAvailability(int $productId, int $variantId, int $quantity): array
@@ -379,6 +469,10 @@ class CartService
                 'message' => self::DEAL_EXHAUSTED_MESSAGE,
             ];
         }
+        
+        // CRITICAL: Refresh model để đảm bảo đọc đúng số lượng mới nhất từ Database
+        // Điều này đảm bảo nếu Admin đã tăng số lượng, backend sẽ đọc được giá trị mới nhất
+        $saleDeal->refresh();
 
         // Quỹ deal (Shopee style): qty là số suất còn lại
         if ((int) $saleDeal->qty < $quantity) {

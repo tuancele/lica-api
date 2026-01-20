@@ -552,14 +552,14 @@
                                     // Sidebar + table totals: always from backend
                                     $('.subtotal-price').text(CartAPI.formatCurrency(summary.subtotal));
                                     $('.total-price').text(CartAPI.formatCurrency(summary.total !== undefined ? summary.total : summary.subtotal));
-                                    $('.count-cart').text(summary.total_qty || 0);
-                                    
-                                    // Also update checkout button state
-                                    if (summary.total_qty === 0) {
-                                        $('.checkout-button').prop('disabled', true).addClass('disabled');
-                                    } else {
-                                        $('.checkout-button').prop('disabled', false).removeClass('disabled');
-                                    }
+                            $('.count-cart').text(summary.total_qty || 0);
+                            
+                            // Also update checkout button state
+                            if (summary.total_qty === 0) {
+                                $('.checkout-button').prop('disabled', true).addClass('disabled');
+                            } else {
+                                $('.checkout-button').prop('disabled', false).removeClass('disabled');
+                            }
                                     
                                     // DEBUG: Log success with summary
                                     console.log('[CART DEBUG] Remove item success:', {
@@ -977,7 +977,7 @@
                 CartAPI.showError('Bạn đã đạt giới hạn tối đa ' + limited + ' sản phẩm cho chương trình Deal này.');
                 return;
             }
-            
+
             // Nếu mảng đã sạch (vừa xóa xong), cho phép gửi Request addItem đi
             // Thêm tham số force_refresh=1 để ép backend đọc lại session từ storage
             $btn.prop('disabled', true).addClass('btn-loading').html('<span class="spinner-border spinner-border-sm"></span>');

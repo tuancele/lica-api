@@ -559,3 +559,52 @@ if ($displayPrice['type'] === 'normal') {
   - `app/Themes/Website/Controllers/CartController.php` - Đồng bộ session, tính toán thủ công từ session
   - `app/Themes/Website/Views/cart/checkout.blade.php` - Chốt chặn JS không được ghi đè giá đã render đúng
 
+#### 2026-01-23 (Update 10) - Fix Deal Sốc 0đ bị nhảy về giá gốc tại trang Checkout
+- Fix: Sản phẩm Deal Sốc 0đ bị nhảy về giá gốc (ví dụ: 120.000đ) tại trang Checkout thay vì hiển thị đúng giá 0đ.
+- Root cause:
+  - Logic fallback trong `CartService::getCart()` đang ép các item có `subtotal <= 0` phải lấy giá gốc (`price * qty`).
+  - Điều này sai với quy tắc Deal Sốc 0đ (quà tặng miễn phí).
+  - Logic fallback không phân biệt giữa Deal Sốc và sản phẩm thường.
+- Fix (Backend):
+  - **Bước 1: Cho phép giá 0đ đối với sản phẩm Deal Sốc**:
+    - Sửa logic fallback trong `CartService::getCart()` (dòng 163-203):
+      - Kiểm tra cờ `is_deal` để xác định Deal Sốc.
+      - Nếu `is_deal = 1` và `subtotal <= 0`: CHẤP NHẬN giá 0đ, không fallback về giá gốc.
+      - Chỉ fallback về giá gốc khi KHÔNG phải Deal Sốc.
+    - Code logic:
+      ```php
+      $isDealItem = !empty($item['is_deal']) && (int)$item['is_deal'] === 1;
+      
+      if ($isDealItem) {
+          // Nếu là Deal Sốc, CHẤP NHẬN giá 0đ (không fallback về giá gốc)
+          $dealPrice = $this->getDealPrice($product->id, $variantId);
+          $newPrice = $dealPrice;
+          $newSubtotal = $dealPrice * $quantity;
+      } else {
+          // CHỈ fallback về giá gốc nếu KHÔNG phải Deal Sốc
+          if (!empty($variant->price) && (float)$variant->price > 0) {
+              $basePrice = (float)$variant->price;
+              $newPrice = $basePrice;
+              $newSubtotal = $basePrice * $quantity;
+          }
+      }
+      ```
+    - File: `app/Services/Cart/CartService.php`.
+  - **Bước 2: Đồng bộ lại mảng productsWithPrice trong Controller**:
+    - Đã kiểm tra: `CartController::checkout()` không có logic fallback giá gốc.
+    - Logic hiện tại đã đúng:
+      - Lấy `subtotal` từ `cartSummary['items']` (đã được `CartService` tính).
+      - Không có logic `if ($itemSubtotal <= 0) { ... giá gốc ... }`.
+      - Chỉ đảm bảo `subtotal` không âm: `max(0.0, $itemSubtotal)`.
+    - File: `app/Themes/Website/Controllers/CartController.php`.
+- Quy tắc tính giá Deal Sốc:
+  - Deal Sốc 0đ được CHẤP NHẬN và hiển thị đúng giá 0đ, không bị ép về giá gốc.
+  - Logic fallback chỉ áp dụng cho sản phẩm không phải Deal Sốc.
+  - `CartController` không có logic fallback giá gốc, chỉ lấy giá từ `CartService`.
+- Kết quả:
+  - Deal Sốc 0đ hiển thị đúng giá 0đ tại trang Checkout.
+  - Tổng tiền được tính đúng (không bao gồm giá gốc của Deal Sốc).
+  - Logic fallback chỉ áp dụng cho sản phẩm thường.
+- Files modified:
+  - `app/Services/Cart/CartService.php` - Sửa logic fallback để CHẤP NHẬN giá 0đ cho Deal Sốc
+  - `app/Themes/Website/Controllers/CartController.php` - Đã kiểm tra, không có logic fallback giá gốc (đã đúng)

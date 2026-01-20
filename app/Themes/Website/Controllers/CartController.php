@@ -285,11 +285,15 @@ class CartController extends Controller
             $finalSubtotal += (float)($priceInfo['total_price'] ?? 0);
         }
         
-        // 1. Lấy dữ liệu tổng lực từ Service
+        // Bước 3: Xóa cache giỏ hàng trước khi Render
+        // Đảm bảo trước khi vào trang Checkout, gọi CartService::getCart() để refresh toàn bộ giá theo cấu hình Flash Sale mới nhất
+        // Gọi getCart() để đảm bảo giá được tính lại từ PriceEngineService với cấu hình mới nhất
         $cartSummary = $this->cartService->getCart();
 
-        // 2. Tính lại subtotal từ cartSummary.items
-        // Lấy LUÔN subtotal từ Service trả về (kể cả nó là 0đ cho Deal Sốc/quà tặng)
+        // Bước 2: Ép Backend trả về Subtotal khớp với Items
+        // Sau khi vòng lặp foreach tính toán xong $productsWithPrice,
+        // gán $totalPrice bằng chính tổng các giá trị trong mảng đó
+        // Đảm bảo không có bất kỳ con số "rác" nào từ Session cũ lọt vào
         $totalPrice = 0.0;
         $productsWithPrice = [];
         foreach ($cartSummary['items'] as $item) {
@@ -304,7 +308,10 @@ class CartController extends Controller
             // Chốt: không để âm
             $itemSubtotal = max(0.0, $itemSubtotal);
 
+            // Cộng dồn vào tổng
             $totalPrice += $itemSubtotal;
+            
+            // Lưu vào mảng productsWithPrice
             $productsWithPrice[$vId] = [
                 'total_price' => $itemSubtotal,
                 'price_breakdown' => $item['price_breakdown'] ?? null,
@@ -313,12 +320,24 @@ class CartController extends Controller
                 'flash_sale_remaining' => $item['flash_sale_remaining'] ?? 0,
             ];
         }
+        
+        // CRITICAL: Đảm bảo $totalPrice được tính từ chính $productsWithPrice
+        // Tính lại một lần nữa từ mảng để đảm bảo không có số "rác"
+        $recalculatedFromProducts = 0.0;
+        foreach ($productsWithPrice as $vId => $priceData) {
+            $recalculatedFromProducts += (float)($priceData['total_price'] ?? 0);
+        }
+        
+        // Sử dụng giá trị đã tính lại từ productsWithPrice
+        $totalPrice = max(0.0, $recalculatedFromProducts);
 
         // ===== THÊM LOG DEBUG (tổng lực sau khi re-calc) =====
         Log::info('[DEBUG_CHECKOUT] CartController recalculated total from cartSummary.items', [
             'cart_summary' => $cartSummary['summary'] ?? null,
             'items_count' => count($cartSummary['items'] ?? []),
             'recalculated_total' => $totalPrice,
+            'recalculated_from_products' => $recalculatedFromProducts,
+            'products_with_price_count' => count($productsWithPrice),
         ]);
         // ===== END LOG =====
         
@@ -794,6 +813,15 @@ class CartController extends Controller
                 }
             }
 
+            // Bước 2: Đồng bộ hóa mảng Items trong CartService trước khi Checkout
+            // Quét lại toàn bộ sản phẩm Deal Sốc trong giỏ hàng
+            // Nếu sản phẩm đó đã được bổ sung số lượng trong Admin, cập nhật trạng thái is_available = true
+            $this->cartService->syncDealItemsAvailability();
+            
+            // Refresh cart sau khi sync để đảm bảo dữ liệu mới nhất
+            $oldCart = Session::get('cart');
+            $cart = new Cart($oldCart);
+
             $member = auth()->guard('member')->user();
             $code = time();
 
@@ -934,14 +962,31 @@ class CartController extends Controller
                                     throw new \Exception('Thiếu dealsale_id cho sản phẩm Deal Sốc');
                                 }
 
+                                // Bước 1: Ép Refresh dữ liệu Deal trước khi Validate
+                                // Sử dụng lockForUpdate để tránh dữ liệu ảo (Dirty Read)
                                 /** @var SaleDeal|null $saleDeal */
                                 $saleDeal = SaleDeal::where('id', (int) $dealsale_id)->lockForUpdate()->first();
                                 if (!$saleDeal) {
                                     throw new \Exception('Suất quà tặng vừa hết');
                                 }
+                                
+                                // CRITICAL: Refresh model để đảm bảo đọc đúng số lượng mới nhất từ Database
+                                // Điều này đảm bảo nếu Admin đã tăng số lượng, backend sẽ đọc được giá trị mới nhất
+                                $saleDeal->refresh();
+                                
+                                Log::info('[CHECKOUT_DEAL_VALIDATE] Deal refreshed before validation', [
+                                    'dealsale_id' => $dealsale_id,
+                                    'qty_after_refresh' => (int) $saleDeal->qty,
+                                    'buy_after_refresh' => (int) $saleDeal->buy,
+                                ]);
 
                                 $quantityDeal = (int) ($variant['qty'] ?? 1);
                                 if ((int) $saleDeal->qty < $quantityDeal) {
+                                    Log::error('[CHECKOUT_DEAL_VALIDATE] Deal quota insufficient after refresh', [
+                                        'dealsale_id' => $dealsale_id,
+                                        'required_qty' => $quantityDeal,
+                                        'available_qty' => (int) $saleDeal->qty,
+                                    ]);
                                     throw new \Exception('Suất quà tặng vừa hết');
                                 }
 
@@ -1037,9 +1082,35 @@ class CartController extends Controller
             if (isset($cart)) {
                 Log::error('Cart Items: ' . json_encode($cart->items));
             }
+            
+            // Bước 3: Ép làm mới giỏ hàng khi lỗi "Suất quà tặng"
+            $errorMessage = $e->getMessage();
+            $shouldRefreshCart = false;
+            
+            if (strpos($errorMessage, 'Suất quà tặng') !== false || 
+                strpos($errorMessage, 'suất quà tặng') !== false ||
+                strpos($errorMessage, 'deal') !== false) {
+                $shouldRefreshCart = true;
+                
+                // Gọi CartService::getCart() để tự động cập nhật lại trạng thái quà tặng mới nhất
+                try {
+                    $cartSummary = $this->cartService->getCart();
+                    Log::info('[CHECKOUT_ERROR] Cart refreshed after deal quota error', [
+                        'error_message' => $errorMessage,
+                        'cart_summary' => $cartSummary['summary'] ?? null,
+                        'items_count' => count($cartSummary['items'] ?? []),
+                    ]);
+                } catch (\Exception $refreshException) {
+                    Log::error('[CHECKOUT_ERROR] Failed to refresh cart after deal quota error', [
+                        'refresh_error' => $refreshException->getMessage(),
+                    ]);
+                }
+            }
+            
             return response()->json([
                 'status' => 'error', 
-                'message' => 'Có lỗi xảy ra khi xử lý đơn hàng. Vui lòng thử lại sau.',
+                'message' => $errorMessage ?: 'Có lỗi xảy ra khi xử lý đơn hàng. Vui lòng thử lại sau.',
+                'should_refresh_cart' => $shouldRefreshCart,
                 'debug' => config('app.debug') ? $e->getMessage() : null
             ]);
         }

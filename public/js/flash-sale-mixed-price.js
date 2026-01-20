@@ -123,13 +123,13 @@
             // Xóa warning cũ nếu có
             $container.find('.flash-sale-warning').remove();
 
-            // Tạo warning element với tiêu đề mới
+            // Tạo warning element với tiêu đề mới (dùng class CSS thay vì inline style)
             const warningHtml = `
-                <div class="flash-sale-warning" style="margin-top: 8px; padding: 10px; background-color: #fff3cd; border-left: 3px solid #ffc107; border-radius: 4px; font-size: 12px;">
-                    <i class="fa fa-exclamation-triangle" style="color: #856404; margin-right: 5px;"></i>
-                    <strong style="color: #856404;">Vượt quá số lượng Flash Sale</strong>
+                <div class="flash-sale-warning">
+                    <i class="fa fa-exclamation-triangle"></i>
+                    <strong>Vượt quá số lượng Flash Sale</strong>
                     ${priceBreakdown && priceBreakdown.length > 1 ? `
-                        <div style="margin-top: 5px; padding-top: 5px; border-top: 1px solid #ffc107;">
+                        <div>
                             ${priceBreakdown.map(bd => {
                                 const typeLabel = bd.type === 'flashsale' ? 'Flash Sale' : (bd.type === 'promotion' ? 'Khuyến mãi' : 'Giá thường');
                                 return `${bd.quantity} sản phẩm × ${this.formatNumber(bd.unit_price)}đ (${typeLabel}) = ${this.formatNumber(bd.subtotal)}đ`;
@@ -159,11 +159,11 @@
             // Xóa tất cả warning/error cũ
             $container.find('.flash-sale-warning, .stock-error').remove();
             
-            // Tạo thông báo lỗi màu đỏ
+            // Tạo thông báo lỗi màu đỏ (dùng class CSS thay vì inline style)
             const errorHtml = `
-                <div class="stock-error alert alert-danger" style="margin-top: 8px; padding: 10px; border-left: 3px solid #dc3545; border-radius: 4px; font-size: 12px;">
-                    <i class="fa fa-exclamation-circle" style="color: #dc3545; margin-right: 5px;"></i>
-                    <strong style="color: #dc3545;">${data.stock_error || 'Số lượng vượt quá tồn kho'}</strong>
+                <div class="stock-error alert alert-danger checkout-warning">
+                    <i class="fa fa-exclamation-circle"></i>
+                    <strong>${data.stock_error || 'Số lượng vượt quá tồn kho'}</strong>
                 </div>
             `;
             

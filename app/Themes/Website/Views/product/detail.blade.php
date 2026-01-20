@@ -3295,6 +3295,8 @@
                     
                     if (remaining <= 0) {
                         timerEl.innerHTML = '<div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div><span class="timer-separator">:</span><div class="timer-box">00</div>';
+                        // Remove skeleton classes if any
+                        $(timerEl).removeClass('skeleton js-skeleton');
                         return;
                     }
                     
@@ -3310,6 +3312,8 @@
                         <span class="timer-separator">:</span>
                         <div class="timer-box">${String(seconds).padStart(2, '0')}</div>
                     `;
+                    // Remove skeleton classes if any
+                    $(timerEl).removeClass('skeleton js-skeleton');
                 }
                 
                 updateTimer();

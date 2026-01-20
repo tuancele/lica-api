@@ -4447,6 +4447,25 @@ textarea.form-control{
     color:#fff;
     margin-left: 7px;
 }
+
+/* Flash Sale Timer - ensure contrast for digits */
+.timer_flash .timer-box{
+    background: #ff0000 !important; /* Flash sale red */
+    color: #ffffff !important;      /* White digits */
+    display: inline-flex !important;
+    padding: 2px 5px !important;
+    border-radius: 4px !important;
+    font-weight: 700 !important;
+    min-width: 25px !important;
+    text-align: center !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+.timer_flash .timer-separator{
+    color: #ff0000 !important;
+    font-weight: 700 !important;
+    margin: 0 2px !important;
+}
 .flashsale .box-flashsale{
     border-radius: 20px;
     padding-top: 33px;

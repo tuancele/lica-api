@@ -245,12 +245,12 @@ $member = auth()->guard('member')->user();
                                 $priceData = $productsWithPrice[$variantId] ?? null;
                                 $hasStockError = $priceData && isset($priceData['is_available']) && $priceData['is_available'] === false;
                             @endphp
-                            <div class="flash-sale-warning-container-{{$variantId}}" style="margin-top: 8px;">
+                            <div class="flash-sale-warning-container-{{$variantId}} checkout-warning-container">
                                 @if($hasStockError)
                                     <!-- Hiển thị lỗi tồn kho nếu có -->
-                                    <div class="stock-error alert alert-danger" style="padding: 10px; border-left: 3px solid #dc3545; border-radius: 4px; font-size: 12px;">
-                                        <i class="fa fa-exclamation-circle" style="color: #dc3545; margin-right: 5px;"></i>
-                                        <strong style="color: #dc3545;">{{$priceData['stock_error'] ?? 'Số lượng vượt quá tồn kho'}}</strong>
+                                    <div class="stock-error alert alert-danger checkout-warning">
+                                        <i class="fa fa-exclamation-circle"></i>
+                                        <strong>{{$priceData['stock_error'] ?? 'Số lượng vượt quá tồn kho'}}</strong>
                                     </div>
                                 @endif
                             </div>
@@ -260,9 +260,9 @@ $member = auth()->guard('member')->user();
                         @endif
                         <div class="divider-horizontal"></div>
                         <!-- Stock Error Summary (sẽ hiển thị nếu có lỗi tồn kho) -->
-                        <div class="stock-error-summary" style="display: none; padding: 10px; background-color: #f8d7da; border-left: 3px solid #dc3545; border-radius: 4px; font-size: 12px; margin-bottom: 10px;">
-                            <i class="fa fa-exclamation-circle" style="color: #dc3545; margin-right: 5px;"></i>
-                            <strong style="color: #dc3545;">Có sản phẩm vượt quá tồn kho. Vui lòng điều chỉnh số lượng.</strong>
+                        <div class="stock-error-summary checkout-warning-summary" style="display: none;">
+                            <i class="fa fa-exclamation-circle"></i>
+                            <strong>Có sản phẩm vượt quá tồn kho. Vui lòng điều chỉnh số lượng.</strong>
                         </div>
                         <div class="align-center space-between mb-3 fs-14">
                             <span>Tổng giá trị đơn hàng</span>
@@ -449,17 +449,19 @@ $member = auth()->guard('member')->user();
             success: function (res) {
                 $('#changeAddress').modal('hide');
                 $('.item-address').html(res.address);
+                
+                // Bước 3: Sửa lỗi AJAX getFeeShip
+                // Chỉ làm 2 việc: Gán giá trị vào input[name="feeShip"] và gọi updateTotalOrderPriceCheckout()
+                // CẤM: Không được dùng các lệnh kiểu amount + feeship trực tiếp trong hàm AJAX
+                const feeShipNum = parseInt(res.feeship.replace(/[^\d]/g, '')) || 0;
+                $('input[name="feeShip"]').val(feeShipNum);
+                
+                // Cập nhật hiển thị phí ship
                 $('.item-ship').html(res.feeship+'đ');
                 $('.fee_ship').html(res.feeship+'đ');
                 
-                // Đồng bộ lại Data Store thay vì gán trực tiếp HTML tổng
-                if (typeof syncCheckoutData === 'function') {
-                    const feeShipNum = parseInt(res.feeship.replace(/[^\d]/g, '')) || 0;
-                    $('input[name="feeShip"]').val(feeShipNum);
-                    syncCheckoutData(undefined, undefined, feeShipNum);
-                } else {
-                    $('.total-order').html(res.amount+'đ');
-                }
+                // Gọi hàm tính tổng để cập nhật tổng thanh toán
+                updateTotalOrderPriceCheckout();
             },
             error: function(xhr, status, error){
                 alert('Có lỗi xảy ra, xin vui lòng thử lại');
@@ -553,21 +555,18 @@ $member = auth()->guard('member')->user();
                 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
             },
             success: function (res) {
-                let fee = res.feeship;
+                // Bước 3: Sửa lỗi AJAX getFeeShip
+                // Chỉ làm 2 việc: Gán giá trị vào input[name="feeShip"] và gọi updateTotalOrderPriceCheckout()
+                // CẤM: Không được dùng các lệnh kiểu amount + feeship trực tiếp trong hàm AJAX
+                const feeShipNum = parseInt(res.feeship.replace(/[^\d]/g, '')) || 0;
+                $('input[name="feeShip"]').val(feeShipNum);
+                
+                // Cập nhật hiển thị phí ship
                 $('.item-ship').html(res.feeship+'đ');
                 $('.fee_ship').html(res.feeship+'đ');
                 
-                // Đồng bộ lại Data Store thay vì gán trực tiếp HTML tổng
-                if (typeof syncCheckoutData === 'function') {
-                    const feeShipNum = parseInt(res.feeship.replace(/[^\d]/g, '')) || 0;
-                    let feeStr = (fee !== null && fee !== undefined) ? String(fee) : '0';
-                    $('input[name="feeShip"]').val(feeStr.replace(/,/g,""));
-                    syncCheckoutData(undefined, undefined, feeShipNum);
-                } else {
-                    $('.total-order').html(res.amount+'đ');
-                    let feeStr = (fee !== null && fee !== undefined) ? String(fee) : '0';
-                    $('input[name="feeShip"]').val(feeStr.replace(/,/g,""));
-                }
+                // Gọi hàm tính tổng để cập nhật tổng thanh toán
+                updateTotalOrderPriceCheckout();
             }
         });
     }
@@ -586,23 +585,18 @@ $member = auth()->guard('member')->user();
                 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
             },
             success: function (res) {
-                let fee = res.feeship;
+                // Bước 3: Sửa lỗi AJAX getFeeShip
+                // Chỉ làm 2 việc: Gán giá trị vào input[name="feeShip"] và gọi updateTotalOrderPriceCheckout()
+                // CẤM: Không được dùng các lệnh kiểu amount + feeship trực tiếp trong hàm AJAX
+                const feeShipNum = parseInt(res.feeship.replace(/[^\d]/g, '')) || 0;
+                $('input[name="feeShip"]').val(feeShipNum);
+                
+                // Cập nhật hiển thị phí ship
                 $('.item-ship').html(res.feeship+'đ');
                 $('.fee_ship').html(res.feeship+'đ');
                 
-                // Bước 4: Đồng bộ phí vận chuyển với window.checkoutData
-                if (window.checkoutData) {
-                    const feeShipNum = parseInt(res.feeship.replace(/[^\d]/g, '')) || 0;
-                    window.checkoutData.feeship = feeShipNum;
-                    // Cập nhật lại tổng tiền sau khi phí ship thay đổi
-                    updateTotalOrderPriceCheckout();
-                } else {
-                    $('.total-order').html(res.amount+'đ');
-                }
-                
-                // Fix: Ensure fee is a string before replace
-                let feeStr = (fee !== null && fee !== undefined) ? String(fee) : '0';
-                $('input[name="feeShip"]').val(feeStr.replace(/,/g,""));
+                // Gọi hàm tính tổng để cập nhật tổng thanh toán
+                updateTotalOrderPriceCheckout();
             },
             error: function(xhr, status, error){
                 alert('Có lỗi xảy ra, xin vui lòng thử lại');
@@ -755,6 +749,32 @@ $member = auth()->guard('member')->user();
                         errTxt = '<li>'+res.message+'</li>';
                     } 
                     $('body .alert-box').html('<div class="alert alert-danger alert-dismissible" role="alert"><button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">Ă—</span></button><h5>Thông báo!</h5><ul>'+errTxt+'</ul>');
+                
+                // Bước 3: Ép làm mới giỏ hàng khi lỗi "Suất quà tặng"
+                if (res.should_refresh_cart === true) {
+                    console.log('[Checkout] Refreshing cart due to deal quota error');
+                    // Gọi lại CartService::getCart() để tự động cập nhật lại trạng thái quà tặng
+                    if (typeof CartAPI !== 'undefined' && typeof CartAPI.getCart === 'function') {
+                        CartAPI.getCart().done(function(cartData) {
+                            console.log('[Checkout] Cart refreshed after deal quota error', cartData);
+                            // Reload trang để hiển thị trạng thái mới nhất
+                            setTimeout(function() {
+                                window.location.reload();
+                            }, 1000);
+                        }).fail(function() {
+                            console.error('[Checkout] Failed to refresh cart');
+                            // Vẫn reload trang để đảm bảo đồng bộ
+                            setTimeout(function() {
+                                window.location.reload();
+                            }, 1000);
+                        });
+                    } else {
+                        // Fallback: Reload trang trực tiếp
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 1000);
+                    }
+                }
                 }else{
                     alert("Đặt hàng thành công!")
                     window.location = res.url;
@@ -934,6 +954,133 @@ $('body').on('click','.btn_cancel_promotion',function(){
         font-size: 12px;
     }
 
+    /* ========== CSS cho cảnh báo trong cart-sidebar ========== */
+    .checkout-warning-container {
+        margin-top: 8px;
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+    }
+    
+    .checkout-warning {
+        padding: 8px 10px;
+        border-left: 3px solid #dc3545;
+        border-radius: 4px;
+        font-size: 8px;
+        line-height: 1.3;
+        word-wrap: break-word;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        white-space: normal;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 6px;
+    }
+    
+    .checkout-warning i {
+        color: #dc3545;
+        margin-right: 4px;
+        font-size: 8px;
+        vertical-align: middle;
+    }
+    
+    .checkout-warning strong {
+        color: #dc3545;
+        font-size: 8px;
+        font-weight: 600;
+        line-height: 1.3;
+        word-wrap: break-word;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        display: inline-block;
+        max-width: calc(100% - 20px);
+    }
+    
+    /* Flash Sale Warning (màu vàng) */
+    .flash-sale-warning {
+        padding: 8px 10px;
+        background-color: #fff3cd;
+        border-left: 3px solid #ffc107;
+        border-radius: 4px;
+        font-size: 8px;
+        line-height: 1.3;
+        word-wrap: break-word;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        white-space: normal;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin-top: 6px;
+        margin-bottom: 6px;
+    }
+    
+    .flash-sale-warning i {
+        color: #856404;
+        margin-right: 4px;
+        font-size: 8px;
+        vertical-align: middle;
+    }
+    
+    .flash-sale-warning strong {
+        color: #856404;
+        font-size: 8px;
+        font-weight: 600;
+        line-height: 1.3;
+        word-wrap: break-word;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        display: inline-block;
+        max-width: calc(100% - 20px);
+    }
+    
+    .flash-sale-warning > div {
+        margin-top: 4px;
+        padding-top: 4px;
+        border-top: 1px solid #ffc107;
+        font-size: 8px;
+        line-height: 1.4;
+        word-wrap: break-word;
+        word-break: break-word;
+        overflow-wrap: break-word;
+    }
+    
+    /* Stock Error Summary */
+    .checkout-warning-summary {
+        padding: 8px 10px;
+        background-color: #f8d7da;
+        border-left: 3px solid #dc3545;
+        border-radius: 4px;
+        font-size: 8px;
+        line-height: 1.3;
+        word-wrap: break-word;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        white-space: normal;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 10px;
+    }
+    
+    .checkout-warning-summary i {
+        color: #dc3545;
+        margin-right: 4px;
+        font-size: 8px;
+        vertical-align: middle;
+    }
+    
+    .checkout-warning-summary strong {
+        color: #dc3545;
+        font-size: 8px;
+        font-weight: 600;
+        line-height: 1.3;
+        word-wrap: break-word;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        display: inline-block;
+        max-width: calc(100% - 20px);
+    }
+
+
     /* ========== Hiệu ứng nhập liệu (đen trắng, tinh gọn) cho trang checkout ========== */
     #page_checkout label {
         font-weight: 600;
@@ -970,11 +1117,13 @@ $('body').on('click','.btn_cancel_promotion',function(){
     }
 </style>
 <script>
-    $(document).ready(function() {
-        // Function to check Flash Sale price when quantity changes in checkout
-        function checkFlashSalePriceCheckout(variantId, quantity) {
+    // Bước 3: Sửa lỗi JavaScript checkFlashSalePriceCheckout is not defined
+    // Định nghĩa hàm này ngay trong thẻ <script> để không làm treo luồng xử lý AJAX khi bấm nút Đặt hàng
+    window.checkFlashSalePriceCheckout = function(variantId, quantity) {
+            // Nếu FlashSaleMixedPrice chưa được load, bypass để không làm treo AJAX
             if (typeof FlashSaleMixedPrice === 'undefined') {
-                return; // FlashSaleMixedPrice not loaded
+                console.log('[CheckFlashSalePriceCheckout] FlashSaleMixedPrice not loaded, bypass');
+                return true; // Return true để không block AJAX
             }
             
             // Get product_id from the item - try multiple ways
@@ -1005,11 +1154,32 @@ $('body').on('click','.btn_cancel_promotion',function(){
                     }
                     window.checkoutPriceBreakdowns[variantId] = priceData;
                     
-                    // Cập nhật giá hiển thị nếu có breakdown
-                    if (priceData.price_breakdown && priceData.price_breakdown.length > 1) {
-                        const $priceItem = $('.price-item-' + variantId);
-                        if ($priceItem.length) {
-                            $priceItem.text(FlashSaleMixedPrice.formatNumber(priceData.total_price) + 'đ');
+                    // Cập nhật giá hiển thị và breakdown giá
+                    const $priceItem = $('.price-item-' + variantId);
+                    if ($priceItem.length) {
+                        $priceItem.text(FlashSaleMixedPrice.formatNumber(priceData.total_price) + 'đ');
+                        
+                        // Bước 4: Cập nhật breakdown giá (ví dụ: 100x385,000 + 11x440,000)
+                        if (priceData.price_breakdown && priceData.price_breakdown.length > 1) {
+                            const $breakdownContainer = $priceItem.next('.fs-11.text-muted.mt-1');
+                            if ($breakdownContainer.length) {
+                                let breakdownText = '';
+                                priceData.price_breakdown.forEach(function(bd, index) {
+                                    breakdownText += bd.quantity + 'x' + FlashSaleMixedPrice.formatNumber(bd.unit_price) + 'đ';
+                                    if (index < priceData.price_breakdown.length - 1) {
+                                        breakdownText += ' + ';
+                                    }
+                                });
+                                $breakdownContainer.text(breakdownText);
+                            } else {
+                                // Nếu chưa có container breakdown, tạo mới
+                                const breakdownHtml = '<div class="fs-11 text-muted mt-1" style="cursor: pointer;" title="Click để xem chi tiết">' +
+                                    priceData.price_breakdown.map(function(bd, index) {
+                                        return bd.quantity + 'x' + FlashSaleMixedPrice.formatNumber(bd.unit_price) + 'đ';
+                                    }).join(' + ') +
+                                    '</div>';
+                                $priceItem.after(breakdownHtml);
+                            }
                         }
                     }
                     
@@ -1056,13 +1226,17 @@ $('body').on('click','.btn_cancel_promotion',function(){
                     }
                 }
             );
-        }
+    };
+    
+    $(document).ready(function() {
         
         // Store price breakdown data for each item
         window.checkoutPriceBreakdowns = window.checkoutPriceBreakdowns || {};
         
         // ===== Bước 1: JS Data Store Sync - Nguồn sự thật duy nhất =====
-        // Hàm cập nhật dữ liệu từ bất kỳ nguồn nào (SSR hoặc AJAX)
+        // Bước 1: Khóa biến Subtotal - Tuyệt đối không tính lại ở Frontend
+        // Biến window.checkoutData.subtotal phải được coi là hằng số sau khi trang đã load
+        // Chỉ có Backend mới được phép thay đổi số này
         window.syncCheckoutData = function (newSubtotal, newSale, newFeeship) {
             if (!window.checkoutData) {
                 window.checkoutData = {
@@ -1073,12 +1247,17 @@ $('body').on('click','.btn_cancel_promotion',function(){
                 };
             }
 
-            if (typeof newSubtotal !== 'undefined' && newSubtotal !== null) {
-                window.checkoutData.subtotal = parseFloat(newSubtotal) || 0;
-            }
+            // CẤM: Không cho phép Frontend thay đổi subtotal
+            // Subtotal chỉ được set từ Backend khi trang load
+            // if (typeof newSubtotal !== 'undefined' && newSubtotal !== null) {
+            //     window.checkoutData.subtotal = parseFloat(newSubtotal) || 0;
+            // }
+            
             if (typeof newSale !== 'undefined' && newSale !== null) {
                 window.checkoutData.sale = parseFloat(newSale) || 0;
             }
+            
+            // Chỉ cập nhật feeship, không làm ảnh hưởng đến subtotal
             if (typeof newFeeship !== 'undefined' && newFeeship !== null) {
                 window.checkoutData.feeship = parseFloat(newFeeship) || 0;
                 // Đồng bộ input ẩn để các chỗ khác (nếu có) vẫn đọc được
@@ -1089,19 +1268,14 @@ $('body').on('click','.btn_cancel_promotion',function(){
             updateTotalOrderPriceCheckout();
         };
 
-        // ===== Bước 2: Hàm render tổng tiền - TUYỆT ĐỐI không quét HTML để tự cộng =====
+        // ===== Bước 2: Viết lại hàm tính Tổng (Clean Code) =====
+        // Thay thế toàn bộ nội dung hàm updateTotalOrderPriceCheckout bằng logic sạch
+        // để tránh việc cộng nhầm biến rác
         function updateTotalOrderPriceCheckout() {
             if (!window.checkoutData) {
                 console.warn('[Checkout_Sync] checkoutData is not initialized');
                 return 0;
             }
-
-            let s = window.checkoutData;
-            let subtotal = parseFloat(s.subtotal) || 0;
-            let sale = parseFloat(s.sale) || 0;
-            let feeship = parseFloat(s.feeship) || 0;
-
-            let total = Math.max(0, subtotal - sale + feeship);
 
             function formatPrice(price) {
                 if (typeof FlashSaleMixedPrice !== 'undefined' && FlashSaleMixedPrice.formatNumber) {
@@ -1110,20 +1284,57 @@ $('body').on('click','.btn_cancel_promotion',function(){
                 return new Intl.NumberFormat('vi-VN').format(price);
             }
 
-            // Gán thẳng số vào UI class
+            // 1. Lấy dữ liệu GỐC từ Store (đã được Backend render)
+            const subtotal = parseFloat(window.checkoutData.subtotal) || 0;
+            const discount = parseFloat(window.checkoutData.sale) || 0;
+            
+            // 2. Lấy phí ship từ input ẩn (nơi AJAX vừa ghi vào)
+            const feeship = parseFloat($('input[name="feeShip"]').val()) || 0;
+
+            // 3. Phép tính duy nhất và cuối cùng
+            const finalTotal = subtotal - discount + feeship;
+
+            // 4. In kết quả (Dùng hàm format chuẩn)
             $('.subtotal-cart').text(formatPrice(subtotal) + 'đ');
-            $('.sale-promotion').text('-' + formatPrice(sale) + 'đ');
-            $('.total-order').text(formatPrice(total) + 'đ');
+            $('.sale-promotion').text('-' + formatPrice(discount) + 'đ');
+            $('.fee_ship').text(formatPrice(feeship) + 'đ'); // Cập nhật hiển thị phí ship
+            $('.total-order').text(formatPrice(Math.max(0, finalTotal)) + 'đ');
 
-            // Cập nhật lại store tổng
-            window.checkoutData.total = total;
+            // Cập nhật lại window.checkoutData để đồng bộ
+            window.checkoutData.feeship = feeship;
+            window.checkoutData.total = Math.max(0, finalTotal);
 
-            console.log('[Checkout_Sync] Final Total Rendered:', {
-                subtotal: subtotal,
-                sale: sale,
-                feeship: feeship,
-                total: total
-            });
+            console.log('[CALC_DEBUG]', { subtotal, discount, feeship, finalTotal });
+
+            // Bước 1: Cập nhật giá từng dòng khi thay đổi số lượng
+            // Quét qua các item trong window.checkoutPriceBreakdowns (đã có từ backend)
+            if (window.checkoutPriceBreakdowns) {
+                Object.keys(window.checkoutPriceBreakdowns).forEach(function(vId) {
+                    let itemData = window.checkoutPriceBreakdowns[vId];
+                    if (itemData && itemData.total_price !== undefined) {
+                        // Cập nhật lại con số hiển thị của từng dòng sản phẩm
+                        const $priceItem = $('.price-item-' + vId);
+                        if ($priceItem.length) {
+                            $priceItem.text(formatPrice(itemData.total_price) + 'đ');
+                        }
+                        
+                        // Bước 4: Cập nhật breakdown giá (ví dụ: 100x385,000 + 11x440,000)
+                        if (itemData.price_breakdown && itemData.price_breakdown.length > 1) {
+                            const $breakdownContainer = $('.price-item-' + vId).next('.fs-11.text-muted.mt-1');
+                            if ($breakdownContainer.length) {
+                                let breakdownText = '';
+                                itemData.price_breakdown.forEach(function(bd, index) {
+                                    breakdownText += bd.quantity + 'x' + formatPrice(bd.unit_price) + 'đ';
+                                    if (index < itemData.price_breakdown.length - 1) {
+                                        breakdownText += ' + ';
+                                    }
+                                });
+                                $breakdownContainer.text(breakdownText);
+                            }
+                        }
+                    }
+                });
+            }
 
             // Gatekeeper: nếu subtotal từ backend (PHP) đang 0 nhưng Data Store > 0 => cảnh báo
             if (subtotal <= 0) {
@@ -1132,7 +1343,7 @@ $('body').on('click','.btn_cancel_promotion',function(){
                 });
             }
 
-            return total;
+            return finalTotal;
         }
         
         // Handle quantity change in checkout (qtyplus/qtyminus buttons)
