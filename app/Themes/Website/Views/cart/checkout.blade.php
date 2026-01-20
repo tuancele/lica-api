@@ -224,9 +224,10 @@ $member = auth()->guard('member')->user();
                                             $variantId = $variant['item']['id'];
                                             $priceData = $productsWithPrice[$variantId] ?? null;
                                             $hasBreakdown = $priceData && isset($priceData['price_breakdown']) && count($priceData['price_breakdown']) > 1;
-                                            $totalPrice = $priceData['total_price'] ?? ($variant['price'] * $variant['qty']);
+                                            // Dùng LUÔN total_price từ productsWithPrice (kể cả nó là 0đ cho Deal Sốc)
+                                            $itemTotalPrice = $priceData['total_price'] ?? 0;
                                         @endphp
-                                        <span class="fw-600 price-item-{{$variantId}}">{{number_format($totalPrice)}}đ</span>
+                                        <span class="fw-600 price-item-{{$variantId}}">{{number_format($itemTotalPrice)}}đ</span>
                                         @if($hasBreakdown)
                                             <div class="fs-11 text-muted mt-1" style="cursor: pointer;" title="Click để xem chi tiết">
                                                 @foreach($priceData['price_breakdown'] as $bd)
@@ -265,7 +266,13 @@ $member = auth()->guard('member')->user();
                         </div>
                         <div class="align-center space-between mb-3 fs-14">
                             <span>Tổng giá trị đơn hàng</span>
-                            <span class="subtotal-cart">{{number_format($totalPrice)}}đ</span>
+                            <span class="subtotal-cart">
+                                @if(isset($totalPrice) && $totalPrice > 0)
+                                    {{ number_format($totalPrice) }}đ
+                                @else
+                                    0đ
+                                @endif
+                            </span>
                         </div>
                         <div class="align-center space-between fs-14 mb-1">
                             <span>Giảm giá</span>
@@ -280,7 +287,12 @@ $member = auth()->guard('member')->user();
                         <div class="divider-horizontal"></div>
                         <div class="align-center space-between fs-14 mb-3">
                             <span class="fw-600">Tổng</span>
-                            <span class="fw-600 total-order">{{number_format($totalPrice - $sale + $feeship)}}đ</span>
+                            <span class="fw-600 total-order">
+                                @php
+                                    $initialTotal = max(0, ($totalPrice ?? 0) - ($sale ?? 0) + ($feeship ?? 0));
+                                @endphp
+                                {{ number_format($initialTotal) }}đ
+                            </span>
                         </div>
                         <button type="submit" id="place_order" class="btn-checkout btn bg-gradient w-100 fw-bold">ĐẶT HÀNG</button>
                     </div>
@@ -1111,6 +1123,13 @@ $('body').on('click','.btn_cancel_promotion',function(){
                 feeship: feeship,
                 total: total
             });
+
+            // Gatekeeper: nếu subtotal từ backend (PHP) đang 0 nhưng Data Store > 0 => cảnh báo
+            if (subtotal <= 0) {
+                console.error('[Checkout_Sync] subtotal in checkoutData is 0 hoặc âm. Vui lòng quay lại giỏ hàng để đồng bộ lại.', {
+                    checkoutData: window.checkoutData
+                });
+            }
 
             return total;
         }

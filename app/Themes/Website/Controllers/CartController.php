@@ -285,32 +285,40 @@ class CartController extends Controller
             $finalSubtotal += (float)($priceInfo['total_price'] ?? 0);
         }
         
-        // Gán con số này vào biến truyền xuống View (fallback)
-        $totalPrice = $finalSubtotal;
-        
-        // Gọi CartService để lấy thông tin chi tiết cho view
+        // 1. Lấy dữ liệu tổng lực từ Service
         $cartSummary = $this->cartService->getCart();
-        
-        // Bước 4: Ưu tiên dùng tổng tiền từ CartService (đã tính đủ Flash Sale tầng, Deal Sốc, v.v.)
-        $summaryTotal = (float)($cartSummary['summary']['total'] ?? 0);
-        if ($summaryTotal > 0) {
-            $totalPrice = $summaryTotal;
+
+        // 2. Tính lại subtotal từ cartSummary.items
+        // Lấy LUÔN subtotal từ Service trả về (kể cả nó là 0đ cho Deal Sốc/quà tặng)
+        $totalPrice = 0.0;
+        $productsWithPrice = [];
+        foreach ($cartSummary['items'] as $item) {
+            $vId = $item['variant_id'] ?? null;
+            if (!$vId) {
+                continue;
+            }
+
+            // Lấy LUÔN subtotal từ Service trả về (kể cả nó là 0đ)
+            $itemSubtotal = (float)($item['subtotal'] ?? 0);
+
+            // Chốt: không để âm
+            $itemSubtotal = max(0.0, $itemSubtotal);
+
+            $totalPrice += $itemSubtotal;
+            $productsWithPrice[$vId] = [
+                'total_price' => $itemSubtotal,
+                'price_breakdown' => $item['price_breakdown'] ?? null,
+                'warning' => $item['warning'] ?? null,
+                'deal_warning' => $item['deal_warning'] ?? null,
+                'flash_sale_remaining' => $item['flash_sale_remaining'] ?? 0,
+            ];
         }
-        
-        // ===== THÊM LOG DEBUG =====
-        Log::info('[DEBUG_CHECKOUT] CartController received summary', [
-            'summary' => $cartSummary['summary'] ?? null,
+
+        // ===== THÊM LOG DEBUG (tổng lực sau khi re-calc) =====
+        Log::info('[DEBUG_CHECKOUT] CartController recalculated total from cartSummary.items', [
+            'cart_summary' => $cartSummary['summary'] ?? null,
             'items_count' => count($cartSummary['items'] ?? []),
-            'items_detail' => array_map(function($item) {
-                return [
-                    'variant_id' => $item['variant_id'] ?? null,
-                    'product_name' => $item['product_name'] ?? null,
-                    'qty' => $item['qty'] ?? 0,
-                    'price' => $item['price'] ?? 0,
-                    'subtotal' => $item['subtotal'] ?? 0,
-                    'is_deal' => $item['is_deal'] ?? 0,
-                ];
-            }, $cartSummary['items'] ?? []),
+            'recalculated_total' => $totalPrice,
         ]);
         // ===== END LOG =====
         
@@ -341,20 +349,7 @@ class CartController extends Controller
         ]);
         // ===== END LOG =====
         
-        // ===== PHẦN 3: Lấy productsWithPrice =====
-        $productsWithPrice = [];
-        foreach ($cartSummary['items'] as $item) {
-            $variantId = $item['variant_id'] ?? null;
-            if ($variantId) {
-                $productsWithPrice[$variantId] = [
-                    'price_breakdown' => $item['price_breakdown'] ?? null,
-                    'total_price' => (float)($item['subtotal'] ?? 0),
-                    'warning' => $item['warning'] ?? null,
-                    'deal_warning' => $item['deal_warning'] ?? null,
-                    'flash_sale_remaining' => $item['flash_sale_remaining'] ?? 0,
-                ];
-            }
-        }
+        // ===== PHẦN 3: productsWithPrice đã được tính ở trên, không cần tính lại =====
 
         // Calculate FeeShip
         $feeShip = 0;

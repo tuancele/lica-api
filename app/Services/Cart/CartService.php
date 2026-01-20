@@ -159,6 +159,31 @@ class CartService
                             $priceWithQuantity['price_breakdown'] = $dealPricing['price_breakdown'];
                         }
                     }
+
+                    // ===== CRITICAL: Fallback nếu là Deal Sốc nhưng subtotal vẫn = 0 =====
+                    // Tránh case cấu hình giá hoặc PriceEngine trả sai dẫn tới 0đ ngoài ý muốn
+                    if ($newSubtotal <= 0.0) {
+                        try {
+                            $dealPrice = $this->getDealPrice($product->id, $variantId);
+                        } catch (\Throwable $e) {
+                            $dealPrice = 0.0;
+                            Log::warning('[CartService] getDealPrice failed, fallback to variant/base price', [
+                                'product_id' => $product->id,
+                                'variant_id' => $variantId,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+
+                        if ($dealPrice > 0) {
+                            $newPrice = $dealPrice;
+                            $newSubtotal = $dealPrice * $quantity;
+                        } elseif (!empty($variant->price) && (float)$variant->price > 0) {
+                            // Fallback cuối: dùng giá variant gốc * qty
+                            $basePrice = (float)$variant->price;
+                            $newPrice = $basePrice;
+                            $newSubtotal = $basePrice * $quantity;
+                        }
+                    }
                 }
             }
             
@@ -224,7 +249,7 @@ class CartService
                 'qty' => $quantity,
                 'price' => $newPrice, // Giá trung bình (để hiển thị)
                 'original_price' => (float)$priceInfo->original_price,
-                'subtotal' => $newSubtotal, // Tổng giá đã tính lại
+                'subtotal' => max(0, $newSubtotal), // Tổng giá đã tính lại, không âm
                 'is_deal' => isset($item['is_deal']) ? (int)$item['is_deal'] : 0,
                 'deal_unavailable' => $dealUnavailable,
                 'deal_warning' => $dealWarning,
@@ -271,13 +296,42 @@ class CartService
         // Get available deals
         $availableDeals = $this->getAvailableDeals($cart);
         
+        // ===== BƯỚC 1: Tính lại tổng tiền dựa trên items (kể cả Deal Sốc) =====
+        $total = 0.0;
+        foreach ($items as $it) {
+            $unitPrice = (float)($it['price'] ?? 0);
+            $qty = (int)($it['qty'] ?? 0);
+            // Kể cả is_deal = 1 (quà tặng, mua kèm) vẫn phải nhân giá * số lượng
+            // Nếu Deal 0đ thì unitPrice = 0, không làm âm tổng
+            $total += ($unitPrice * $qty);
+        }
+        $summaryTotal = (float)max(0, $total - $discount);
+
+        // BƯỚC 5: Log cảnh báo nếu có item subtotal = 0 (đặc biệt là Deal Sốc)
+        $zeroItems = array_filter($items, static function ($it) {
+            return (float)($it['subtotal'] ?? 0) <= 0;
+        });
+        if (!empty($zeroItems)) {
+            Log::warning('[CartService] Found items with 0 or negative subtotal in cart summary', [
+                'count' => count($zeroItems),
+                'items' => array_map(static function ($it) {
+                    return [
+                        'variant_id' => $it['variant_id'] ?? null,
+                        'subtotal' => $it['subtotal'] ?? null,
+                        'is_deal' => $it['is_deal'] ?? 0,
+                    ];
+                }, $zeroItems),
+            ]);
+        }
+
         // ===== THÊM LOG FINAL SUMMARY =====
         Log::info('[DEBUG_CHECKOUT] Final cart summary', [
             'total_items' => count($items),
             'total_qty' => $totalQty,
             'subtotal' => $subtotal,
+            'recalculated_items_total' => $total,
             'discount' => $discount,
-            'final_total' => $subtotal - $discount,
+            'final_total' => $summaryTotal,
         ]);
         // ===== END LOG =====
         
@@ -288,7 +342,7 @@ class CartService
                 'subtotal' => (float)$subtotal,
                 'discount' => $discount,
                 'shipping_fee' => 0,
-                'total' => (float)($subtotal - $discount),
+                'total' => $summaryTotal,
             ],
             'coupon' => $coupon,
             'available_deals' => $availableDeals,
@@ -356,6 +410,60 @@ class CartService
             'available' => true,
             'message' => null,
         ];
+    }
+
+    /**
+     * Lấy giá Deal Sốc thực tế cho 1 product/variant đang active.
+     * Fallback: nếu không có Deal hoặc hết hạn => trả 0.
+     *
+     * @param int $productId
+     * @param int $variantId
+     * @return float
+     */
+    private function getDealPrice(int $productId, int $variantId): float
+    {
+        $now = strtotime(date('Y-m-d H:i:s'));
+
+        // Lấy các deal_id mà product này tham gia
+        $dealIds = ProductDeal::where('product_id', $productId)
+            ->whereHas('deal', function ($q) use ($now) {
+                $q->where('status', '1')
+                    ->where('start', '<=', $now)
+                    ->where('end', '>=', $now);
+            })
+            ->pluck('deal_id')
+            ->toArray();
+
+        if (empty($dealIds)) {
+            return 0.0;
+        }
+
+        // Tìm Deal đang active
+        $activeDeal = Deal::whereIn('id', $dealIds)
+            ->where('status', '1')
+            ->where('start', '<=', $now)
+            ->where('end', '>=', $now)
+            ->first();
+
+        if (!$activeDeal) {
+            return 0.0;
+        }
+
+        // Lấy giá từ SaleDeal cho variant cụ thể
+        $saleDeal = SaleDeal::where([
+                ['deal_id', $activeDeal->id],
+                ['product_id', $productId],
+                ['status', '1'],
+            ])
+            ->when($variantId, function ($q) use ($variantId) {
+                $q->where(function ($sub) use ($variantId) {
+                    $sub->where('variant_id', $variantId)
+                        ->orWhereNull('variant_id');
+                });
+            })
+            ->first();
+
+        return $saleDeal ? (float)$saleDeal->price : 0.0;
     }
 
     /**

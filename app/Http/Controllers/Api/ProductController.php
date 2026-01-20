@@ -579,18 +579,18 @@ class ProductController extends Controller
             
             // Bypass cache for real-time data integrity
             $products = Product::with(['brand:id,name,slug'])
-                ->join('variants', 'variants.product_id', '=', 'posts.id')
-                ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
+                    ->join('variants', 'variants.product_id', '=', 'posts.id')
+                    ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
                          'variants.price as price', 'variants.size_id as size_id',
-                         'variants.color_id as color_id', 'posts.best', 'posts.is_new')
-                ->where([['posts.status', '1'], ['posts.type', ProductType::PRODUCT->value], ['posts.stock', '1']])
-                ->where('posts.cat_id', 'like', '%"' . $id . '"%')
-                ->orderBy('posts.created_at', 'desc')
-                ->groupBy('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
+                             'variants.color_id as color_id', 'posts.best', 'posts.is_new')
+                    ->where([['posts.status', '1'], ['posts.type', ProductType::PRODUCT->value], ['posts.stock', '1']])
+                    ->where('posts.cat_id', 'like', '%"' . $id . '"%')
+                    ->orderBy('posts.created_at', 'desc')
+                    ->groupBy('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id',
                           'variants.price', 'variants.size_id', 'variants.color_id', 
-                          'posts.best', 'posts.is_new')
-                ->limit($limit)
-                ->get();
+                              'posts.best', 'posts.is_new')
+                    ->limit($limit)
+                    ->get();
             
             // Format products for response using optimized helper method
             $formattedProducts = $products->map(function($product) {
@@ -886,8 +886,8 @@ class ProductController extends Controller
         try {
             // Bypass cache for real-time data integrity
             $product = Product::with(['brand', 'origin', 'variants.color', 'variants.size'])
-                ->where([['slug', $slug], ['status', '1'], ['type', ProductType::PRODUCT->value]])
-                ->first();
+                    ->where([['slug', $slug], ['status', '1'], ['type', ProductType::PRODUCT->value]])
+                    ->first();
             
             if (!$product) {
                 return response()->json([
