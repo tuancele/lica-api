@@ -53,3 +53,12 @@ Route::group([
 ], function () {
 	Route::get('/ingredients', 'IngredientController@publicList');
 });
+
+// Admin Dictionary APIs (no admin auth here by request)
+Route::group([
+	'middleware' => ['api'],
+	'prefix' => 'api/admin/dictionary',
+	'namespace' => 'App\Modules\Dictionary\Controllers',
+], function () {
+	Route::get('/all-ingredients', 'IngredientController@adminAllIngredients');
+});

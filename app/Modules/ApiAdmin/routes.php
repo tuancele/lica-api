@@ -146,6 +146,18 @@ Route::group([
         Route::post('/bulk-action', 'IngredientController@bulkRate');
     });
 
+    // Product Taxonomy (Category) Management
+    Route::prefix('taxonomies')->group(function () {
+        Route::get('/', 'TaxonomyController@index');
+        Route::get('/{id}', 'TaxonomyController@show');
+        Route::post('/', 'TaxonomyController@store');
+        Route::put('/{id}', 'TaxonomyController@update');
+        Route::delete('/{id}', 'TaxonomyController@destroy');
+        Route::patch('/{id}/status', 'TaxonomyController@updateStatus');
+        Route::post('/bulk-action', 'TaxonomyController@bulkAction');
+        Route::patch('/sort', 'TaxonomyController@updateSort');
+    });
+
     // Warehouse Management Routes (V1)
     Route::prefix('v1/warehouse')->group(function () {
         // Inventory Management

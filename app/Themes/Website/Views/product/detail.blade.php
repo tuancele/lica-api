@@ -1070,19 +1070,143 @@
                 </div>
                 <div class="col-12 col-md-8">
                     <div class="detail-content ingredient">
-                        @php 
-                            $str = $detail->ingredient;
-                            // Only apply dynamic linking if links are not already present (Legacy support)
-                            if (strpos($str, 'item_ingredient') === false) {
-                                $list =  App\Modules\Ingredient\Models\Ingredient::where('status','1')->get();
-                                if(isset($list) && !empty($list)){
-                                    foreach($list as $value){
-                                        $str = str_replace($value->name,'<a href="javascript:;" class="item_ingredient" data-id="'.$value->slug.'">'.$value->name.'</a>',$str);
-                                    }
+                        @php
+                            // Normalize ingredient string and split by comma
+                            $rawIng = strip_tags($detail->ingredient ?? '');
+                            $parts = array_filter(array_map('trim', explode(',', $rawIng)), function ($v) {
+                                return $v !== '';
+                            });
+
+                            // Prefer processedIngredients from controller, fallback to allIngredients if provided
+                            $sourceIngredients = [];
+                            if (isset($processedIngredients) && is_array($processedIngredients)) {
+                                $sourceIngredients = $processedIngredients;
+                            } elseif (isset($allIngredients) && is_array($allIngredients)) {
+                                $sourceIngredients = $allIngredients;
+                            }
+
+                            // Build lookup map by lower-case name/title
+                            $ingredientLookup = [];
+                            foreach ($sourceIngredients as $ing) {
+                                $name = '';
+                                if (is_array($ing)) {
+                                    $name = $ing['name'] ?? ($ing['title'] ?? '');
+                                } else {
+                                    $name = $ing->name ?? ($ing->title ?? '');
+                                }
+                                $key = trim(mb_strtolower((string) $name, 'UTF-8'));
+                                if ($key !== '') {
+                                    $ingredientLookup[$key] = $ing;
                                 }
                             }
                         @endphp
-                        {!!$str!!}
+
+                        @if(!empty($parts) && !empty($ingredientLookup))
+                            <div class="ingredient-list ingredient-list-collapsed">
+                            @foreach($parts as $token)
+                                @php
+                                    $tokenTrim = trim($token);
+                                    $lookupKey = mb_strtolower($tokenTrim, 'UTF-8');
+                                    $info = $ingredientLookup[$lookupKey] ?? null;
+
+                                    $benefits = [];
+                                    $rates = [];
+                                    $slug = '';
+
+                                    if ($info) {
+                                        if (is_array($info)) {
+                                            $benefits = $info['benefit_icons'] ?? ($info['benefits'] ?? []);
+                                            $rates = $info['skin_types'] ?? ($info['rates'] ?? []);
+                                            $slug = (string) ($info['slug'] ?? '');
+                                        } else {
+                                            $benefits = $info->benefit_icons ?? ($info->benefits ?? []);
+                                            $rates = $info->skin_types ?? ($info->rates ?? []);
+                                            $slug = (string) ($info->slug ?? '');
+                                        }
+                                    }
+
+                                    // Build tooltip text from benefits and skin types
+                                    $benefitNames = [];
+                                    foreach ($benefits as $b) {
+                                        if (is_array($b)) {
+                                            $bn = (string) ($b['name'] ?? '');
+                                        } else {
+                                            $bn = (string) ($b->name ?? '');
+                                        }
+                                        if ($bn !== '') {
+                                            $benefitNames[] = $bn;
+                                        }
+                                    }
+                                    $benefitNames = array_values(array_unique($benefitNames));
+
+                                    $rateNames = [];
+                                    foreach ($rates as $r) {
+                                        if (is_array($r)) {
+                                            $rn = (string) ($r['name'] ?? '');
+                                        } else {
+                                            $rn = (string) ($r->name ?? '');
+                                        }
+                                        if ($rn !== '') {
+                                            $rateNames[] = $rn;
+                                        }
+                                    }
+                                    $rateNames = array_values(array_unique($rateNames));
+
+                                    $tooltipParts = [];
+                                    if (!empty($benefitNames)) {
+                                        $tooltipParts[] = 'Cong dung: ' . implode(', ', $benefitNames);
+                                    }
+                                    if (!empty($rateNames)) {
+                                        $tooltipParts[] = 'Phu hop: ' . implode(', ', $rateNames);
+                                    }
+                                    $tooltipText = !empty($tooltipParts) ? implode(' | ', $tooltipParts) : $tokenTrim;
+
+                                    // Map benefits to simple icon classes (ASCII-safe)
+                                    $iconHtml = '';
+                                    $usedIcons = [];
+                                    foreach ($benefitNames as $bn) {
+                                        $lower = mb_strtolower($bn, 'UTF-8');
+                                        $iconClass = '';
+                                        if (strpos($lower, 'cap am') !== false || strpos($lower, 'hydrate') !== false || strpos($lower, 'moistur') !== false) {
+                                            $iconClass = 'fa fa-tint'; // hydration
+                                        } elseif (strpos($lower, 'sang') !== false || strpos($lower, 'brighten') !== false || strpos($lower, 'whiten') !== false) {
+                                            $iconClass = 'fa fa-sun-o'; // brightening
+                                        } elseif (strpos($lower, 'phuc hoi') !== false || strpos($lower, 'repair') !== false || strpos($lower, 'soothing') !== false) {
+                                            $iconClass = 'fa fa-leaf'; // recovery
+                                        }
+                                        if ($iconClass && !in_array($iconClass, $usedIcons, true)) {
+                                            $usedIcons[] = $iconClass;
+                                            $iconHtml .= '<i class="benefit-icon ' . $iconClass . '" aria-hidden="true" style="margin-left:4px;font-size:11px;"></i>';
+                                        }
+                                    }
+                                @endphp
+                                <span class="ingredient-item item_ingredient"
+                                      data-toggle="tooltip"
+                                      title="{{ $tooltipText }}"
+                                      @if($slug) data-id="{{ $slug }}" @endif
+                                      style="margin:0 0 4px 0;">
+                                    {{ $tokenTrim }}{!! $iconHtml !!}
+                                </span>
+                            @endforeach
+                            </div>
+                            <button type="button" class="btn btn-link btn-sm ingredient-toggle d-md-none" data-expanded="false" style="padding:0;margin-top:6px;">
+                                Xem day du
+                            </button>
+                        @else
+                            @php 
+                                // Fallback to legacy HTML if we do not have processed ingredient data
+                                $str = $detail->ingredient;
+                                if (strpos($str, 'item_ingredient') === false) {
+                                    $list =  App\Modules\Ingredient\Models\Ingredient::where('status','1')->get();
+                                    if(isset($list) && !empty($list)){
+                                        foreach($list as $value){
+                                            $str = str_replace($value->name,'<a href="javascript:;" class="item_ingredient" data-id="'.$value->slug.'">'.$value->name.'</a>',$str);
+                                        }
+                                    }
+                                }
+                            @endphp
+                            {!! $str !!}
+                        @endif
                     </div>
                 </div>
             </div>
@@ -1090,10 +1214,10 @@
         @endif
                 @php
                     // Chuẩn hoá lại $t_rates và $rates ở block đánh giá để tránh null
-                    $tRateCol = isset($t_rates) && $t_rates ? $t_rates : collect();
+                    $tRateCol = collect($t_rates ?? []);
                     $tRateCount = $tRateCol->count();
                     $tRateSum   = $tRateCol->sum('rate');
-                    $rateCol = isset($rates) && $rates ? $rates : collect();
+                    $rateCol = collect($rates ?? []);
                 @endphp
                 <div class="row rating-product mt-5 mb-5" id="ratingProduct" style="background: #fff; border-radius: 5px; padding: 15px; margin-top: 1rem !important; margin-bottom: 1rem !important;">
                     <div class="row g-0" style="margin-left: 0; margin-right: 0;">
@@ -1140,21 +1264,34 @@
                 <div class="list-rate">
                 @if($rateCol->count() > 0)
                     @foreach($rateCol as $rate)
-                    @php $images = json_decode($rate->images) @endphp
+                    @php
+                        // Normalize rate item to object to support both array and model
+                        $r = is_array($rate) ? (object) $rate : $rate;
+                        $images = isset($r->images) ? json_decode($r->images) : [];
+                        $rName = isset($r->name) ? $r->name : '';
+                        $rTitle = isset($r->title) ? $r->title : '';
+                        $rContent = isset($r->content) ? $r->content : '';
+                        $rCreatedAt = isset($r->created_at) ? $r->created_at : null;
+                        $rRateValue = property_exists($r, 'rate') ? $r->rate : 0;
+                    @endphp
                     <div class="item-rate">
-                        <p class="mb-2">{{$rate->name}}</p>
+                        <p class="mb-2">{{$rName}}</p>
                         <div class="align-center mb-2">
-                            <div class="rating me-3 mt-0 mb-0">{!!getStar($rate->rate,1)!!}</div>
-                            <div class="text-gray">{{date('d/m/Y H:i',strtotime($rate->created_at))}}</div>
+                            <div class="rating me-3 mt-0 mb-0">{!!getStar($rRateValue,1)!!}</div>
+                            <div class="text-gray">
+                                @if($rCreatedAt)
+                                    {{date('d/m/Y H:i',strtotime($rCreatedAt))}}
+                                @endif
+                            </div>
                         </div>
-                        <div class="fw-bold mb-2">{{$rate->title}}</div>
-                        <div>{{$rate->content}}</div>
+                        <div class="fw-bold mb-2">{{$rTitle}}</div>
+                        <div>{{$rContent}}</div>
                         @if(isset($images) && !empty($images))
                             <div class="list_gallery">
                             @foreach($images as $image)
                             <a href="{{getImage($image)}}" class="item_gallery image-link">
                                 <div class="skeleton--img-sm js-skeleton">
-                                    <img src="{{getImage($image)}}" alt="{{$rate->name}}" class="js-skeleton-img">
+                                    <img src="{{getImage($image)}}" alt="{{$rName}}" class="js-skeleton-img">
                                 </div>
                             </a>
                             @endforeach
@@ -1381,19 +1518,6 @@
                     <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail" type="button">Mua ngay</button>
                     @endif
                 </div>
-            </div>
-        </div>
-    </div>
-</div>
-<div class="modal" tabindex="-1" id="showIngredient">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content">
-            <button  data-bs-dismiss="modal" aria-label="Close" class="btn btnClose closeIngredient" type="button">
-                <span class="icon">
-                <svg width="1em" height="1em" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11.2453 9L17.5302 2.71516C17.8285 2.41741 17.9962 2.01336 17.9966 1.59191C17.997 1.17045 17.8299 0.76611 17.5322 0.467833C17.2344 0.169555 16.8304 0.00177586 16.4089 0.00140366C15.9875 0.00103146 15.5831 0.168097 15.2848 0.465848L9 6.75069L2.71516 0.465848C2.41688 0.167571 2.01233 0 1.5905 0C1.16868 0 0.764125 0.167571 0.465848 0.465848C0.167571 0.764125 0 1.16868 0 1.5905C0 2.01233 0.167571 2.41688 0.465848 2.71516L6.75069 9L0.465848 15.2848C0.167571 15.5831 0 15.9877 0 16.4095C0 16.8313 0.167571 17.2359 0.465848 17.5342C0.764125 17.8324 1.16868 18 1.5905 18C2.01233 18 2.41688 17.8324 2.71516 17.5342L9 11.2493L15.2848 17.5342C15.5831 17.8324 15.9877 18 16.4095 18C16.8313 18 17.2359 17.8324 17.5342 17.5342C17.8324 17.2359 18 16.8313 18 16.4095C18 15.9877 17.8324 15.5831 17.5342 15.2848L11.2453 9Z" fill="currentColor"></path></svg>
-            </span>
-            </button>
-            <div class="modal-body">
             </div>
         </div>
     </div>
@@ -1810,23 +1934,11 @@
 
     $('body').on('click','.item_ingredient',function(){
         var id = $(this).attr('data-id');
-        $.ajax({
-        type: 'get',
-        url: '/ingredient/'+id,
-        data: {},
-        headers:
-        {
-            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-        },
-        success: function (res) {
-            $('#showIngredient').modal('show');
-            $('#showIngredient .modal-body').html(res);
-        },
-        error: function(xhr, status, error){
-            alert('Có lỗi xảy ra, xin vui lòng thử lại');
-            window.location = window.location.href;
+        if (!id) {
+            return;
         }
-      })
+        // Navigate to Paula's-style ingredient dictionary URL
+        window.location.href = '/ingredient-dictionary/' + id;
     });
     var isShopeeVariant = @json($isShopeeVariant);
 
@@ -1951,6 +2063,23 @@
             }
         })
     })
+
+    // Mobile ingredient "Xem day du" toggle
+    $(document).on('click', '.ingredient-toggle', function () {
+        var $btn = $(this);
+        var expanded = $btn.attr('data-expanded') === 'true';
+        var $list = $btn.closest('.detail-content').find('.ingredient-list').first();
+        if ($list.length === 0) {
+            return;
+        }
+        if (expanded) {
+            $list.removeClass('ingredient-list-expanded').addClass('ingredient-list-collapsed');
+            $btn.attr('data-expanded', 'false').text('Xem day du');
+        } else {
+            $list.addClass('ingredient-list-expanded').removeClass('ingredient-list-collapsed');
+            $btn.attr('data-expanded', 'true').text('Thu gon');
+        }
+    });
     $('#detailProduct .box-size').on('click','.item-variant',function(){
         var id = $(this).attr('data-id');
         var product = '{{$detail->id}}';
@@ -2683,6 +2812,51 @@
     section#detailProduct .container-lg > .rating-product .row {
         margin-left: 0 !important;
         margin-right: 0 !important;
+    }
+
+    /* Ingredient list layout */
+    .ingredient-list {
+        line-height: 1.6;
+        font-size: 13px;
+    }
+
+    .ingredient-item {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 4px;
+        border-radius: 3px;
+        background: transparent;
+        cursor: pointer;
+        transition: background-color 0.15s ease, color 0.15s ease;
+    }
+
+    .ingredient-item:not(:last-child)::after {
+        content: ",";
+        margin-left: 2px;
+        color: #999;
+    }
+
+    .ingredient-item .benefit-icon {
+        color: #5bc0de; /* pastel-like blue for hydration/benefits */
+    }
+
+    .ingredient-item:hover {
+        background-color: rgba(0, 0, 0, 0.03);
+    }
+
+    @media (max-width: 768px) {
+        .ingredient-list {
+            max-height: 150px;
+            overflow: hidden;
+            position: relative;
+            -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+            mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+        }
+        .ingredient-list.ingredient-list-expanded {
+            max-height: none;
+            -webkit-mask-image: none;
+            mask-image: none;
+        }
     }
 </style>
 <script>

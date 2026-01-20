@@ -609,4 +609,100 @@ class IngredientController extends Controller
             'data' => $items,
         ]);
     }
+
+    public function adminAllIngredients(): JsonResponse
+    {
+        $items = $this->model->newQuery()
+            ->select(['name as title', 'slug', 'benefit_id', 'rate_id'])
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->whereNotNull('slug')
+            ->where('slug', '!=', '')
+            ->orderByRaw('CHAR_LENGTH(name) DESC')
+            ->orderBy('name', 'asc')
+            ->get();
+
+        $benefitIds = [];
+        $rateIds = [];
+
+        foreach ($items as $item) {
+            $rateId = (int) ($item->rate_id ?? 0);
+            if ($rateId > 0) {
+                $rateIds[$rateId] = true;
+            }
+
+            $ids = $item->benefit_id ?? [];
+            if (is_string($ids)) {
+                $decoded = json_decode($ids, true);
+                $ids = is_array($decoded) ? $decoded : [];
+            }
+            if (!is_array($ids)) {
+                $ids = [];
+            }
+
+            foreach ($ids as $id) {
+                $bid = (int) $id;
+                if ($bid > 0) {
+                    $benefitIds[$bid] = true;
+                }
+            }
+        }
+
+        $benefitMap = IngredientBenefit::query()
+            ->select(['id', 'name'])
+            ->whereIn('id', array_keys($benefitIds))
+            ->get()
+            ->keyBy('id');
+
+        $rateMap = IngredientRate::query()
+            ->select(['id', 'name'])
+            ->whereIn('id', array_keys($rateIds))
+            ->get()
+            ->keyBy('id');
+
+        $data = [];
+        foreach ($items as $item) {
+            $ids = $item->benefit_id ?? [];
+            if (is_string($ids)) {
+                $decoded = json_decode($ids, true);
+                $ids = is_array($decoded) ? $decoded : [];
+            }
+            if (!is_array($ids)) {
+                $ids = [];
+            }
+
+            $benefits = [];
+            foreach ($ids as $id) {
+                $bid = (int) $id;
+                if ($bid <= 0) {
+                    continue;
+                }
+                $b = $benefitMap->get($bid);
+                if ($b) {
+                    $benefits[] = ['id' => (int) $b->id, 'name' => (string) $b->name];
+                }
+            }
+
+            $rates = [];
+            $rateId = (int) ($item->rate_id ?? 0);
+            if ($rateId > 0) {
+                $r = $rateMap->get($rateId);
+                if ($r) {
+                    $rates[] = ['id' => (int) $r->id, 'name' => (string) $r->name];
+                }
+            }
+
+            $data[] = [
+                'title' => (string) $item->title,
+                'slug' => (string) $item->slug,
+                'benefits' => $benefits,
+                'rates' => $rates,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+        ]);
+    }
 }

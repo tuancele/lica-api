@@ -146,4 +146,46 @@ class CategoryController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * 获取层级分类（用于前端 4-level picker）
+     *
+     * GET /api/categories/hierarchical
+     *
+     * @return JsonResponse
+     */
+    public function hierarchical(): JsonResponse
+    {
+        try {
+            $items = Product::select('id', 'name', 'cat_id', 'sort')
+                ->where([['status', '1'], ['type', 'taxonomy']])
+                ->orderBy('sort', 'asc')
+                ->orderBy('id', 'asc')
+                ->get();
+
+            $data = $items->map(function (Product $cat) {
+                return [
+                    'id' => (int) $cat->id,
+                    'title' => (string) ($cat->name ?? ''),
+                    'parent_id' => (int) ($cat->cat_id ?? 0),
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('获取层级分类失败: ' . $e->getMessage(), [
+                'method' => __METHOD__,
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => '获取层级分类失败',
+                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误'
+            ], 500);
+        }
+    }
 }

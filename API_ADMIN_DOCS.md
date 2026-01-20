@@ -251,6 +251,253 @@
 
 ---
 
+### 11. Product Taxonomy (Danh muc san pham) APIs
+
+- `GET /admin/api/taxonomies` – danh sách danh mục sản phẩm (taxonomy) + phân trang + bộ lọc.
+- `GET /admin/api/taxonomies/{id}` – chi tiết một danh mục.
+- `POST /admin/api/taxonomies` – tạo danh mục mới.
+- `PUT /admin/api/taxonomies/{id}` – cập nhật danh mục.
+- `DELETE /admin/api/taxonomies/{id}` – xóa danh mục (chỉ khi không có danh mục con).
+- `PATCH /admin/api/taxonomies/{id}/status` – đổi trạng thái 0/1.
+- `POST /admin/api/taxonomies/bulk-action` – bulk 0=hide,1=show,2=delete.
+- `PATCH /admin/api/taxonomies/sort` – cập nhật cây phân cấp + thứ tự sắp xếp.
+
+**1. GET /admin/api/taxonomies**
+
+**Muc tieu:** Lấy danh sách danh mục sản phẩm (`posts.type = taxonomy`) với phân trang.
+
+**Query Params:**
+- `page` (int, optional): trang, mặc định 1
+- `limit` (int, optional): số bản ghi/trang, mặc định 20, tối đa 100
+- `status` (int, optional): 0/1
+- `keyword` (string, optional): tìm theo tên
+- `parent_id` (int, optional): lọc theo danh mục cha (`cat_id`)
+- `is_home` (int, optional): 0/1
+- `feature` (int, optional): 0/1
+
+**Phan hoi mau (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "Sua rua mat",
+      "slug": "sua-rua-mat",
+      "image": "https://cdn.lica.vn/uploads/categories/srm.jpg",
+      "status": 1,
+      "feature": 1,
+      "is_home": 1,
+      "tracking": "",
+      "parent_id": 0,
+      "sort": 0,
+      "seo_title": "Sua rua mat",
+      "seo_description": "Danh muc sua rua mat",
+      "created_at": "2026-01-20T10:00:00.000000Z",
+      "updated_at": "2026-01-20T10:00:00.000000Z"
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "per_page": 20,
+    "total": 5,
+    "last_page": 1
+  }
+}
+```
+
+**2. GET /admin/api/taxonomies/{id}**
+
+**Muc tieu:** Lấy chi tiết một danh mục sản phẩm.
+
+**Phan hoi mau (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "name": "Sua rua mat",
+    "slug": "sua-rua-mat",
+    "image": "https://cdn.lica.vn/uploads/categories/srm.jpg",
+    "status": 1,
+    "feature": 1,
+    "is_home": 1,
+    "tracking": "",
+    "parent_id": 0,
+    "sort": 0,
+    "seo_title": "Sua rua mat",
+    "seo_description": "Danh muc sua rua mat",
+    "created_at": "2026-01-20T10:00:00.000000Z",
+    "updated_at": "2026-01-20T10:00:00.000000Z"
+  }
+}
+```
+
+**3. POST /admin/api/taxonomies**
+
+**Muc tieu:** Tao danh muc san pham moi.
+
+**Body (JSON):**
+- `name` (string, required, 1-250)
+- `slug` (string, required, unique:posts,slug)
+- `image` (string, optional, max 500)
+- `content` (string, optional)
+- `status` (int, required, in:0,1)
+- `feature` (int, optional, in:0,1)
+- `is_home` (int, optional, in:0,1)
+- `tracking` (string, optional, max 500)
+- `cat_id` (int, optional) – id danh mục cha
+- `seo_title` (string, optional, max 250)
+- `seo_description` (string, optional, max 500)
+
+**Phan hoi mau (201):**
+```json
+{
+  "success": true,
+  "message": "Tao danh muc thanh cong",
+  "data": {
+    "id": 10,
+    "name": "Toner",
+    "slug": "toner",
+    "status": 1,
+    "parent_id": 1
+  }
+}
+```
+
+**4. PUT /admin/api/taxonomies/{id}**
+
+**Muc tieu:** Cap nhat danh muc san pham.
+
+**Body:** giong POST, `slug` unique ignore id.
+
+**Phan hoi mau (200):**
+```json
+{
+  "success": true,
+  "message": "Cap nhat danh muc thanh cong",
+  "data": {
+    "id": 10,
+    "name": "Toner cap am",
+    "slug": "toner",
+    "status": 1
+  }
+}
+```
+
+**5. DELETE /admin/api/taxonomies/{id}**
+
+**Muc tieu:** Xoa danh muc (chi khi khong co danh muc con).
+
+**Phan hoi mau (200):**
+```json
+{
+  "success": true,
+  "message": "Xoa danh muc thanh cong"
+}
+```
+
+**Phan hoi loi (400 – co danh muc con):**
+```json
+{
+  "success": false,
+  "message": "Danh muc chua danh muc con, khong the xoa"
+}
+```
+
+**6. PATCH /admin/api/taxonomies/{id}/status**
+
+**Muc tieu:** Cap nhat trang thai 0/1.
+
+**Body (JSON):**
+- `status` (int, required, in:0,1)
+
+**Phan hoi mau (200):**
+```json
+{
+  "success": true,
+  "message": "Cap nhat trang thai thanh cong",
+  "data": {
+    "id": 10,
+    "status": 1
+  }
+}
+```
+
+**7. POST /admin/api/taxonomies/bulk-action**
+
+**Muc tieu:** Bulk action danh muc.
+
+**Body (JSON):**
+- `checklist` (array<int>, required): danh sach id danh muc
+- `action` (int, required, in:0,1,2): 0=hide,1=show,2=delete
+
+**Note:**
+- Khi `action=2`, cac danh muc co danh muc con se bi bo qua (khong xoa), de an toan.
+
+**Phan hoi mau (200):**
+```json
+{
+  "success": true,
+  "message": "Bulk action danh muc thanh cong"
+}
+```
+
+**8. PATCH /admin/api/taxonomies/sort**
+
+**Muc tieu:** Cap nhat cay danh muc va thu tu sap xep.
+
+**Body (JSON):**
+```json
+{
+  "items": [
+    { "id": 1, "parent_id": 0, "sort": 0 },
+    { "id": 2, "parent_id": 1, "sort": 1 }
+  ]
+}
+```
+
+**Phan hoi mau (200):**
+```json
+{
+  "success": true,
+  "message": "Cap nhat sap xep danh muc thanh cong"
+}
+```
+
+**Trang thai:** Hoan thanh
+
+---
+
+### 10. GET /api/admin/dictionary/all-ingredients
+
+**Muc tieu:** Return all items from `ingredient_paulas` with benefits and rates. Sort by title length DESC.
+
+**Tham so dau vao:** None
+
+**Phan hoi mau (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "title": "Sodium Hyaluronate Crosspolymer",
+      "slug": "ingredient-sodium-hyaluronate-crosspolymer",
+      "benefits": [
+        { "id": 1, "name": "Hydration" }
+      ],
+      "rates": [
+        { "id": 2, "name": "Dry Skin" }
+      ]
+    }
+  ]
+}
+```
+
+**Trang thai:** Hoan thanh
+
+---
+
 ### 2. GET /admin/api/products/{id}
 
 **Mục tiêu:** 获取单个产品详情（包含关联数据：品牌、产地、分类、变体等）

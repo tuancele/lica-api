@@ -5,7 +5,7 @@
     'title' => 'Sửa danh mục sản phẩm',
 ])
 <section class="content">
-    <form role="form" id="tblForm" method="post" ajax="{{route('taxonomy.update')}}">
+    <form role="form" id="tblForm" method="post" ajax="/admin/api/taxonomies/{{$detail->id}}">
         @csrf
         <div class="row">
             <div class="col-lg-9">
@@ -14,6 +14,7 @@
                         <div class="row">
                             <div class="col-lg-12">
                                 <input type="hidden" value="{{$detail->id}}" name="id">
+                                <input type="hidden" name="_method" value="PUT">
                                 @include('Layout::title',['title' => $detail->name])
                                 @include('Layout::slug',['slug' => $detail->slug])
                                 @include('Layout::content',['content' => $detail->content])

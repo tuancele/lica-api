@@ -43,6 +43,7 @@ Route::prefix('analytics')->group(function () {
 Route::prefix('categories')->group(function () {
     Route::get('/', 'Api\CategoryController@index'); // GET /api/categories
     Route::get('/featured', 'Api\CategoryController@getFeaturedCategories'); // GET /api/categories/featured
+    Route::get('/hierarchical', 'Api\CategoryController@hierarchical'); // GET /api/categories/hierarchical
     Route::get('/{id}', 'Api\CategoryController@show'); // GET /api/categories/{id}
 });
 
@@ -59,10 +60,16 @@ Route::prefix('products')->group(function () {
 Route::prefix('v1/brands')->namespace('Api\V1')->group(function () {
     Route::get('/featured', 'BrandController@getFeatured'); // GET /api/v1/brands/featured (for home page)
     Route::get('/', 'BrandController@index'); // GET /api/v1/brands
+    Route::get('/options', 'BrandController@options'); // GET /api/v1/brands/options (for select options)
     Route::get('/{slug}', 'BrandController@show'); // GET /api/v1/brands/{slug}
     Route::get('/{slug}/products', 'BrandController@getProducts'); // GET /api/v1/brands/{slug}/products
     Route::get('/{slug}/products/available', 'BrandController@getAvailableProducts'); // GET /api/v1/brands/{slug}/products/available
     Route::get('/{slug}/products/out-of-stock', 'BrandController@getOutOfStockProducts'); // GET /api/v1/brands/{slug}/products/out-of-stock
+});
+
+// Origin API V1 - RESTful 标准
+Route::prefix('v1/origins')->namespace('Api\V1')->group(function () {
+    Route::get('/options', 'OriginController@options'); // GET /api/v1/origins/options (for select options)
 });
 
 // Flash Sale API V1 - RESTful 标准

@@ -173,17 +173,14 @@
 
                 <div class="form-item">
                     <label class="form-label required">Ngành hàng</label>
-                    <select class="shopee-input" name="cat_id[]" id="cat-selector" required>
-                        <option value="">Chọn ngành hàng</option>
-                        @foreach($categories as $category)
-                            <option value="{{$category->id}}">{{$category->name}}</option>
-                            @foreach($category->children as $sub)
-                                <option value="{{$sub->id}}">-- {{$sub->name}}</option>
-                                @foreach($sub->children as $sub2)
-                                    <option value="{{$sub2->id}}">---- {{$sub2->name}}</option>
-                                @endforeach
-                            @endforeach
-                        @endforeach
+                    <div class="category-picker-field" style="display:flex;align-items:center;gap:8px;">
+                        <div id="categoryDisplayCreate" class="category-display" style="flex:1;min-height:34px;border:1px solid #e5e5e5;border-radius:4px;padding:6px 10px;font-size:13px;background:#fafafa;cursor:pointer;">
+                            <span class="text-muted">Chon nganh hang</span>
+                        </div>
+                    </div>
+                    <input type="hidden" name="cat_id[]" id="cat_id_hidden_create" value="">
+                    <select class="shopee-input" name="cat_id[]" id="cat_id_select_create" required style="display:none;">
+                        <option value="">Chon nganh hang</option>
                     </select>
                 </div>
 
@@ -193,20 +190,14 @@
                             <label class="form-label">Thương hiệu</label>
                             <select class="shopee-input" name="brand_id" id="brand-selector">
                                 <option value="">Chọn thương hiệu</option>
-                                @foreach($brands as $brand)
-                                    <option value="{{$brand->id}}">{{$brand->name}}</option>
-                                @endforeach
                             </select>
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-item">
                             <label class="form-label">Xuất xứ</label>
-                            <select class="shopee-input" name="origin_id">
+                            <select class="shopee-input" name="origin_id" id="origin-selector">
                                 <option value="">Chọn xuất xứ</option>
-                                @foreach($origins as $origin)
-                                    <option value="{{$origin->id}}">{{$origin->name}}</option>
-                                @endforeach
                             </select>
                         </div>
                     </div>
@@ -448,6 +439,53 @@ $(document).ready(function() {
         $('#preview-price-text').text('₫' + $(this).val());
     });
 
+    // --- Brand options via API ---
+    // --- Brand options via API ---
+    function loadBrandOptionsCreate() {
+        var $select = $('#brand-selector');
+        if (!$select.length) return;
+
+        fetch('/api/v1/brands/options', { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (json) {
+                if (!json || !json.success || !Array.isArray(json.data)) return;
+                $select.empty();
+                $select.append('<option value="">Chọn thương hiệu</option>');
+                json.data.forEach(function (b) {
+                    var id = (b && b.id) ? String(b.id) : '';
+                    var name = (b && b.name) ? String(b.name) : '';
+                    if (!id || !name) return;
+                    $select.append('<option value="' + id + '">' + name + '</option>');
+                });
+            })
+            .catch(function () {});
+    }
+
+    loadBrandOptionsCreate();
+
+    // --- Origin options via API ---
+    function loadOriginOptionsCreate() {
+        var $select = $('#origin-selector');
+        if (!$select.length) return;
+
+        fetch('/api/v1/origins/options', { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (json) {
+                if (!json || !Array.isArray(json.data)) return;
+                $select.empty();
+                $select.append('<option value="">Chọn xuất xứ</option>');
+                json.data.forEach(function (o) {
+                    var id = (o && o.id) ? String(o.id) : '';
+                    var name = (o && o.name) ? String(o.name) : '';
+                    if (!id || !name) return;
+                    $select.append('<option value="' + id + '">' + name + '</option>');
+                });
+            })
+            .catch(function () {});
+    }
+
+    loadOriginOptionsCreate();
+
     // --- Variant (Shopee style, 1-level) ---
     const $singleSelling = $('#single-selling');
     const $variantSelling = $('#variant-selling');
@@ -487,6 +525,263 @@ $(document).ready(function() {
         }
         buildVariantsJson();
     }
+
+    // --- Category Picker (Create) using /api/categories/hierarchical ---
+    var catFlatCacheCreate = null;
+    var catChildrenMapCreate = {};
+    var catByIdCreate = {};
+    var catActivePathCreate = [0, 0, 0, 0];
+    var catSelectedIdCreate = ($('#cat_id_hidden_create').val() || $('#cat_id_select_create').val() || '').toString();
+    var catSelectedNamesCreate = [];
+
+    function catNormalizeIdCreate(v) {
+        var n = parseInt(v, 10);
+        return isNaN(n) ? 0 : n;
+    }
+
+    function buildCatMapsCreate(items) {
+        catChildrenMapCreate = {};
+        catByIdCreate = {};
+        (items || []).forEach(function (it) {
+            var id = catNormalizeIdCreate(it.id);
+            var pid = catNormalizeIdCreate(it.parent_id);
+            catByIdCreate[id] = it;
+            if (!catChildrenMapCreate[pid]) catChildrenMapCreate[pid] = [];
+            catChildrenMapCreate[pid].push(it);
+        });
+    }
+
+    function populateCategorySelectCreate() {
+        var $select = $('#cat_id_select_create');
+        if (!$select.length) return;
+
+        var selectedId = (catSelectedIdCreate || '').toString();
+        $select.empty();
+        $select.append('<option value="">Chon nganh hang</option>');
+
+        function appendChildren(parentId, depth) {
+            var items = catChildrenMapCreate[catNormalizeIdCreate(parentId)] || [];
+            (items || []).forEach(function (it) {
+                var id = catNormalizeIdCreate(it.id);
+                var title = (it.title || '').toString();
+                var prefix = '';
+                for (var i = 0; i < depth; i++) prefix += '-- ';
+                var isSelected = selectedId && catNormalizeIdCreate(selectedId) === id;
+                $select.append('<option value="' + id + '"' + (isSelected ? ' selected' : '') + '>' + prefix + title + '</option>');
+                appendChildren(id, depth + 1);
+            });
+        }
+
+        appendChildren(0, 0);
+    }
+
+    function loadCategoryFlatCreate(cb) {
+        if (catFlatCacheCreate) {
+            cb(catFlatCacheCreate);
+            return;
+        }
+        fetch('/api/categories/hierarchical', { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (json) {
+                if (!json || !json.success || !Array.isArray(json.data)) return;
+                catFlatCacheCreate = json.data;
+                buildCatMapsCreate(catFlatCacheCreate);
+                populateCategorySelectCreate();
+                cb(catFlatCacheCreate);
+            })
+            .catch(function () {});
+    }
+
+    function findParentIdCreate(id) {
+        var it = catByIdCreate[catNormalizeIdCreate(id)];
+        return it ? catNormalizeIdCreate(it.parent_id) : 0;
+    }
+
+    function buildPathToRootCreate(selectedId) {
+        var path = [];
+        var current = catNormalizeIdCreate(selectedId);
+        var guard = 0;
+        while (current > 0 && guard < 10) {
+            path.unshift(current);
+            current = findParentIdCreate(current);
+            guard += 1;
+        }
+        return path;
+    }
+
+    function setEmptyColumnCreate(containerId) {
+        var $c = $(containerId);
+        $c.empty();
+    }
+
+    function renderColumnCreate(containerId, parentId, level) {
+        var $c = $(containerId);
+        $c.empty();
+        var items = catChildrenMapCreate[catNormalizeIdCreate(parentId)] || [];
+        if (!items.length) {
+            return;
+        }
+        items.forEach(function (it) {
+            var id = catNormalizeIdCreate(it.id);
+            var title = (it.title || '').toString();
+            var children = catChildrenMapCreate[id] || [];
+            var arrow = children.length ? ' &gt;' : '';
+            var isActive = catActivePathCreate[level - 1] === id;
+            var isSelected = catNormalizeIdCreate(catSelectedIdCreate) === id;
+            var cls = 'category-item';
+            if (isActive) cls += ' active';
+            if (isSelected) cls += ' selected';
+            $c.append(
+                '<div class="' + cls + '" data-id="' + id + '" data-level="' + level + '">' +
+                '<span class="category-title">' + title + arrow + '</span>' +
+                '</div>'
+            );
+        });
+    }
+
+    function updateSelectedPathCreate() {
+        var parts = [];
+        for (var i = 0; i < 4; i++) {
+            var id = catActivePathCreate[i];
+            if (id && catByIdCreate[id]) parts.push((catByIdCreate[id].title || '').toString());
+        }
+        if (!parts.length && catSelectedIdCreate && catByIdCreate[catNormalizeIdCreate(catSelectedIdCreate)]) {
+            parts = buildPathToRootCreate(catSelectedIdCreate).map(function (id2) {
+                return (catByIdCreate[id2].title || '').toString();
+            });
+        }
+        catSelectedNamesCreate = parts;
+        $('#categoryBreadcrumbCreate').text(parts.length ? ('Da chon: ' + parts.join(' > ')) : 'Da chon:');
+    }
+
+    function applySelectedToViewCreate() {
+        var finalId = 0;
+        for (var i = 3; i >= 0; i--) {
+            if (catActivePathCreate[i]) { finalId = catActivePathCreate[i]; break; }
+        }
+        if (!finalId && catSelectedIdCreate) finalId = catNormalizeIdCreate(catSelectedIdCreate);
+        if (!finalId) return;
+
+        catSelectedIdCreate = finalId.toString();
+        $('#cat_id_select_create').val(catSelectedIdCreate);
+        $('#cat_id_hidden_create').val(catSelectedIdCreate);
+        populateCategorySelectCreate();
+        var pathIds = buildPathToRootCreate(finalId);
+        var parts = pathIds.map(function (id) { return (catByIdCreate[id] ? (catByIdCreate[id].title || '').toString() : '').toString(); }).filter(Boolean);
+        $('#categoryDisplayCreate').text(parts.length ? parts.join(' -> ') : 'Chon nganh hang');
+    }
+
+    function openCategoryModalCreate() {
+        loadCategoryFlatCreate(function () {
+            var path = buildPathToRootCreate(catSelectedIdCreate);
+            catActivePathCreate = [0, 0, 0, 0];
+            if (path[0]) catActivePathCreate[0] = path[0];
+            if (path[1]) catActivePathCreate[1] = path[1];
+            if (path[2]) catActivePathCreate[2] = path[2];
+            if (path[3]) catActivePathCreate[3] = path[3];
+
+            // First open: only render column 1, clear column 2-4
+            renderColumnCreate('#categoryCol1Create', 0, 1);
+            setEmptyColumnCreate('#categoryCol2Create');
+            setEmptyColumnCreate('#categoryCol3Create');
+            setEmptyColumnCreate('#categoryCol4Create');
+            updateSelectedPathCreate();
+
+            $('#categoryPickerModalCreate').modal('show');
+        });
+    }
+
+    $(document).on('click', '#btnEditCategoryCreate, #categoryDisplayCreate', function () {
+        openCategoryModalCreate();
+    });
+
+    $(document).on('click', '#categoryPickerModalCreate .category-item', function () {
+        var id = catNormalizeIdCreate($(this).attr('data-id'));
+        var level = catNormalizeIdCreate($(this).attr('data-level'));
+        if (level < 1 || level > 4) return;
+
+        catActivePathCreate[level - 1] = id;
+        for (var i = level; i < 4; i++) {
+            catActivePathCreate[i] = 0;
+        }
+
+        if (level === 1) {
+            renderColumnCreate('#categoryCol1Create', 0, 1);
+            renderColumnCreate('#categoryCol2Create', id, 2);
+            setEmptyColumnCreate('#categoryCol3Create');
+            setEmptyColumnCreate('#categoryCol4Create');
+        } else if (level === 2) {
+            renderColumnCreate('#categoryCol2Create', catActivePathCreate[0] || 0, 2);
+            renderColumnCreate('#categoryCol3Create', id, 3);
+            setEmptyColumnCreate('#categoryCol4Create');
+        } else if (level === 3) {
+            renderColumnCreate('#categoryCol3Create', catActivePathCreate[1] || 0, 3);
+            renderColumnCreate('#categoryCol4Create', id, 4);
+        } else {
+            renderColumnCreate('#categoryCol4Create', catActivePathCreate[2] || 0, 4);
+        }
+        updateSelectedPathCreate();
+
+        var children = catChildrenMapCreate[id] || [];
+        if (!children.length) {
+            catSelectedIdCreate = id.toString();
+        }
+    });
+
+    $('#btnConfirmCategoryCreate').on('click', function () {
+        applySelectedToViewCreate();
+        $('#categoryPickerModalCreate').modal('hide');
+    });
+
+    // Search filter in modal (Create)
+    $('#categorySearchCreate').on('input', function () {
+        var q = ($(this).val() || '').toString().toLowerCase();
+        var $c1 = $('#categoryCol1Create');
+        var $c2 = $('#categoryCol2Create');
+        var $c3 = $('#categoryCol3Create');
+        var $c4 = $('#categoryCol4Create');
+
+        if (!catFlatCacheCreate) {
+            return;
+        }
+        if (!q) {
+            // Reset to current active path
+            renderColumnCreate('#categoryCol1Create', 0, 1);
+            setEmptyColumnCreate('#categoryCol2Create');
+            setEmptyColumnCreate('#categoryCol3Create');
+            setEmptyColumnCreate('#categoryCol4Create');
+            return;
+        }
+
+        $c1.empty(); $c2.empty(); $c3.empty(); $c4.empty();
+        var matches = catFlatCacheCreate.filter(function (it) {
+            var t = (it.title || '').toString().toLowerCase();
+            return t.indexOf(q) !== -1;
+        });
+        if (!matches.length) {
+            $c1.append('<div class="text-muted" style="font-size:12px;">Khong tim thay</div>');
+            return;
+        }
+        matches.forEach(function (it) {
+            var id = catNormalizeIdCreate(it.id);
+            var title = (it.title || '').toString();
+            $c1.append(
+                '<div class="category-item" data-id="' + id + '" data-level="1">' +
+                '<span class="category-title">' + title + '</span>' +
+                '</div>'
+            );
+        });
+    });
+
+    // Init display text on page load (Create)
+    loadCategoryFlatCreate(function () {
+        if (catSelectedIdCreate) {
+            var path = buildPathToRootCreate(catSelectedIdCreate);
+            var parts = path.map(function (id) { return (catByIdCreate[id] ? (catByIdCreate[id].title || '').toString() : '').toString(); }).filter(Boolean);
+            if (parts.length) $('#categoryDisplayCreate').text(parts.join(' -> '));
+            $('#cat_id_hidden_create').val(catSelectedIdCreate.toString());
+        }
+    });
 
     function renderTag(value) {
         const v = escapeHtml(value);
@@ -688,6 +983,44 @@ $(document).ready(function() {
     });
 });
 </script>
+
+<!-- Category Picker Modal (Create) -->
+<div class="modal fade" id="categoryPickerModalCreate" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content" style="border-radius:8px;overflow:hidden;">
+            <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;">
+                <h4 class="modal-title" style="margin:0;">Chon nganh hang</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="category-search" style="margin-bottom:8px;">
+                    <input type="text" id="categorySearchCreate" class="form-control" placeholder="Tim nhanh nganh hang..." style="font-size:13px;height:30px;">
+                </div>
+                <div class="category-container" style="display:flex;gap:10px;">
+                    <div class="category-column"><div id="categoryCol1Create"></div></div>
+                    <div class="category-column"><div id="categoryCol2Create"></div></div>
+                    <div class="category-column"><div id="categoryCol3Create"></div></div>
+                    <div class="category-column"><div id="categoryCol4Create"></div></div>
+                </div>
+                <div id="categoryBreadcrumbCreate" class="category-breadcrumb" style="margin-top:10px;font-size:12px;color:#666;">Da chon:</div>
+            </div>
+            <div class="modal-footer" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Dong</button>
+                <button type="button" class="btn btn-primary" id="btnConfirmCategoryCreate">Ap dung</button>
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+    .category-container { overflow-x: auto; }
+    .category-column { min-width: 200px; border: 1px solid #eee; border-radius: 6px; padding: 8px; min-height: 260px; background: #fff; }
+    .category-item { padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; border: 1px solid transparent; }
+    .category-item:hover { background: rgba(0,0,0,0.03); }
+    .category-item.active { background: #e6f7ff; font-weight: 600; }
+    .category-item.selected { background: #e6f7ff; font-weight: 600; border-color: transparent; }
+</style>
 <style>
     /* Variant table layout - make it compact & clean like Shopee */
     #variant-selling {

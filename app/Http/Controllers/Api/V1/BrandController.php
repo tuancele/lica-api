@@ -105,6 +105,45 @@ class BrandController extends Controller
     }
 
     /**
+     * Get brand options for select inputs
+     *
+     * GET /api/v1/brands/options
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function options(Request $request): JsonResponse
+    {
+        try {
+            $brands = Brand::query()
+                ->select(['id', 'name'])
+                ->where('status', '1')
+                ->orderBy('name', 'asc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $brands->map(function ($b) {
+                    return [
+                        'id' => (int) $b->id,
+                        'name' => (string) $b->name,
+                    ];
+                })->values(),
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Get brand options failed: ' . $e->getMessage(), [
+                'method' => __METHOD__,
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Lấy danh sách thương hiệu thất bại',
+            ], 500);
+        }
+    }
+
+    /**
      * Get brand detail by slug
      * 
      * GET /api/v1/brands/{slug}

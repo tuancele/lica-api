@@ -5,7 +5,7 @@
     'title' => 'Thêm danh mục sản phẩm',
 ])
 <section class="content">
-    <form role="form" id="tblForm" method="post" ajax="{{route('taxonomy.store')}}">
+    <form role="form" id="tblForm" method="post" ajax="/admin/api/taxonomies">
         @csrf
         <div class="row">
             <div class="col-lg-9">

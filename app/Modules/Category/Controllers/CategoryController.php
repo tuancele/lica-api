@@ -5,6 +5,7 @@ namespace App\Modules\Category\Controllers;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Modules\Category\Models\Category;
+use Illuminate\Http\JsonResponse;
 use Validator;
 use Illuminate\Support\Facades\Auth;
 class CategoryController extends Controller
@@ -195,5 +196,35 @@ class CategoryController extends Controller
             $html .= '</ol>';
         }
         return $html;
+    }
+
+    public function hierarchical(): JsonResponse
+    {
+        try {
+            $items = Category::query()
+                ->select(['id', 'name', 'cat_id', 'sort'])
+                ->where('type', 'category')
+                ->orderBy('sort', 'asc')
+                ->orderBy('id', 'asc')
+                ->get();
+
+            $data = $items->map(function (Category $cat) {
+                return [
+                    'id' => (int) $cat->id,
+                    'title' => (string) ($cat->name ?? ''),
+                    'parent_id' => (int) ($cat->cat_id ?? 0),
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

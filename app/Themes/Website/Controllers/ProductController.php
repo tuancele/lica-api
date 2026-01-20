@@ -15,6 +15,9 @@ use App\Modules\Deal\Models\Deal;
 use App\Modules\Deal\Models\ProductDeal;
 use App\Modules\Deal\Models\SaleDeal;
 use App\Services\Warehouse\WarehouseServiceInterface;
+use App\Modules\Dictionary\Models\IngredientPaulas;
+use App\Modules\Dictionary\Models\IngredientBenefit;
+use App\Modules\Dictionary\Models\IngredientRate;
 use Session;
 
 class ProductController extends Controller
@@ -117,6 +120,126 @@ class ProductController extends Controller
 
                 $data['saledeals'] = $saledeals;
             }
+
+            // Process ingredient string for view
+            $rawIngredient = (string) ($post->ingredient ?? '');
+            $rawIngredient = trim(strip_tags($rawIngredient));
+            $tokens = [];
+            if ($rawIngredient !== '') {
+                $parts = explode(',', $rawIngredient);
+                foreach ($parts as $p) {
+                    $t = trim($p);
+                    if ($t === '') {
+                        continue;
+                    }
+                    $tokens[] = $t;
+                }
+            }
+            $tokens = array_values(array_unique($tokens));
+
+            $matchedIngredients = [];
+            $benefitIds = [];
+            $rateIds = [];
+
+            foreach ($tokens as $t) {
+                // Try exact match first (case-insensitive)
+                $row = IngredientPaulas::query()
+                    ->select(['id', 'name', 'slug', 'benefit_id', 'rate_id'])
+                    ->whereRaw('LOWER(name) = ?', [mb_strtolower($t, 'UTF-8')])
+                    ->first();
+
+                if (!$row) {
+                    // Fallback: try best-effort match by trimmed name
+                    $row = IngredientPaulas::query()
+                        ->select(['id', 'name', 'slug', 'benefit_id', 'rate_id'])
+                        ->where('name', $t)
+                        ->first();
+                }
+
+                if (!$row) {
+                    continue;
+                }
+
+                $matchedIngredients[] = $row;
+
+                $ids = $row->benefit_id ?? [];
+                if (is_string($ids)) {
+                    $decoded = json_decode($ids, true);
+                    $ids = is_array($decoded) ? $decoded : [];
+                }
+                if (is_array($ids)) {
+                    foreach ($ids as $id) {
+                        $bid = (int) $id;
+                        if ($bid > 0) {
+                            $benefitIds[$bid] = true;
+                        }
+                    }
+                }
+
+                $rid = (int) ($row->rate_id ?? 0);
+                if ($rid > 0) {
+                    $rateIds[$rid] = true;
+                }
+            }
+
+            $benefitMap = IngredientBenefit::query()
+                ->whereIn('id', array_keys($benefitIds))
+                ->get()
+                ->keyBy('id');
+
+            $rateMap = IngredientRate::query()
+                ->whereIn('id', array_keys($rateIds))
+                ->get()
+                ->keyBy('id');
+
+            $processedIngredients = [];
+            foreach ($matchedIngredients as $row) {
+                $ids = $row->benefit_id ?? [];
+                if (is_string($ids)) {
+                    $decoded = json_decode($ids, true);
+                    $ids = is_array($decoded) ? $decoded : [];
+                }
+                if (!is_array($ids)) {
+                    $ids = [];
+                }
+
+                $benefits = [];
+                foreach ($ids as $id) {
+                    $bid = (int) $id;
+                    if ($bid <= 0) {
+                        continue;
+                    }
+                    $b = $benefitMap->get($bid);
+                    if ($b) {
+                        // If table has icon column, it will be included automatically by Eloquent
+                        $benefits[] = [
+                            'name' => (string) ($b->name ?? ''),
+                            'icon' => (string) ($b->icon ?? ''),
+                        ];
+                    }
+                }
+
+                $rates = [];
+                $rid = (int) ($row->rate_id ?? 0);
+                if ($rid > 0) {
+                    $r = $rateMap->get($rid);
+                    if ($r) {
+                        $rates[] = [
+                            'name' => (string) ($r->name ?? ''),
+                            'icon' => (string) ($r->icon ?? ''),
+                        ];
+                    }
+                }
+
+                $processedIngredients[] = [
+                    'name' => (string) ($row->name ?? ''),
+                    'slug' => (string) ($row->slug ?? ''),
+                    'benefit_icons' => $benefits,
+                    'skin_types' => $rates,
+                ];
+            }
+
+            $data['processedIngredients'] = $processedIngredients;
 
             return view('Website::product.detail', $data);
         } else {
