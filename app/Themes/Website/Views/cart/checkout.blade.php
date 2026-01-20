@@ -2,7 +2,16 @@
 @section('title','Thanh toán')
 @section('description','Thanh toán')
 @section('content')
-@php $member = auth()->guard('member')->user(); @endphp
+@php
+// TEMPORARY DEBUG - XÓA SAU KHI FIX
+echo "<!-- DEBUG VARIABLES:\n";
+echo "totalPrice: " . (isset($totalPrice) ? $totalPrice : 'NOT SET') . "\n";
+echo "sale: " . (isset($sale) ? $sale : 'NOT SET') . "\n";
+echo "feeship: " . (isset($feeship) ? $feeship : 'NOT SET') . "\n";
+echo "code: " . (isset($code) ? $code : 'NOT SET') . "\n";
+echo "-->\n";
+$member = auth()->guard('member')->user();
+@endphp
 <link href="/public/website/select2/select2.min.css" rel="stylesheet" />
 <script src="/public/website/select2/select2.min.js"></script>
 <section class="mt-3 mb-5" id="page_checkout">
@@ -430,15 +439,11 @@
                 $('.item-ship').html(res.feeship+'đ');
                 $('.fee_ship').html(res.feeship+'đ');
                 
-                // Bước 4: Cập nhật khi AJAX thay đổi (Địa chỉ/Coupon)
-                // Đảm bảo khi gọi API tính phí Ship, kết quả trả về từ Server phải cập nhật lại biến window.checkoutData
-                if (window.checkoutData) {
+                // Đồng bộ lại Data Store thay vì gán trực tiếp HTML tổng
+                if (typeof syncCheckoutData === 'function') {
                     const feeShipNum = parseInt(res.feeship.replace(/[^\d]/g, '')) || 0;
-                    window.checkoutData.feeship = feeShipNum;
-                    // Cập nhật input để hàm updateTotalOrderPriceCheckout() đọc được
                     $('input[name="feeShip"]').val(feeShipNum);
-                    // Cập nhật lại tổng tiền sau khi phí ship thay đổi
-                    updateTotalOrderPriceCheckout();
+                    syncCheckoutData(undefined, undefined, feeShipNum);
                 } else {
                     $('.total-order').html(res.amount+'đ');
                 }
@@ -539,16 +544,12 @@
                 $('.item-ship').html(res.feeship+'đ');
                 $('.fee_ship').html(res.feeship+'đ');
                 
-                // Bước 4: Cập nhật khi AJAX thay đổi (Địa chỉ/Coupon)
-                // Đảm bảo khi gọi API tính phí Ship, kết quả trả về từ Server phải cập nhật lại biến window.checkoutData
-                if (window.checkoutData) {
+                // Đồng bộ lại Data Store thay vì gán trực tiếp HTML tổng
+                if (typeof syncCheckoutData === 'function') {
                     const feeShipNum = parseInt(res.feeship.replace(/[^\d]/g, '')) || 0;
-                    window.checkoutData.feeship = feeShipNum;
-                    // Cập nhật input để hàm updateTotalOrderPriceCheckout() đọc được
                     let feeStr = (fee !== null && fee !== undefined) ? String(fee) : '0';
                     $('input[name="feeShip"]').val(feeStr.replace(/,/g,""));
-                    // Cập nhật lại tổng tiền sau khi phí ship thay đổi
-                    updateTotalOrderPriceCheckout();
+                    syncCheckoutData(undefined, undefined, feeShipNum);
                 } else {
                     $('.total-order').html(res.amount+'đ');
                     let feeStr = (fee !== null && fee !== undefined) ? String(fee) : '0';
@@ -764,22 +765,22 @@ $('.btn_coupon').click(function(){
         },
         success: function (res) {
             if(res.status == 'success'){
-                // Bước 4: Thêm Chốt chặn Coupon
-                // Nếu window.checkoutData.subtotal chưa được tính đúng, tuyệt đối không cho phép hàm applyCoupon chạy
                 if (!window.checkoutData || !window.checkoutData.subtotal || window.checkoutData.subtotal <= 0) {
-                    console.error('[Checkout_Price] Cannot apply coupon: subtotal is invalid', {
+                    console.error('[Checkout_Fix] Cannot apply coupon: subtotal is invalid', {
                         checkoutData: window.checkoutData
                     });
                     $('.box-alert-promotion').html('<div class="alert alert-danger mt-3" role="alert">Không thể áp dụng coupon: Tổng tiền đơn hàng chưa được tính đúng. Vui lòng làm mới trang.</div>');
                     return;
                 }
                 
-                // Bước 4: Đồng bộ giảm giá với window.checkoutData
+                // Cập nhật Data Store từ response
                 const saleNum = parseInt(res.sale.replace(/[^\d]/g, '')) || 0;
-                window.checkoutData.sale = saleNum;
-                
-                // Cập nhật lại tổng tiền sau khi áp dụng coupon
-                updateTotalOrderPriceCheckout();
+                if (typeof syncCheckoutData === 'function') {
+                    syncCheckoutData(undefined, saleNum, undefined);
+                } else {
+                    window.checkoutData.sale = saleNum;
+                    updateTotalOrderPriceCheckout();
+                }
                 
                 $('.sale-promotion').html('-'+res.sale);
                 $('.item-promotion-'+res.id+' .btn_apply').html('Hủy').addClass('btn_cancel_promotion').removeClass('btn_apply');
@@ -808,7 +809,6 @@ $('body').on('click','.btn_apply',function(){
         },
         success: function (res) {
             if(res.status == 'success'){
-                // Bước 4: Thêm Chốt chặn Coupon
                 if (!window.checkoutData || !window.checkoutData.subtotal || window.checkoutData.subtotal <= 0) {
                     console.error('[Checkout_Price] Cannot apply coupon: subtotal is invalid', {
                         checkoutData: window.checkoutData
@@ -817,12 +817,14 @@ $('body').on('click','.btn_apply',function(){
                     return;
                 }
                 
-                // Bước 4: Đồng bộ giảm giá với window.checkoutData
+                // Đồng bộ giảm giá với Data Store
                 const saleNum = parseInt(res.sale.replace(/[^\d]/g, '')) || 0;
-                window.checkoutData.sale = saleNum;
-                
-                // Cập nhật lại tổng tiền sau khi áp dụng coupon
-                updateTotalOrderPriceCheckout();
+                if (typeof syncCheckoutData === 'function') {
+                    syncCheckoutData(undefined, saleNum, undefined);
+                } else {
+                    window.checkoutData.sale = saleNum;
+                    updateTotalOrderPriceCheckout();
+                }
                 
                 $('.sale-promotion').html('-'+res.sale);
                 $('.item-promotion-'+id+' .btn_apply').html('Hủy').addClass('btn_cancel_promotion').removeClass('btn_apply');
@@ -851,10 +853,11 @@ $('body').on('click','.btn_cancel_promotion',function(){
         },
         success: function (res) {
             if(res.status == 'success'){
-                // Bước 4: Đồng bộ giảm giá với window.checkoutData (hủy coupon = sale = 0)
-                if (window.checkoutData) {
+                // Đồng bộ giảm giá với Data Store (hủy coupon = sale = 0)
+                if (typeof syncCheckoutData === 'function') {
+                    syncCheckoutData(undefined, 0, undefined);
+                } else if (window.checkoutData) {
                     window.checkoutData.sale = 0;
-                    // Cập nhật lại tổng tiền sau khi hủy coupon
                     updateTotalOrderPriceCheckout();
                 } else {
                     $('.total-order').html(res.total);
@@ -1045,54 +1048,71 @@ $('body').on('click','.btn_cancel_promotion',function(){
         // Store price breakdown data for each item
         window.checkoutPriceBreakdowns = window.checkoutPriceBreakdowns || {};
         
-        // Bước 3: Sửa hàm JavaScript updateTotalOrderPriceCheckout()
-        // Nhiệm vụ: Loại bỏ hoàn toàn việc lặp qua các dòng sản phẩm trên UI để cộng tiền
-        // Ép hàm chỉ làm nhiệm vụ hiển thị
-        function updateTotalOrderPriceCheckout() {
-            // CRITICAL: Chỉ lấy từ window.checkoutData, không tự tính từ DOM
+        // ===== Bước 1: JS Data Store Sync - Nguồn sự thật duy nhất =====
+        // Hàm cập nhật dữ liệu từ bất kỳ nguồn nào (SSR hoặc AJAX)
+        window.syncCheckoutData = function (newSubtotal, newSale, newFeeship) {
             if (!window.checkoutData) {
-                console.error('[Checkout_Fix] window.checkoutData is not initialized!');
+                window.checkoutData = {
+                    subtotal: 0,
+                    sale: 0,
+                    feeship: 0,
+                    total: 0
+                };
+            }
+
+            if (typeof newSubtotal !== 'undefined' && newSubtotal !== null) {
+                window.checkoutData.subtotal = parseFloat(newSubtotal) || 0;
+            }
+            if (typeof newSale !== 'undefined' && newSale !== null) {
+                window.checkoutData.sale = parseFloat(newSale) || 0;
+            }
+            if (typeof newFeeship !== 'undefined' && newFeeship !== null) {
+                window.checkoutData.feeship = parseFloat(newFeeship) || 0;
+                // Đồng bộ input ẩn để các chỗ khác (nếu có) vẫn đọc được
+                $('input[name="feeShip"]').val(window.checkoutData.feeship);
+            }
+
+            // Sau khi sync xong thì mới render ra màn hình
+            updateTotalOrderPriceCheckout();
+        };
+
+        // ===== Bước 2: Hàm render tổng tiền - TUYỆT ĐỐI không quét HTML để tự cộng =====
+        function updateTotalOrderPriceCheckout() {
+            if (!window.checkoutData) {
+                console.warn('[Checkout_Sync] checkoutData is not initialized');
                 return 0;
             }
-            
-            let data = window.checkoutData;
-            
-            // Bước 4: Đồng bộ phí vận chuyển từ input (khi AJAX thay đổi)
-            let feeship = parseFloat($('input[name="feeShip"]').val()) || data.feeship;
-            if (feeship !== data.feeship) {
-                // Cập nhật lại window.checkoutData.feeship nếu có thay đổi
-                window.checkoutData.feeship = feeship;
-                data.feeship = feeship;
-            }
-            
-            // Tính tổng cuối cùng (không được phép nhỏ hơn 0)
-            let grandTotal = data.subtotal - data.sale + feeship;
-            if (grandTotal < 0) grandTotal = 0;
-            
-            // Cập nhật lại window.checkoutData.total
-            window.checkoutData.total = grandTotal;
-            
-            // Gán giá trị vào UI
+
+            let s = window.checkoutData;
+            let subtotal = parseFloat(s.subtotal) || 0;
+            let sale = parseFloat(s.sale) || 0;
+            let feeship = parseFloat(s.feeship) || 0;
+
+            let total = Math.max(0, subtotal - sale + feeship);
+
             function formatPrice(price) {
                 if (typeof FlashSaleMixedPrice !== 'undefined' && FlashSaleMixedPrice.formatNumber) {
                     return FlashSaleMixedPrice.formatNumber(price);
                 }
                 return new Intl.NumberFormat('vi-VN').format(price);
             }
-            
-            // Ép hàm chỉ làm nhiệm vụ hiển thị
-            $('.subtotal-cart').text(formatPrice(data.subtotal) + 'đ');
-            $('.sale-promotion').text('-' + formatPrice(data.sale) + 'đ');
-            $('.total-order').text(formatPrice(grandTotal) + 'đ');
-            
-            console.log('[Checkout_Fix] Displaying Total:', {
-                subtotal: data.subtotal,
-                sale: data.sale,
+
+            // Gán thẳng số vào UI class
+            $('.subtotal-cart').text(formatPrice(subtotal) + 'đ');
+            $('.sale-promotion').text('-' + formatPrice(sale) + 'đ');
+            $('.total-order').text(formatPrice(total) + 'đ');
+
+            // Cập nhật lại store tổng
+            window.checkoutData.total = total;
+
+            console.log('[Checkout_Sync] Final Total Rendered:', {
+                subtotal: subtotal,
+                sale: sale,
                 feeship: feeship,
-                grandTotal: grandTotal
+                total: total
             });
-            
-            return grandTotal;
+
+            return total;
         }
         
         // Handle quantity change in checkout (qtyplus/qtyminus buttons)

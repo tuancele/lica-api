@@ -12,6 +12,32 @@
 			}
 			Route::get('/', 'HomeController@index')->name('home');
 
+			// ===== DEBUG ROUTE (TẠM THỜI - XÓA SAU KHI DEBUG) =====
+			Route::get('debug/cart-session', function() {
+				$cart = session()->get('cart');
+				$items = [];
+				
+				if ($cart && isset($cart->items)) {
+					foreach ($cart->items as $variantId => $item) {
+						$items[$variantId] = [
+							'qty' => $item['qty'] ?? 0,
+							'price' => $item['price'] ?? 0,
+							'is_deal' => $item['is_deal'] ?? 0,
+							'product_id' => $item['item']->product_id ?? null,
+						];
+					}
+				}
+				
+				return response()->json([
+					'session_id' => session()->getId(),
+					'has_cart' => session()->has('cart'),
+					'total_qty' => $cart->totalQty ?? 0,
+					'total_price' => $cart->totalPrice ?? 0,
+					'items' => $items,
+				]);
+			});
+			// ===== END DEBUG ROUTE =====
+
 			Route::get('testCrawl', 'HomeController@testCrawl');
 
 			Route::post('ajax-search', 'HomeController@ajaxSearch');

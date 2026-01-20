@@ -121,6 +121,21 @@ class CartService
             $newPrice = $quantity > 0 ? ($priceWithQuantity['total_price'] / $quantity) : 0; // Giá trung bình
             $newSubtotal = (float)$priceWithQuantity['total_price'];
 
+            // ===== THÊM LOG DEBUG =====
+            Log::info('[DEBUG_CHECKOUT] Item price calculation', [
+                'variant_id' => $variantId,
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'quantity' => $quantity,
+                'is_deal' => $item['is_deal'] ?? 0,
+                'old_price_from_session' => $oldPrice,
+                'new_price_from_engine' => $newPrice,
+                'new_subtotal' => $newSubtotal,
+                'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
+                'deal_unavailable' => false, // Will be set below
+            ]);
+            // ===== END LOG =====
+
             // Deal Sốc pricing & fallback:
             // - Nếu là quà Deal Sốc và còn quota/kho: áp dụng giá Deal theo thứ tự ưu tiên
             //   Flash Sale > Promotion > Deal > Base (Deal chỉ override khi đang ở price type = normal)
@@ -146,6 +161,22 @@ class CartService
                     }
                 }
             }
+            
+            // ===== CẬP NHẬT LOG DEBUG với thông tin Deal =====
+            Log::info('[DEBUG_CHECKOUT] Item price calculation (after Deal)', [
+                'variant_id' => $variantId,
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'quantity' => $quantity,
+                'is_deal' => $item['is_deal'] ?? 0,
+                'old_price_from_session' => $oldPrice,
+                'new_price_from_engine' => $newPrice,
+                'new_subtotal' => $newSubtotal,
+                'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
+                'deal_unavailable' => $dealUnavailable,
+                'deal_warning' => $dealWarning,
+            ]);
+            // ===== END LOG =====
             
             // Log nếu giá thay đổi
             if (abs($oldSubtotal - $newSubtotal) > 0.01) {
@@ -214,6 +245,14 @@ class CartService
             
             $totalQty += $quantity;
             $subtotal += $newSubtotal; // Sử dụng subtotal mới
+            
+            // ===== THÊM LOG RUNNING TOTAL =====
+            Log::info('[DEBUG_CHECKOUT] Running subtotal', [
+                'after_variant_id' => $variantId,
+                'item_subtotal' => $newSubtotal,
+                'running_subtotal' => $subtotal,
+            ]);
+            // ===== END LOG =====
         }
         
         // Get coupon info
@@ -231,6 +270,16 @@ class CartService
         
         // Get available deals
         $availableDeals = $this->getAvailableDeals($cart);
+        
+        // ===== THÊM LOG FINAL SUMMARY =====
+        Log::info('[DEBUG_CHECKOUT] Final cart summary', [
+            'total_items' => count($items),
+            'total_qty' => $totalQty,
+            'subtotal' => $subtotal,
+            'discount' => $discount,
+            'final_total' => $subtotal - $discount,
+        ]);
+        // ===== END LOG =====
         
         return [
             'items' => $items,

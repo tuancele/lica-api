@@ -232,6 +232,14 @@ class PriceEngineService implements PriceEngineServiceInterface
      */
     public function calculatePriceWithQuantity(int $productId, ?int $variantId = null, int $quantity): array
     {
+        // ===== THÊM LOG INPUT =====
+        \Illuminate\Support\Facades\Log::info('[DEBUG_PRICE_ENGINE] Input', [
+            'product_id' => $productId,
+            'variant_id' => $variantId,
+            'quantity' => $quantity,
+        ]);
+        // ===== END LOG =====
+        
         $now = Carbon::now();
         
         // QUAN TRỌNG: Kiểm tra tồn kho thực tế từ Warehouse API
@@ -260,7 +268,7 @@ class PriceEngineService implements PriceEngineServiceInterface
         
         // Nếu không có tồn kho hoặc vượt quá tồn kho, trả về lỗi ngay
         if (!$isAvailable) {
-            return [
+            $result = [
                 'total_price' => 0,
                 'price_breakdown' => [],
                 'flash_sale_remaining' => 0,
@@ -269,6 +277,19 @@ class PriceEngineService implements PriceEngineServiceInterface
                 'is_available' => false,
                 'stock_error' => $stockErrorMessage,
             ];
+            
+            // ===== THÊM LOG OUTPUT (Stock Error) =====
+            \Illuminate\Support\Facades\Log::info('[DEBUG_PRICE_ENGINE] Output (Stock Error)', [
+                'product_id' => $productId,
+                'variant_id' => $variantId,
+                'quantity' => $quantity,
+                'total_price' => 0,
+                'is_available' => false,
+                'stock_error' => $stockErrorMessage,
+            ]);
+            // ===== END LOG =====
+            
+            return $result;
         }
         
         // Lấy giá gốc
@@ -284,7 +305,7 @@ class PriceEngineService implements PriceEngineServiceInterface
             $normalPrice = $promotionPrice ? $promotionPrice['price'] : $originalPrice;
             $priceType = $promotionPrice ? 'promotion' : 'normal';
             
-            return [
+            $result = [
                 'total_price' => $normalPrice * $quantity,
                 'price_breakdown' => [
                     [
@@ -299,6 +320,20 @@ class PriceEngineService implements PriceEngineServiceInterface
                 'total_physical_stock' => $totalPhysicalStock,
                 'is_available' => true,
             ];
+            
+            // ===== THÊM LOG OUTPUT (No Flash Sale) =====
+            \Illuminate\Support\Facades\Log::info('[DEBUG_PRICE_ENGINE] Output (No Flash Sale)', [
+                'product_id' => $productId,
+                'variant_id' => $variantId,
+                'quantity' => $quantity,
+                'total_price' => $result['total_price'],
+                'price_type' => $priceType,
+                'unit_price' => $normalPrice,
+                'price_breakdown' => $result['price_breakdown'],
+            ]);
+            // ===== END LOG =====
+            
+            return $result;
         }
         
         // Có Flash Sale và còn stock
@@ -350,7 +385,7 @@ class PriceEngineService implements PriceEngineServiceInterface
                       ($normalPriceType === 'promotion' ? 'khuyến mãi' : 'thường');
         }
         
-        return [
+        $result = [
             'total_price' => $totalPrice,
             'price_breakdown' => $priceBreakdown,
             'flash_sale_remaining' => $flashRemaining,
@@ -360,5 +395,19 @@ class PriceEngineService implements PriceEngineServiceInterface
             'total_physical_stock' => $totalPhysicalStock,
             'is_available' => true,
         ];
+        
+        // ===== THÊM LOG OUTPUT =====
+        \Illuminate\Support\Facades\Log::info('[DEBUG_PRICE_ENGINE] Output', [
+            'product_id' => $productId,
+            'variant_id' => $variantId,
+            'quantity' => $quantity,
+            'total_price' => $result['total_price'] ?? 0,
+            'price_breakdown' => $result['price_breakdown'] ?? null,
+            'flash_sale_remaining' => $result['flash_sale_remaining'] ?? 0,
+            'is_available' => $result['is_available'] ?? true,
+        ]);
+        // ===== END LOG =====
+        
+        return $result;
     }
 }

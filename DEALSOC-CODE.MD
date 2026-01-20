@@ -511,3 +511,51 @@ if ($displayPrice['type'] === 'normal') {
   - `app/Themes/Website/Controllers/CartController.php` - Validation và fallback cho giá
   - `app/Themes/Website/Views/cart/checkout.blade.php` - Khóa dữ liệu vào JS, sửa hàm tính tổng, đồng bộ phí ship và coupon
 
+#### 2026-01-23 (Update 9) - Fix Tổng tiền 0đ - Thông nòng Session theo Token
+- Fix: Trang thanh toán (`/cart/thanh-toan`) hiển thị tổng giá trị đơn hàng là `0đ` do hệ thống đang bị mất Session khi chuyển từ Giỏ hàng sang Thanh toán do Token trên URL.
+- Root cause:
+  - Session có thể bị mất hoặc không đồng bộ khi redirect với token.
+  - Controller đang tin tưởng vào `$cart->totalPrice` từ Cart model cũ thay vì tính toán lại từ session.
+  - JavaScript có thể ghi đè giá đã được PHP render đúng.
+- Fix (Backend):
+  - **Bước 1: Đồng bộ Session theo Token (The Core Fix)**:
+    - Trước khi lấy dữ liệu giỏ hàng, kiểm tra: Nếu có token trên URL, phải đảm bảo Session hiện tại được liên kết đúng với giỏ hàng của người dùng đó.
+    - ÉP BUỘC: Gọi `$cartItems = session()->get('cart', [])` để kiểm tra session cart.
+    - KIỂM TRA: Nếu `$cartItems` rỗng, Log error: `[CHECKOUT_FATAL] Session cart is empty on checkout page!` và redirect về giỏ hàng.
+  - **Bước 2: Ép Backend tính toán lại Tổng tiền (Server-side Only)**:
+    - Không tin tưởng vào bất kỳ biến `$cart->totalPrice` nào có sẵn.
+    - Tính toán thủ công một lần nữa từ mảng Session:
+      ```php
+      $finalSubtotal = 0;
+      foreach ($cart->items as $variantId => $item) {
+          $priceInfo = PriceEngineService::calculatePriceWithQuantity($product_id, $variant_id, $qty);
+          // Áp dụng Deal Sốc nếu có
+          $finalSubtotal += $priceInfo['total_price'];
+      }
+      $totalPrice = $finalSubtotal;
+      ```
+    - Gán con số này vào biến truyền xuống View.
+    - Sửa phần tính phí ship: Dùng `$totalPrice` thay vì `$cart->totalPrice`.
+  - File: `app/Themes/Website/Controllers/CartController.php`.
+- Fix (Frontend):
+  - **Bước 3: Sửa UI Render (Bỏ qua JavaScript)**:
+    - Tìm các class `.subtotal-cart` và `.total-order`.
+    - Thay vì để `0đ`, in thẳng giá trị từ PHP vào đó:
+      ```html
+      <span class="subtotal-cart">{{ number_format($totalPrice) }}đ</span>
+      <span class="total-order">{{ number_format($totalPrice - $sale + $feeship) }}đ</span>
+      ```
+    - File: `app/Themes/Website/Views/cart/checkout.blade.php` (đã có sẵn).
+  - **Bước 4: Chốt chặn JS (Chống ghi đè)**:
+    - Mở file JS checkout, tìm hàm `updateTotalOrderPriceCheckout()`.
+    - Thêm logic kiểm tra: Nếu PHP đã render giá đúng (> 0), JS không được phép sửa lại.
+    - Logic: `const currentSubtotal = parseFloat($('.subtotal-cart').text().replace(/[^\d]/g, '')) || 0; if (currentSubtotal > 0 && window.checkoutData.subtotal <= 0) return;`
+    - Mục tiêu: Nếu PHP đã render giá đúng (> 0), JS không được phép sờ vào để sửa lại thành 0 nữa.
+  - File: `app/Themes/Website/Views/cart/checkout.blade.php`.
+- Quy tắc tính giá:
+  - Backend: Tính toán thủ công từ session bằng cách duyệt qua items và gọi `PriceEngineService::calculatePriceWithQuantity()` cho từng item.
+  - Frontend: In thẳng giá trị từ PHP vào HTML, JS chỉ cập nhật khi cần (coupon/ship), không được ghi đè giá đã render đúng.
+- Files modified:
+  - `app/Themes/Website/Controllers/CartController.php` - Đồng bộ session, tính toán thủ công từ session
+  - `app/Themes/Website/Views/cart/checkout.blade.php` - Chốt chặn JS không được ghi đè giá đã render đúng
+

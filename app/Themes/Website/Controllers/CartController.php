@@ -221,58 +221,132 @@ class CartController extends Controller
 
     public function checkout(Request $request)
     {
-        if (!Session::has('cart')) {
-            return redirect('cart/gio-hang');
-        }
-
+        // Bước 1: Đồng bộ Session theo Token (The Core Fix)
+        // Trước khi lấy dữ liệu giỏ hàng, hãy kiểm tra: Nếu có token trên URL, phải đảm bảo Session hiện tại được liên kết đúng với giỏ hàng của người dùng đó
+        
         // Security Token
         $token = md5(Session::getId() . 'checkout_secure');
         if (!$request->has('token') || $request->token !== $token) {
             return redirect()->route('cart.payment', ['token' => $token]);
         }
-
-        // Bước 1: Sửa hàm checkout() trong Controller (The Core Fix)
-        // Đảm bảo gọi CartService::getCart() để lấy tổng tiền chuẩn
+        
+        // ÉP BUỘC: Gọi session()->get('cart', []) để kiểm tra session cart
+        $cartItems = session()->get('cart', []);
+        
+        // KIỂM TRA: Nếu $cartItems rỗng, hãy Log error
+        if (empty($cartItems)) {
+            Log::error('[CHECKOUT_FATAL] Session cart is empty on checkout page!', [
+                'session_id' => Session::getId(),
+                'has_cart_session' => Session::has('cart'),
+                'token' => $token,
+            ]);
+            return redirect('cart/gio-hang')->with('error', 'Giỏ hàng của bạn đã trống. Vui lòng thêm sản phẩm vào giỏ hàng.');
+        }
+        
+        // Bước 2: Ép Backend tính toán lại Tổng tiền (Server-side Only)
+        // Không tin tưởng vào bất kỳ biến $cart->totalPrice nào có sẵn
+        // Tính toán thủ công một lần nữa từ mảng Session
+        $finalSubtotal = 0;
+        $oldCart = Session::get('cart');
+        $cart = new Cart($oldCart);
+        
+        // Duyệt qua từng item trong session cart
+        foreach ($cart->items as $variantId => $item) {
+            $variant = Variant::with('product')->find($variantId);
+            if (!$variant || !$variant->product) {
+                Log::warning('[CartController::checkout] Variant not found', [
+                    'variant_id' => $variantId,
+                ]);
+                continue;
+            }
+            
+            $quantity = (int)($item['qty'] ?? 1);
+            
+            // Gọi trực tiếp PriceEngine để lấy giá chuẩn (Flash Sale/Thường)
+            $priceInfo = $this->priceEngine->calculatePriceWithQuantity(
+                $variant->product->id,
+                $variantId,
+                $quantity
+            );
+            
+            // Áp dụng giá Deal Sốc nếu có và thỏa điều kiện
+            if (!empty($item['is_deal'])) {
+                $dealPricing = $this->applyDealPriceForCartItem(
+                    $variant->product->id,
+                    $variantId,
+                    $quantity,
+                    $priceInfo
+                );
+                if ($dealPricing !== null) {
+                    $priceInfo['total_price'] = $dealPricing['total_price'];
+                }
+            }
+            
+            $finalSubtotal += (float)($priceInfo['total_price'] ?? 0);
+        }
+        
+        // Gán con số này vào biến truyền xuống View (fallback)
+        $totalPrice = $finalSubtotal;
+        
+        // Gọi CartService để lấy thông tin chi tiết cho view
         $cartSummary = $this->cartService->getCart();
         
-        // CÔNG THỨC: $totalPrice = Sum(PriceEngine::calculate(item) * qty)
-        // Lấy từ CartService summary (đã tính từ PriceEngineService)
-        $totalPrice = (float)($cartSummary['summary']['subtotal'] ?? 0);
+        // Bước 4: Ưu tiên dùng tổng tiền từ CartService (đã tính đủ Flash Sale tầng, Deal Sốc, v.v.)
+        $summaryTotal = (float)($cartSummary['summary']['total'] ?? 0);
+        if ($summaryTotal > 0) {
+            $totalPrice = $summaryTotal;
+        }
         
-        // Bước 1: Log biến $totalPrice để debug
-        Log::info('[CartController::checkout] Total price from CartService', [
-            'totalPrice' => $totalPrice,
+        // ===== THÊM LOG DEBUG =====
+        Log::info('[DEBUG_CHECKOUT] CartController received summary', [
             'summary' => $cartSummary['summary'] ?? null,
             'items_count' => count($cartSummary['items'] ?? []),
+            'items_detail' => array_map(function($item) {
+                return [
+                    'variant_id' => $item['variant_id'] ?? null,
+                    'product_name' => $item['product_name'] ?? null,
+                    'qty' => $item['qty'] ?? 0,
+                    'price' => $item['price'] ?? 0,
+                    'subtotal' => $item['subtotal'] ?? 0,
+                    'is_deal' => $item['is_deal'] ?? 0,
+                ];
+            }, $cartSummary['items'] ?? []),
         ]);
+        // ===== END LOG =====
+        
+        // ===== PHẦN 4: Lấy coupon/sale =====
+        $sale = (float)($cartSummary['summary']['discount'] ?? 0);
+        $code = null;
+        if (Session::has('ss_counpon')) {
+            $couponData = Session::get('ss_counpon');
+            $sale = (float)($couponData['sale'] ?? 0);
+            $code = $couponData['code'] ?? null;
+        }
         
         // CRITICAL: Nếu totalPrice bằng 0 nhưng có items, kiểm tra lại
-        if ($totalPrice <= 0 && !empty($cartSummary['items'])) {
+        if ($totalPrice <= 0 && !empty($cart->items)) {
             Log::error('[CartController::checkout] Total price is 0 but cart has items', [
-                'items' => array_map(function($item) {
-                    return [
-                        'variant_id' => $item['variant_id'] ?? null,
-                        'product_id' => $item['product_id'] ?? null,
-                        'qty' => $item['qty'] ?? 0,
-                        'subtotal' => $item['subtotal'] ?? 0,
-                        'price' => $item['price'] ?? 0,
-                    ];
-                }, $cartSummary['items'] ?? []),
-                'summary' => $cartSummary['summary'] ?? null,
+                'cart_items_count' => count($cart->items),
+                'final_subtotal' => $finalSubtotal,
+                'cart_summary' => $cartSummary['summary'] ?? null,
             ]);
         }
         
-        $oldCart = Session::get('cart');
-        $cart = new Cart($oldCart);
-        $data['products'] = $cart->items;
-        $data['cart'] = $cart;
+        // ===== THÊM LOG CRITICAL =====
+        Log::info('[DEBUG_CHECKOUT] CRITICAL - totalPrice for view', [
+            'totalPrice' => $totalPrice,
+            'is_zero' => $totalPrice == 0,
+            'raw_subtotal' => $cartSummary['summary']['subtotal'] ?? 'NOT_SET',
+            'final_subtotal_calculated' => $finalSubtotal,
+        ]);
+        // ===== END LOG =====
         
-        // Lấy productsWithPrice từ CartService để đảm bảo tính nhất quán
-        $data['productsWithPrice'] = [];
+        // ===== PHẦN 3: Lấy productsWithPrice =====
+        $productsWithPrice = [];
         foreach ($cartSummary['items'] as $item) {
             $variantId = $item['variant_id'] ?? null;
             if ($variantId) {
-                $data['productsWithPrice'][$variantId] = [
+                $productsWithPrice[$variantId] = [
                     'price_breakdown' => $item['price_breakdown'] ?? null,
                     'total_price' => (float)($item['subtotal'] ?? 0),
                     'warning' => $item['warning'] ?? null,
@@ -281,17 +355,6 @@ class CartController extends Controller
                 ];
             }
         }
-        
-        $data['totalPrice'] = $totalPrice; // Sử dụng tổng từ CartService
-        $data['province'] = $this->getProvince();
-        $data['promotions'] = Promotion::where([['status', '1'], ['end', '>=', date('Y-m-d')], ['order_sale', '<=', $cart->totalPrice]])->limit('8')->get();
-        
-        $sale = 0;
-        if (Session::has('ss_counpon')) {
-            $sale = Session::get('ss_counpon')['sale'];
-            $data['code'] = Session::get('ss_counpon')['code'];
-        }
-        $data['sale'] = $sale;
 
         // Calculate FeeShip
         $feeShip = 0;
@@ -327,7 +390,7 @@ class CartController extends Controller
                         "ward" => $address->ward->name ?? '',
                         "address" => $address->address,
                         "weight" => $weight,
-                        "value" => $cart->totalPrice - $sale,
+                        "value" => $totalPrice - $sale, // Sử dụng $totalPrice đã tính lại từ session
                         "transport" => 'road',
                         "deliver_option" => 'none',
                         "tags" => [0],
@@ -340,9 +403,37 @@ class CartController extends Controller
                 }
             }
         }
-        $data['feeship'] = $feeShip;
-        $data['token'] = $token;
-        return view('Website::cart.checkout', $data);
+        $feeship = $feeShip;
+        
+        // ===== PHẦN 6: Lấy province và promotions =====
+        $province = $this->getProvince();
+        $promotions = Promotion::where([
+            ['status', '1'], 
+            ['end', '>=', date('Y-m-d')], 
+            ['order_sale', '<=', $totalPrice]
+        ])->limit('8')->get();
+        
+        // ===== CRITICAL: Log để debug =====
+        Log::info('[CHECKOUT_FINAL] Subtotal: ' . $totalPrice, [
+            'totalPrice' => $totalPrice,
+            'sale' => $sale,
+            'feeship' => $feeship,
+            'finalTotal' => $totalPrice - $sale + $feeship,
+        ]);
+
+        // ===== CRITICAL: Return view với TẤT CẢ biến (dùng array trực tiếp) =====
+        return view('Website::cart.checkout', [
+            'products' => $cart->items,
+            'cart' => $cart,
+            'productsWithPrice' => $productsWithPrice,
+            'totalPrice' => $totalPrice,      // ← QUAN TRỌNG
+            'sale' => $sale,                   // ← QUAN TRỌNG
+            'code' => $code,
+            'feeship' => $feeship,             // ← QUAN TRỌNG
+            'province' => $province,
+            'promotions' => $promotions,
+            'token' => $token,
+        ]);
     }
 
     /**
