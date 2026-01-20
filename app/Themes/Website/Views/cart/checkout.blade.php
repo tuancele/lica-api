@@ -307,11 +307,12 @@ $member = auth()->guard('member')->user();
 @endsection
 @section('footer')
 <script>
-    // Bước 2: Khóa dữ liệu vào biến toàn cục (Global Data Lock)
+    // Bước 3: Khóa biến $totalPrice cho Sidebar (Global Data Lock)
     // JavaScript CHỈ ĐƯỢC PHÉP đọc số từ đây, không được tự tính toán lại
+    // Con số này phải là tổng từ CartService (kể cả Deal Sốc 0đ)
     window.checkoutData = {
-        // Tổng tiền hàng (đã tính gộp các mức flash sale/thường) từ Backend
-        // Bao gồm: giá flash sale + giá thường vượt mức + giá quà tặng
+        // Tổng tiền hàng từ Backend (đã tính từ cartSummary.items, kể cả Deal Sốc 0đ)
+        // Ví dụ: (398.400 + 0) = 398.400
         subtotal: {{ $totalPrice ?? 0 }}, 
         // Số tiền giảm giá từ Coupon
         sale: {{ $sale ?? 0 }},      
