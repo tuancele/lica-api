@@ -29,6 +29,10 @@
         <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
     <![endif]-->
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    @php
+        $apiUser = auth()->user() ?? auth('admin')->user() ?? auth('web')->user();
+    @endphp
+    <meta name="api-token" content="{{ $apiUser->api_token ?? '' }}">
     <script src="/public/admin/plugins/jQuery/jQuery-2.1.4.min.js"></script>
   </head>
   <body class="skin-blue sidebar-mini">

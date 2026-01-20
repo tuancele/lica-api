@@ -103,6 +103,49 @@ Route::group([
         Route::patch('/{id}/status', 'DealController@updateStatus');
     });
 
+    // Ingredient Dictionary Management Routes
+    Route::prefix('ingredients')->group(function () {
+        Route::get('/', 'IngredientController@index');
+        Route::get('/crawl/summary', 'IngredientController@crawlSummary');
+        Route::post('/crawl/run', 'IngredientController@crawlRun');
+        Route::get('/{id}', 'IngredientController@show');
+        Route::post('/', 'IngredientController@store');
+        Route::put('/{id}', 'IngredientController@update');
+        Route::delete('/{id}', 'IngredientController@destroy');
+        Route::patch('/{id}/status', 'IngredientController@updateStatus');
+        Route::post('/bulk-action', 'IngredientController@bulkAction');
+    });
+
+    // Ingredient Category Management
+    Route::prefix('ingredient-categories')->group(function () {
+        Route::get('/', 'IngredientController@listCategories');
+        Route::post('/', 'IngredientController@storeCategory');
+        Route::put('/{id}', 'IngredientController@updateCategory');
+        Route::delete('/{id}', 'IngredientController@deleteCategory');
+        Route::patch('/{id}/status', 'IngredientController@statusCategory');
+        Route::post('/bulk-action', 'IngredientController@bulkCategory');
+    });
+
+    // Ingredient Benefit Management
+    Route::prefix('ingredient-benefits')->group(function () {
+        Route::get('/', 'IngredientController@listBenefits');
+        Route::post('/', 'IngredientController@storeBenefit');
+        Route::put('/{id}', 'IngredientController@updateBenefit');
+        Route::delete('/{id}', 'IngredientController@deleteBenefit');
+        Route::patch('/{id}/status', 'IngredientController@statusBenefit');
+        Route::post('/bulk-action', 'IngredientController@bulkBenefit');
+    });
+
+    // Ingredient Rate Management
+    Route::prefix('ingredient-rates')->group(function () {
+        Route::get('/', 'IngredientController@listRates');
+        Route::post('/', 'IngredientController@storeRate');
+        Route::put('/{id}', 'IngredientController@updateRate');
+        Route::delete('/{id}', 'IngredientController@deleteRate');
+        Route::patch('/{id}/status', 'IngredientController@statusRate');
+        Route::post('/bulk-action', 'IngredientController@bulkRate');
+    });
+
     // Warehouse Management Routes (V1)
     Route::prefix('v1/warehouse')->group(function () {
         // Inventory Management

@@ -9,9 +9,12 @@ use App\Modules\Dictionary\Models\IngredientRate;
 use App\Modules\Product\Models\Product;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
+use App\Jobs\DictionaryIngredientCrawlJob;
 use Drnxloc\LaravelHtmlDom\HtmlDomParser;
 use Validator;
 use Exception;
+use Illuminate\Http\JsonResponse;
 
 class IngredientController extends Controller
 {
@@ -53,194 +56,10 @@ class IngredientController extends Controller
         $data['categories'] = IngredientCategory::where('status','1')->orderBy('sort','asc')->get();
         $data['rates'] = IngredientRate::where('status','1')->orderBy('sort','asc')->get();
         $data['benefits'] = IngredientBenefit::where('status','1')->orderBy('sort','asc')->get();
-        $data['dcat'] = json_decode($post->cat_id);
-        $data['dben'] = json_decode($post->benefit_id);
+        $data['dcat'] = is_array($post->cat_id) ? $post->cat_id : json_decode($post->cat_id ?? '[]', true);
+        $data['dben'] = is_array($post->benefit_id) ? $post->benefit_id : json_decode($post->benefit_id ?? '[]', true);
         $data['products'] = Product::select('id','name','image')->where([['status','1'],['type','product'],['ingredient','like','%'.$post->name.'%']])->get(); 
         return view($this->view.'::ingredient.edit',$data);
-    }
-    public function update(Request $request)
-    {
-        //$post = $this->model::find($request->id);
-        //$this->authorize($post,'post-edit');
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|min:1|max:250',
-        ],[
-            'name.required' => 'Tiêu đề không được bỏ trống.',
-            'name.min' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
-            'name.max' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
-        ]);
-        if($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'errors' => $validator->errors()
-            ]);
-        }
-        $this->model::where('id',$request->id)->update(array(
-            'name' => $request->name,
-            'rate_id' => $request->rate_id,
-            'description' => $request->description,
-            'content' => $request->content,
-            'disclaimer' => $request->disclaimer,
-            'reference' => $request->reference,
-            'shortcode' => $request->shortcode,
-            'glance' => $request->glance,
-            'status' => $request->status,
-            'cat_id' => json_encode($request->cat_id),
-            'benefit_id' => json_encode($request->benefit_id),
-            'seo_title' => $request->seo_title,
-            'seo_description' => $request->seo_description,
-            'user_id'=> Auth::id()
-        ));
-        
-        // Clear ingredient cache to refresh product ingredient links
-        Cache::forget('ingredient_paulas_active_list');
-        
-        return response()->json([
-            'status' => 'success',
-            'alert' => 'Sửa thành công!',
-            'url' => route('dictionary.ingredient')
-        ]);
-    }
-
-    public function store(Request $request)
-    {   
-        //$this->authorize('post-create');
-        $validator = Validator::make($request->all(), [
-            'name' => 'required|min:1|max:250',
-            'slug' => 'required|min:1|max:250|unique:ingredient_paulas,slug',
-        ],[
-            'name.required' => 'Tiêu đề không được bỏ trống.',
-            'name.min' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
-            'name.max' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
-            'slug.required' => 'Bạn chưa nhập đường dẫn',
-            'slug.min' => 'Đường dẫn có độ dài từ 1 đến 250 ký tự',
-            'slug.max' => 'Đường dẫn có độ dài từ 1 đến 250 ký tự',
-            'slug.unique' => 'Đường dẫn đã tồn tại',
-        ]);
-        if($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'errors' => $validator->errors()
-            ]);
-        }
-        $id = $this->model::insertGetId(
-            [
-                'name' => $request->name,
-                'slug' => $request->slug,
-                'rate_id' => $request->rate_id,
-                'description' => $request->description,
-                'content' => $request->content,
-                'disclaimer' => $request->disclaimer,
-                'reference' => $request->reference,
-                'glance' => $request->glance,
-                'status' => $request->status,
-                'cat_id' => json_encode($request->cat_id),
-                'benefit_id' => json_encode($request->benefit_id),
-                'seo_title' => $request->seo_title,
-                'seo_description' => $request->seo_description,
-                'user_id'=> Auth::id(),
-                'created_at' => date('Y-m-d H:i:s')
-            ]
-        );
-        if($id > 0){
-            // Clear ingredient cache to refresh product ingredient links
-            Cache::forget('ingredient_paulas_active_list');
-            
-            return response()->json([
-                'status' => 'success',
-                'alert' => 'Thêm thành công!',
-                'url' => route('dictionary.ingredient')
-            ]);
-        }else{
-            return response()->json([
-                'status' => 'error',
-                'errors' => array('alert' => array('0' => 'Thêm không thành công!'))
-            ]);
-        }
-    }
-    public function delete(Request $request)
-    {
-        //$post =  $this->model::find($request->id);
-        //$this->authorize($post,'post-delete');
-        $data = $this->model::findOrFail($request->id)->delete();
-        
-        // Clear ingredient cache to refresh product ingredient links
-        Cache::forget('ingredient_paulas_active_list');
-        
-        if($request->page !=""){
-            $url = route('dictionary.ingredient').'?page='.$request->page;
-        }else{
-            $url = route('dictionary.ingredient');
-        }
-        return response()->json([
-            'status' => 'success',
-            'alert' => 'Xóa thành công!',
-            'url' => $url
-        ]);
-    }
-    public function status(Request $request){
-       // $post =  $this->model::find($request->id);
-        //$this->authorize($post,'post-edit');
-        $this->model::where('id',$request->id)->update(array(
-            'status' => $request->status
-        ));
-        
-        // Clear ingredient cache to refresh product ingredient links
-        Cache::forget('ingredient_paulas_active_list');
-        
-        return response()->json([
-            'status' => 'success',
-            'alert' => 'Đổi trạng thái thành công!',
-            'url' => route('dictionary.ingredient')
-        ]);
-    }
-    public function action(Request $request){
-        $check = $request->checklist;
-        if(!isset($check) && empty($check)){
-            return response()->json([
-                'status' => 'error',
-                'errors' => array('alert' => array('0' => 'Chưa chọn dữ liệu cần thao tác!'))
-            ]);
-        }
-        $action = $request->action;
-        if($action == 0){
-            foreach($check as $key => $value){
-                //$post =  $this->model::find($value);
-                //$this->authorize($post,'post-edit');
-                $this->model::where('id',$value)->update(array(
-                    'status' => '0'
-                ));
-            }
-            return response()->json([
-                'status' => 'success',
-                'alert' => 'Ẩn thành công!',
-                'url' => route('dictionary.ingredient')
-            ]);
-        }elseif($action == 1){
-            foreach($check as $key => $value){
-                //$post =  $this->model::find($value);
-                //$this->authorize($post,'post-edit');
-                $this->model::where('id',$value)->update(array(
-                    'status' => '1'
-                ));
-            }
-            return response()->json([
-                'status' => 'success',
-                'alert' => 'Hiển thị thành công!',
-                'url' => route('dictionary.ingredient')
-            ]);
-        }else{
-            foreach($check as $key => $value){
-                //$post =  $this->model::find($value);
-                //$this->authorize($post,'post-delete');
-                $this->model::where('id',$value)->delete();
-            }
-            return response()->json([
-                'status' => 'success',
-                'alert' => 'Xóa thành công!',
-                'url' => route('dictionary.ingredient')
-            ]);
-        }
     }
 
     public function crawl(){
@@ -314,6 +133,325 @@ class IngredientController extends Controller
         }
     }
 
+    private function crawlStateKey(int $userId, int $offset): string
+    {
+        return 'dictionary_ingredient_crawl:' . $userId . ':' . $offset;
+    }
+
+    public function crawlStart(Request $request): JsonResponse
+    {
+        try {
+            $offset = (int) ($request->offset ?? 0);
+            if ($offset < 0) {
+                return response()->json(['success' => false, 'message' => 'Invalid offset'], 422);
+            }
+
+            $userId = (int) (Auth::id() ?? 0);
+            if ($userId <= 0) {
+                return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
+            }
+
+            $crawlId = (string) Str::uuid();
+            $key = 'dictionary_ingredient_crawl_job:' . $crawlId;
+
+            Cache::put($key, [
+                'crawl_id' => $crawlId,
+                'user_id' => $userId,
+                'offset' => $offset,
+                'status' => 'queued',
+                'total' => null,
+                'processed' => 0,
+                'done' => false,
+                'error' => null,
+                'logs' => [],
+                'started_at' => time(),
+                'updated_at' => time(),
+            ], now()->addHours(6));
+
+            // Run via queue worker. Using afterResponse prevents long-running work from blocking the HTTP request,
+            // especially when queue driver is misconfigured to "sync" in local env.
+            DictionaryIngredientCrawlJob::dispatch($crawlId, $userId, $offset, 100)
+                ->onQueue('dictionary-crawl')
+                ->afterResponse();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'crawl_id' => $crawlId,
+                    'offset' => $offset,
+                ],
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function crawlStep(Request $request): JsonResponse
+    {
+        try {
+            $offset = (int) ($request->offset ?? 0);
+            $batchSize = (int) ($request->batch_size ?? 100);
+            if ($batchSize <= 0) {
+                $batchSize = 100;
+            }
+            if ($batchSize > 200) {
+                $batchSize = 200;
+            }
+
+            $userId = (int) (Auth::id() ?? 0);
+            if ($userId <= 0) {
+                return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
+            }
+
+            $key = $this->crawlStateKey($userId, $offset);
+            $cached = Cache::get($key);
+            if (!$cached || !isset($cached['state'], $cached['items'])) {
+                return response()->json(['success' => false, 'message' => 'Crawl not started'], 409);
+            }
+
+            $state = $cached['state'];
+            $items = $cached['items'];
+
+            if (!empty($state['done'])) {
+                return response()->json(['success' => true, 'data' => $this->crawlPublicState($state, 0, [])]);
+            }
+
+            $cursor = (int) ($state['cursor'] ?? 0);
+            $total = (int) ($state['total'] ?? 0);
+
+            $end = min($cursor + $batchSize, $total);
+            $newLogs = [];
+
+            for ($i = $cursor; $i < $end; $i++) {
+                $it = $items[$i] ?? [];
+                $name = (string) ($it['name'] ?? '');
+                $slug = (string) ($it['id'] ?? '');
+                $url = (string) ($it['url'] ?? '');
+
+                try {
+                    $status = 'created';
+                    $existing = $this->model::where('slug', $slug)->first();
+                    if ($existing) {
+                        $status = 'updated';
+                        $id = $existing->id;
+                    } else {
+                        $id = $this->model::insertGetId([
+                            'name' => $name,
+                            'slug' => $slug,
+                            'description' => $it['description'] ?? '',
+                            'status' => '1',
+                            'seo_description' => $it['description'] ?? '',
+                            'seo_title' => $name,
+                            'user_id' => Auth::id(),
+                            'created_at' => date('Y-m-d H:i:s'),
+                        ]);
+                    }
+
+                    if ($id && $url) {
+                        $detailUrl = 'https://www.paulaschoice.com' . $url . '&ajax=true';
+                        $this->detail($detailUrl, $id);
+                    }
+
+                    $line = ($i + 1) . '/' . $total . ' - ' . $name . ' - ' . $status;
+                    $newLogs[] = $line;
+                } catch (Exception $e) {
+                    $state['error'] = $e->getMessage();
+                    $line = ($i + 1) . '/' . $total . ' - ' . $name . ' - error: ' . $e->getMessage();
+                    $newLogs[] = $line;
+                }
+            }
+
+            $state['cursor'] = $end;
+            $state['batch_size'] = $batchSize;
+            if ($end >= $total) {
+                $state['done'] = true;
+            }
+
+            $state['logs'] = array_merge($state['logs'] ?? [], $newLogs);
+            // Keep last 800 lines to avoid unbounded cache growth
+            if (count($state['logs']) > 800) {
+                $state['logs'] = array_slice($state['logs'], -800);
+            }
+
+            Cache::put($key, [
+                'state' => $state,
+                'items' => $items,
+            ], now()->addHours(2));
+
+            return response()->json([
+                'success' => true,
+                'data' => $this->crawlPublicState($state, count($newLogs), $newLogs),
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function crawlStatus(Request $request): JsonResponse
+    {
+        try {
+            $since = (int) ($request->since ?? 0);
+            $crawlId = (string) ($request->crawl_id ?? '');
+
+            $userId = (int) (Auth::id() ?? 0);
+            if ($userId <= 0) {
+                return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
+            }
+
+            if ($crawlId === '') {
+                return response()->json(['success' => false, 'message' => 'Missing crawl_id'], 422);
+            }
+
+            $key = 'dictionary_ingredient_crawl_job:' . $crawlId;
+            $state = Cache::get($key);
+            if (!is_array($state)) {
+                return response()->json(['success' => false, 'message' => 'Crawl not found'], 404);
+            }
+            if ((int) ($state['user_id'] ?? 0) !== $userId) {
+                return response()->json(['success' => false, 'message' => 'Forbidden'], 403);
+            }
+
+            $logs = $state['logs'] ?? [];
+            if (!is_array($logs)) {
+                $logs = [];
+            }
+
+            $since = max(0, $since);
+            $newLogs = array_slice($logs, $since);
+
+            return response()->json([
+                'success' => true,
+                'data' => $this->crawlPublicState($state, count($newLogs), $newLogs, $since + count($newLogs)),
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    private function crawlPublicState(array $state, int $stepCount, array $newLogs, ?int $nextSince = null): array
+    {
+        $total = (int) ($state['total'] ?? 0);
+        $cursor = (int) ($state['processed'] ?? 0);
+        $startedAt = (int) ($state['started_at'] ?? time());
+        $elapsed = max(0, time() - $startedAt);
+        $done = !empty($state['done']);
+        $error = $state['error'] ?? null;
+
+        return [
+            'crawl_id' => (string) ($state['crawl_id'] ?? ''),
+            'offset' => (int) ($state['offset'] ?? 0),
+            'total' => $total,
+            'processed' => $cursor,
+            'done' => $done,
+            'error' => $error,
+            'elapsed' => $elapsed,
+            'step_processed' => $stepCount,
+            'logs' => $newLogs,
+            'next_since' => $nextSince,
+            'status' => (string) ($state['status'] ?? ''),
+        ];
+    }
+
+    private function curlJson(string $url): array
+    {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 40);
+        $content = curl_exec($ch);
+        curl_close($ch);
+
+        $decoded = json_decode((string) $content, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    private function normalizeString($value): string
+    {
+        if (is_string($value)) {
+            return trim($value);
+        }
+        if (is_array($value)) {
+            $parts = [];
+            foreach ($value as $v) {
+                if (is_string($v)) {
+                    $parts[] = $v;
+                } elseif (is_scalar($v)) {
+                    $parts[] = (string) $v;
+                }
+            }
+            $text = trim(implode(' ', $parts));
+            return $text;
+        }
+        if (is_scalar($value)) {
+            return trim((string) $value);
+        }
+        return '';
+    }
+
+    private function buildDescription($sections): string
+    {
+        if (!is_array($sections)) {
+            $text = $this->normalizeString($sections);
+            return $text !== '' ? '<p>' . $text . '</p>' : '';
+        }
+
+        $content = '';
+        foreach ($sections as $value) {
+            $texts = $value['text'] ?? [];
+            if (is_string($texts)) {
+                $t = $this->normalizeString($texts);
+                if ($t !== '') {
+                    $content .= '<p>' . $t . '</p>';
+                }
+                continue;
+            }
+            if (is_array($texts) && !empty($texts)) {
+                $last = end($texts);
+                $t = $this->normalizeString($last);
+                if ($t !== '') {
+                    $content .= '<p>' . $t . '</p>';
+                }
+            }
+        }
+        return $content;
+    }
+
+    private function buildReferences($references): string
+    {
+        if (!is_array($references)) {
+            $t = $this->normalizeString($references);
+            return $t !== '' ? '<p>' . $t . '</p>' : '';
+        }
+
+        $content = '';
+        foreach ($references as $ref) {
+            $t = $this->normalizeString($ref);
+            if ($t !== '') {
+                $content .= '<p>' . $t . '</p>';
+            }
+        }
+        return $content;
+    }
+
+    private function buildGlance($points): string
+    {
+        if (!is_array($points)) {
+            $t = $this->normalizeString($points);
+            return $t !== '' ? '<ul><li>' . $t . '</li></ul>' : '';
+        }
+
+        $items = [];
+        foreach ($points as $p) {
+            $t = $this->normalizeString($p);
+            if ($t !== '') {
+                $items[] = $t;
+            }
+        }
+        if (empty($items)) {
+            return '';
+        }
+        return '<ul><li>' . implode('</li><li>', $items) . '</li></ul>';
+    }
+
     public function getDom($link){
         $ch = curl_init($link);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -325,54 +463,23 @@ class IngredientController extends Controller
 
     public function detail($link,$id){
         try{
-            $ch = curl_init($link);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            $content = curl_exec($ch);
-            curl_close($ch);
-            $rooms = json_decode($content, true);
-            $content2 = '';
-            if(isset($rooms['description']) && !empty($rooms['description'])){
-                $description = $rooms['description'];
-                foreach ($description as $key => $value) {
-                    $stt = count($value['text'])-1;
-                    $content2 .='<p>'.$value['text'][$stt].'</p>';
-                }
-            }
-            $reference = '';
-            if(isset($rooms['references']) && !empty($rooms['references'])){
-                $references = $rooms['references'];
-                foreach ($references as $key1 => $val1) {
-                    $reference .='<p>'.$val1.'</p>';
-                }
-            }
-            $disclaimer = '';
-            if(isset($rooms['strings']) && !empty($rooms['strings'])){
-                $strings = $rooms['strings'];
-                if(isset($strings['disclaimer'])){
-                    $disclaimer = $strings['disclaimer'];
-                }
-            }
-            
-            $glance = '';
-            if(isset($rooms['keyPoints']) && !empty($rooms['keyPoints'])){
-                $keyPoints = $rooms['keyPoints'];
-                $glance .= '<ul>';
-                foreach ($keyPoints as $key2 => $val2) {
-                    $glance .='<li>'.$val2.'</li>';
-                }
-                $glance .= '</ul>';
-            }
+            $rooms = $this->curlJson($link);
+            $content2 = $this->buildDescription($rooms['description'] ?? []);
+            $reference = $this->buildReferences($rooms['references'] ?? []);
+            $disclaimer = $this->normalizeString($rooms['strings']['disclaimer'] ?? '');
+            $glance = $this->buildGlance($rooms['keyPoints'] ?? []);
+
             $this->model::where('id',$id)->update(
                 [
-                    'name' => $rooms['name'],
-                    'rate_id' => $this->getRate($rooms['rating']),
+                    'name' => $rooms['name'] ?? '',
+                    'rate_id' => $this->getRate($rooms['rating'] ?? ''),
                     'content' => $content2,
                     'reference' => $reference,
                     'disclaimer' => $disclaimer,
                     'glance' => $glance,
                     'status' => '1',
-                    'cat_id' => json_encode($this->getCategory($rooms['relatedCategories'])),
-                    'benefit_id' => json_encode($this->getBenefit($rooms['benefits'])),
+                    'cat_id' => json_encode($this->getCategory($rooms['relatedCategories'] ?? [])),
+                    'benefit_id' => json_encode($this->getBenefit($rooms['benefits'] ?? [])),
                 ]
             );
         }catch (Exception $e) {
@@ -410,8 +517,9 @@ class IngredientController extends Controller
     }
 
     public function getRate($rate){
-        if($rate != ""){
-            $detail = IngredientRate::where('name',$rate)->first();
+        $rateName = $this->normalizeString($rate);
+        if($rateName != ""){
+            $detail = IngredientRate::where('name',$rateName)->first();
             if(isset($detail) && !empty($detail)){
                 return $detail->id;
             }else{
@@ -482,5 +590,23 @@ class IngredientController extends Controller
                 'message' => $e->getMessage()
             ]);
         }
+    }
+
+    public function publicList(): JsonResponse
+    {
+        $items = $this->model->newQuery()
+            ->select(['name as title', 'slug'])
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->whereNotNull('slug')
+            ->where('slug', '!=', '')
+            ->orderByRaw('CHAR_LENGTH(name) DESC')
+            ->orderBy('name', 'asc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $items,
+        ]);
     }
 }

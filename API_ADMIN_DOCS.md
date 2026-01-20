@@ -50,6 +50,207 @@
 
 ---
 
+## Ingredient Dictionary Admin API
+
+### 1. GET /admin/api/ingredients
+
+**Mục tiêu:** Lấy danh sách thành phần (IngredientPaulas) với phân trang và bộ lọc.
+
+**Tham số đầu vào (Query Params):**
+- `page` (int, optional): trang, mặc định 1
+- `limit` (int, optional): số bản ghi, mặc định 20, tối đa 100
+- `keyword` (string, optional): tìm theo name
+- `status` (int, optional): 0/1
+- `rate_id` (int, optional)
+- `cat_id` (array|int, optional): id danh mục
+- `benefit_id` (array|int, optional): id lợi ích
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "AHA",
+      "slug": "ingredient-aha",
+      "status": "1",
+      "rate": {"id": 2,"name": "BEST"},
+      "categories": [{"id": 1,"name": "Acid"}],
+      "benefits": [{"id": 3,"name": "Brightening"}],
+      "seo_title": "AHA",
+      "seo_description": "Acid tẩy tế bào chết"
+    }
+  ],
+  "pagination": {"current_page":1,"per_page":20,"total":100,"last_page":5}
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 2. POST /admin/api/ingredients
+
+**Mục tiêu:** Tạo thành phần mới (slug duy nhất).
+
+**Body (JSON):**
+- `name` (string, required, 1-250)
+- `slug` (string, required, unique)
+- `status` (int, required, 0/1)
+- `rate_id` (int, optional, exists:ingredient_rate,id)
+- `cat_id` (array<int>, optional, exists:ingredient_category,id)
+- `benefit_id` (array<int>, optional, exists:ingredient_benefit,id)
+- `description`, `content`, `glance`, `reference`, `disclaimer`, `seo_title`, `seo_description`, `shortcode` (optional)
+
+**Phản hồi mẫu (201):**
+```json
+{
+  "success": true,
+  "message": "创建成分成功",
+  "data": {"id": 10, "name": "Niacinamide", "slug": "niacinamide"}
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 3. PUT /admin/api/ingredients/{id}
+
+**Mục tiêu:** Cập nhật thành phần (slug unique ignore id).
+
+**Body:** giống POST.
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "message": "更新成分成功",
+  "data": {"id": 10, "name": "Niacinamide 10%", "slug": "niacinamide"}
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 4. DELETE /admin/api/ingredients/{id}
+
+**Mục tiêu:** Xóa thành phần.
+
+**Phản hồi mẫu (200):**
+```json
+{"success": true, "message": "删除成分成功"}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 5. PATCH /admin/api/ingredients/{id}/status
+
+**Mục tiêu:** Đổi trạng thái 0/1.
+
+**Body:** `status` (required, 0/1)
+
+**Phản hồi mẫu (200):**
+```json
+{"success": true, "message": "状态更新成功", "data": {"id": 10, "status": "1"}}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 6. POST /admin/api/ingredients/bulk-action
+
+**Mục tiêu:** Bulk action 0=hide,1=show,2=delete (giữ nguyên logic cũ).
+
+**Body:** `checklist` (array<int>, required), `action` (int, required, in:0,1,2)
+
+**Phản hồi mẫu (200):**
+```json
+{"success": true, "message": "批量操作成功"}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 7. GET /admin/api/ingredients/crawl/summary
+
+**Mục tiêu:** Lấy tổng số bản ghi & số trang crawl từ Paula’s Choice.
+
+**Phản hồi mẫu (200):**
+```json
+{"success": true, "data": {"total": 5400, "pages": 3}}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 8. POST /admin/api/ingredients/crawl/run
+
+**Mục tiêu:** Chạy crawl theo `offset`, an toàn timeout, `set_time_limit(0)` và ghi log lỗi.
+
+**Body:** `offset` (int, required, min:0)
+
+**Phản hồi mẫu (200):**
+```json
+{"success": true, "message": "AHA - updated\nBHA - created"}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+## Public Dictionary API
+
+### 1. GET /api/dictionary/ingredients
+
+**Muc tieu:** Public list ingredients for scanning (title + slug only), order by title length DESC.
+
+**Query Params:** none
+
+**Phan hoi mau (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {"title": "Acetyl sh-Hexapeptide-5 Amide Acetate", "slug": "ingredient-acetyl-sh-hexapeptide-5-amide-acetate"},
+    {"title": "AHA", "slug": "ingredient-aha"}
+  ]
+}
+```
+
+**Trang thai:** Hoan thanh
+
+---
+
+### 9. Ingredient Category / Benefit / Rate APIs
+
+- `GET /admin/api/ingredient-categories` (benefits, rates tương tự) – danh sách + phân trang.
+- `POST /admin/api/ingredient-categories` – tạo (name required, status 0/1, sort optional).
+- `PUT /admin/api/ingredient-categories/{id}` – cập nhật.
+- `DELETE /admin/api/ingredient-categories/{id}` – xóa.
+- `PATCH /admin/api/ingredient-categories/{id}/status` – đổi trạng thái.
+- `POST /admin/api/ingredient-categories/bulk-action` – action 0/1/2.
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "message": "创建成功",
+  "data": {"id": 1, "name": "Acid", "status": "1", "sort": 0}
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
 ### 2. GET /admin/api/products/{id}
 
 **Mục tiêu:** 获取单个产品详情（包含关联数据：品牌、产地、分类、变体等）

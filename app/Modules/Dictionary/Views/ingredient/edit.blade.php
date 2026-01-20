@@ -5,15 +5,14 @@
     'title' => 'Sửa thành phần',
 ])
 <section class="content">
-    <form role="form" id="tblForm" method="post" ajax="{{route('dictionary.ingredient.update')}}">
-        @csrf
+    <form role="form" id="tblForm">
         <div class="row">
             <div class="col-lg-9">
                 <div class="panel panel-default">
                     <div class="panel-body">
                         <div class="row">
                             <div class="col-lg-12">
-                                <input type="hidden" value="{{$detail->id}}" name="id">
+                                <input type="hidden" value="{{$detail->id}}" name="id" id="ingredientId">
                                 @include('Layout::title',['title' => $detail->name])
                                 @include('Layout::description',['description' => $detail->description])
                                 <div class="form-group">
@@ -55,14 +54,7 @@
                         <div class="form-group">
                             <label class="control-label">Danh mục</label>
                             <div class="box-category box-body">
-                                @if($categories->count() > 0)
-                                @foreach($categories as $category)
-                                <label for="cate{{$category->id}}" style="font-weight: normal;">
-                                    <input @if(isset($dcat)) @if(in_array($category->id,$dcat)) checked @endif @endif id="cate{{$category->id}}" type="checkbox" class="wgr-checkbox" name="cat_id[]" value="{{$category->id}}">
-                                    <span>{{$category->name}}</span>
-                                </label>
-                                @endforeach
-                                @endif
+                                <div id="catBox">Đang tải...</div>
                             </div>
                         </div>
                     </div>
@@ -72,14 +64,7 @@
                         <div class="form-group">
                             <label class="control-label">Lợi ích</label>
                             <div class="box-category box-body">
-                                @if($benefits->count() > 0)
-                                @foreach($benefits as $benefit)
-                                <label for="cate{{$benefit->id}}" style="font-weight: normal;">
-                                    <input @if(isset($dben)) @if(in_array($benefit->id,$dben)) checked @endif @endif id="cate{{$benefit->id}}" type="checkbox" class="wgr-checkbox" name="benefit_id[]" value="{{$benefit->id}}">
-                                    <span>{{$benefit->name}}</span>
-                                </label>
-                                @endforeach
-                                @endif
+                                <div id="benefitBox">Đang tải...</div>
                             </div>
                         </div>
                     </div>
@@ -88,13 +73,7 @@
                     <div class="panel-body">
                         <div class="form-group">
                             <label class="control-label">Đánh giá</label>
-                            <select class="form-control" name="rate_id">
-                                @if($rates->count() > 0)
-                                @foreach($rates as $rate)
-                                <option value="{{$rate->id}}" @if($rate->id == $detail->rate_id) selected="" @endif>{{$rate->name}}</option>
-                                @endforeach
-                                @endif
-                            </select>
+                            <select class="form-control" name="rate_id" id="rateSelect"></select>
                         </div>
                     </div>
                 </div>
@@ -172,21 +151,170 @@
 @endsection
 @section('footer')
 <script>
+(function($){
+    const API_BASE = '/admin/api';
+    const token = $('meta[name="api-token"]').attr('content') || localStorage.getItem('api_token') || '';
+    if (!token) {
+        alert('Thiếu API token. Vui lòng kiểm tra tài khoản admin đã có api_token.');
+    }
+    const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+    const ingredientId = $('#ingredientId').val();
+
+    function loadOptions(selectedCat = [], selectedBen = [], selectedRate = null) {
+        loadDictionary('ingredient-categories', '#catBox', 'cat_id[]', selectedCat);
+        loadDictionary('ingredient-benefits', '#benefitBox', 'benefit_id[]', selectedBen);
+        loadRates(selectedRate);
+    }
+
+    function loadDictionary(path, container, name, selected) {
+        $.ajax({
+            url: `${API_BASE}/${path}?limit=500&status=1`,
+            method: 'GET',
+            headers: headers,
+            success: function(res){
+                if(!res.success){ $(container).html(''); return; }
+                const items = res.data || [];
+                const html = items.map(item => `
+                    <label style="font-weight: normal;">
+                        <input type="checkbox" class="wgr-checkbox" name="${name}" value="${item.id}" ${selected.includes(item.id) ? 'checked' : ''}>
+                        <span>${item.name}</span>
+                    </label>
+                `).join('');
+                $(container).html(html || 'Không có dữ liệu');
+            },
+            error: function(){ $(container).html(''); }
+        });
+    }
+
+    function loadRates(selected) {
+        $.ajax({
+            url: `${API_BASE}/ingredient-rates?limit=500&status=1`,
+            method: 'GET',
+            headers: headers,
+            success: function(res){
+                if(!res.success) { return; }
+                const items = res.data || [];
+                const html = items.map(item => `<option value="${item.id}" ${item.id == selected ? 'selected' : ''}>${item.name}</option>`).join('');
+                $('#rateSelect').html(html);
+            }
+        });
+    }
+
+    function setDetail(detail) {
+        $('input[name="name"]').val(detail.name || '');
+        $('input[name="slug"]').val(detail.slug || '');
+        $('textarea[name="description"]').val(detail.description || '');
+        $('textarea[name="shortcode"]').val(detail.shortcode || '');
+        $('textarea[name="disclaimer"]').val(detail.disclaimer || '');
+        $('input[name="seo_title"]').val(detail.seo_title || '');
+        $('textarea[name="seo_description"]').val(detail.seo_description || '');
+        $('select[name="status"]').val(detail.status);
+        if (window.CKEDITOR && CKEDITOR.instances['content']) {
+            CKEDITOR.instances['content'].setData(detail.content || '');
+        } else {
+            $('textarea[name="content"]').val(detail.content || '');
+        }
+        if (window.CKEDITOR && CKEDITOR.instances['glance']) {
+            CKEDITOR.instances['glance'].setData(detail.glance || '');
+        } else {
+            $('textarea[name="glance"]').val(detail.glance || '');
+        }
+        if (window.CKEDITOR && CKEDITOR.instances['reference']) {
+            CKEDITOR.instances['reference'].setData(detail.reference || '');
+        } else {
+            $('textarea[name="reference"]').val(detail.reference || '');
+        }
+    }
+
+    function loadDetail() {
+        $.ajax({
+            url: `${API_BASE}/ingredients/${ingredientId}`,
+            method: 'GET',
+            headers: headers,
+            success: function(res){
+                if(!res.success){ alert(res.message || 'Không tải được dữ liệu'); return; }
+                const d = res.data || {};
+                setDetail(d);
+                const cats = (d.categories || []).map(c => c.id);
+                const bens = (d.benefits || []).map(b => b.id);
+                loadOptions(cats, bens, d.rate ? d.rate.id : null);
+            },
+            error: function(){ alert('Không tải được dữ liệu'); }
+        });
+    }
+
+    function getCk(name) {
+        if (window.CKEDITOR && CKEDITOR.instances[name]) {
+            return CKEDITOR.instances[name].getData();
+        }
+        return $(`[name="${name}"]`).val();
+    }
+
+    function collectForm() {
+        const catIds = [];
+        $('input[name="cat_id[]"]:checked').each(function(){ catIds.push($(this).val()); });
+        const benIds = [];
+        $('input[name="benefit_id[]"]:checked').each(function(){ benIds.push($(this).val()); });
+        return {
+            name: $('input[name="name"]').val(),
+            slug: $('input[name="slug"]').val(),
+            description: $('textarea[name="description"]').val(),
+            content: getCk('content'),
+            glance: getCk('glance'),
+            reference: getCk('reference'),
+            disclaimer: $('textarea[name="disclaimer"]').val(),
+            shortcode: $('textarea[name="shortcode"]').val(),
+            seo_title: $('input[name="seo_title"]').val(),
+            seo_description: $('textarea[name="seo_description"]').val(),
+            status: $('select[name="status"]').val(),
+            rate_id: $('#rateSelect').val(),
+            cat_id: catIds,
+            benefit_id: benIds
+        };
+    }
+
+    function submitForm(e){
+        e.preventDefault();
+        const payload = collectForm();
+        $.ajax({
+            url: `${API_BASE}/ingredients/${ingredientId}`,
+            method: 'PUT',
+            headers: Object.assign({'Content-Type': 'application/json'}, headers),
+            data: JSON.stringify(payload),
+            success: function(res){
+                if(!res.success){
+                    alert(res.message || 'Lưu thất bại');
+                    return;
+                }
+                alert(res.message || 'Cập nhật thành công');
+                window.location.href = "{{route('dictionary.ingredient')}}";
+            },
+            error: function(xhr){
+                if(xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors){
+                    alert(Object.values(xhr.responseJSON.errors).join('\n'));
+                } else {
+                    alert('Lưu thất bại');
+                }
+            }
+        });
+    }
+
     $('.btn_chose_product').click(function(){
         var product = [];
         $("#myModal tr td").each(function () {
             if($(this).find("input").is(':checked')){
                 product.push($(this).find("input").val());
             }
-        })
+        });
         var string = '[title Sản phẩm có chứa thành phần][products slug='+product.join(',')+']';
-        // InsertHTML(string);
         $('#shortcode').val(string);
         $('#myModal').modal('hide');
     });
-    // function InsertHTML(HTML)
-    // {
-    //   CKEDITOR.instances.my_editor.insertHtml(HTML);
-    // }
+
+    $(document).ready(function(){
+        loadDetail();
+        $('#tblForm').on('submit', submitForm);
+    });
+})(jQuery);
 </script>
 @endsection

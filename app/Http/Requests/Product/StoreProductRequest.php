@@ -93,6 +93,11 @@ class StoreProductRequest extends FormRequest
                 'nullable',
                 'string'
             ],
+            'cbmp' => [
+                'nullable',
+                'string',
+                'max:250'
+            ],
             'price' => [
                 'nullable',
                 'numeric',

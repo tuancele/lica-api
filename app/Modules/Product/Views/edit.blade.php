@@ -333,7 +333,12 @@
             </div>
 
             <div class="shopee-card">
-                <div class="section-title">Thành phần sản phẩm</div>
+                <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
+                    <span>Thành phần sản phẩm</span>
+                    <button type="button" class="btn-shopee btn-shopee-outline" id="btnAutoLinkIngredients" style="padding:4px 10px;font-size:12px;">
+                        Tu dong gan link thanh phan
+                    </button>
+                </div>
                 <textarea name="ingredient" id="ingredient" class="shopee-textarea" rows="10">{{strip_tags($detail->ingredient)}}</textarea>
             </div>
 
@@ -792,6 +797,88 @@ $(document).ready(function() {
             });
         }
     }
+
+    // --- Auto-link ingredients (public Dictionary API) ---
+    let ingredientDictionaryCache = null;
+    let ingredientDictionaryLoading = false;
+
+    function escapeRegexForIngredient(text) {
+        return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function loadIngredientDictionary(callback) {
+        if (ingredientDictionaryCache) {
+            callback(ingredientDictionaryCache);
+            return;
+        }
+        if (ingredientDictionaryLoading) {
+            return;
+        }
+        ingredientDictionaryLoading = true;
+
+        fetch('/api/dictionary/ingredients', {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            }
+        }).then(function (res) {
+            return res.json();
+        }).then(function (json) {
+            if (!json || !json.success || !Array.isArray(json.data)) {
+                alert('Khong the tai danh sach thanh phan.');
+                return;
+            }
+            // Ensure longest titles first as a safety net
+            ingredientDictionaryCache = json.data.slice().sort(function (a, b) {
+                var at = (a.title || '').length;
+                var bt = (b.title || '').length;
+                return bt - at;
+            });
+            callback(ingredientDictionaryCache);
+        }).catch(function () {
+            alert('Loi ket noi API thanh phan.');
+        }).finally(function () {
+            ingredientDictionaryLoading = false;
+        });
+    }
+
+    function autoLinkIngredients() {
+        var textarea = document.getElementById('ingredient');
+        if (!textarea) return;
+        var original = textarea.value || '';
+        if (!original.trim()) {
+            alert('Khong co noi dung thanh phan de quet.');
+            return;
+        }
+
+        loadIngredientDictionary(function (list) {
+            if (!list || !list.length) {
+                alert('Danh sach thanh phan rong.');
+                return;
+            }
+
+            var text = original;
+            list.forEach(function (item) {
+                var title = (item.title || '').trim();
+                var slug = (item.slug || '').trim();
+                if (!title || !slug) return;
+
+                var pattern = '\\b' + escapeRegexForIngredient(title) + '\\b';
+                var regex = new RegExp(pattern, 'gi');
+                var href = '/thanh-phan/' + slug;
+
+                text = text.replace(regex, function (match) {
+                    return '<a href="' + href + '" target="_blank">' + match + '</a>';
+                });
+            });
+
+            textarea.value = text;
+        });
+    }
+
+    $('#btnAutoLinkIngredients').on('click', function () {
+        autoLinkIngredients();
+    });
 });
 </script>
 <style>

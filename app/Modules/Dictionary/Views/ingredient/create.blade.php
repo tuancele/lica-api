@@ -5,8 +5,7 @@
     'title' => 'Thêm thành phần',
 ])
 <section class="content">
-    <form role="form" id="tblForm" method="post" ajax="{{route('dictionary.ingredient.store')}}">
-        @csrf
+    <form role="form" id="tblForm">
         <div class="row">
             <div class="col-lg-9">
                 <div class="panel panel-default">
@@ -48,14 +47,7 @@
                         <div class="form-group">
                             <label class="control-label">Danh mục</label>
                             <div class="box-category box-body">
-                                @if($categories->count() > 0)
-                                @foreach($categories as $category)
-                                <label for="cate{{$category->id}}" style="font-weight: normal;">
-                                    <input id="cate{{$category->id}}" type="checkbox" class="wgr-checkbox" name="cat_id[]" value="{{$category->id}}">
-                                    <span>{{$category->name}}</span>
-                                </label>
-                                @endforeach
-                                @endif
+                                <div id="catBox">Đang tải...</div>
                             </div>
                         </div>
                     </div>
@@ -65,14 +57,7 @@
                         <div class="form-group">
                             <label class="control-label">Lợi ích</label>
                             <div class="box-category box-body">
-                                @if($benefits->count() > 0)
-                                @foreach($benefits as $benefit)
-                                <label for="cate{{$benefit->id}}" style="font-weight: normal;">
-                                    <input id="cate{{$benefit->id}}" type="checkbox" class="wgr-checkbox" name="benefit_id[]" value="{{$benefit->id}}">
-                                    <span>{{$benefit->name}}</span>
-                                </label>
-                                @endforeach
-                                @endif
+                                <div id="benefitBox">Đang tải...</div>
                             </div>
                         </div>
                     </div>
@@ -82,11 +67,7 @@
                         <div class="form-group">
                             <label class="control-label">Đánh giá</label>
                             <select class="form-control" name="rate_id">
-                                @if($rates->count() > 0)
-                                @foreach($rates as $rate)
-                                <option value="{{$rate->id}}">{{$rate->name}}</option>
-                                @endforeach
-                                @endif
+                                <select class="form-control" name="rate_id" id="rateSelect"></select>
                             </select>
                         </div>
                     </div>
@@ -123,4 +104,117 @@
         float: left;
     }
 </style>
+@endsection
+@section('footer')
+<script>
+(function($){
+    const API_BASE = '/admin/api';
+    const token = $('meta[name="api-token"]').attr('content') || localStorage.getItem('api_token') || '';
+    if (!token) {
+        alert('Thiếu API token. Vui lòng kiểm tra tài khoản admin đã có api_token.');
+    }
+    const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+
+    function loadOptions() {
+        loadDictionary('ingredient-categories', '#catBox', 'cat_id[]');
+        loadDictionary('ingredient-benefits', '#benefitBox', 'benefit_id[]');
+        loadRates();
+    }
+
+    function loadDictionary(path, container, name) {
+        $.ajax({
+            url: `${API_BASE}/${path}?limit=500&status=1`,
+            method: 'GET',
+            headers: headers,
+            success: function(res){
+                if(!res.success) { $(container).html(''); return; }
+                const items = res.data || [];
+                const html = items.map(item => `
+                    <label style="font-weight: normal;">
+                        <input type="checkbox" class="wgr-checkbox" name="${name}" value="${item.id}">
+                        <span>${item.name}</span>
+                    </label>
+                `).join('');
+                $(container).html(html || 'Không có dữ liệu');
+            },
+            error: function(){ $(container).html(''); }
+        });
+    }
+
+    function loadRates() {
+        $.ajax({
+            url: `${API_BASE}/ingredient-rates?limit=500&status=1`,
+            method: 'GET',
+            headers: headers,
+            success: function(res){
+                if(!res.success) { return; }
+                const items = res.data || [];
+                const html = items.map(item => `<option value="${item.id}">${item.name}</option>`).join('');
+                $('#rateSelect').html(html);
+            }
+        });
+    }
+
+    function getCk(name) {
+        if (window.CKEDITOR && CKEDITOR.instances[name]) {
+            return CKEDITOR.instances[name].getData();
+        }
+        return $(`[name="${name}"]`).val();
+    }
+
+    function collectForm() {
+        const catIds = [];
+        $('input[name="cat_id[]"]:checked').each(function(){ catIds.push($(this).val()); });
+        const benIds = [];
+        $('input[name="benefit_id[]"]:checked').each(function(){ benIds.push($(this).val()); });
+        return {
+            name: $('input[name="name"]').val(),
+            slug: $('input[name="slug"]').val(),
+            description: $('textarea[name="description"]').val(),
+            content: getCk('content'),
+            glance: getCk('glance'),
+            reference: getCk('reference'),
+            disclaimer: $('textarea[name="disclaimer"]').val(),
+            shortcode: $('textarea[name="shortcode"]').val(),
+            seo_title: $('input[name="seo_title"]').val(),
+            seo_description: $('textarea[name="seo_description"]').val(),
+            status: $('select[name="status"]').val(),
+            rate_id: $('#rateSelect').val(),
+            cat_id: catIds,
+            benefit_id: benIds
+        };
+    }
+
+    function submitForm(e){
+        e.preventDefault();
+        const payload = collectForm();
+        $.ajax({
+            url: `${API_BASE}/ingredients`,
+            method: 'POST',
+            headers: Object.assign({'Content-Type': 'application/json'}, headers),
+            data: JSON.stringify(payload),
+            success: function(res){
+                if(!res.success){
+                    alert(res.message || 'Lưu thất bại');
+                    return;
+                }
+                alert(res.message || 'Thêm thành công');
+                window.location.href = "{{route('dictionary.ingredient')}}";
+            },
+            error: function(xhr){
+                if(xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors){
+                    alert(Object.values(xhr.responseJSON.errors).join('\n'));
+                } else {
+                    alert('Lưu thất bại');
+                }
+            }
+        });
+    }
+
+    $(document).ready(function(){
+        loadOptions();
+        $('#tblForm').on('submit', submitForm);
+    });
+})(jQuery);
+</script>
 @endsection

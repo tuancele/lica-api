@@ -1072,8 +1072,8 @@ class HomeController extends Controller
         if (!$detail) {
             return view('Website::404');
         }
-        $data['categories'] = json_decode($detail->cat_id);
-        $data['benefits'] = json_decode($detail->benefit_id);
+        $data['categories'] = is_array($detail->cat_id) ? $detail->cat_id : json_decode($detail->cat_id ?? '[]', true);
+        $data['benefits'] = is_array($detail->benefit_id) ? $detail->benefit_id : json_decode($detail->benefit_id ?? '[]', true);
         $data['toc'] = $detail->content;
         $data['shortcode'] = $this->shortCodeProduct($detail->shortcode);
         $data['detail'] = $detail;
