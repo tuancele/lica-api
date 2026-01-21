@@ -7,6 +7,8 @@ use App\Modules\Warehouse\Models\ProductWarehouse;
 use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
 use App\Modules\FlashSale\Models\ProductSale;
+use App\Modules\Deal\Models\SaleDeal;
+use App\Services\Inventory\Contracts\InventoryServiceInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -22,6 +24,9 @@ use Illuminate\Support\Facades\Schema;
  */
 class WarehouseService implements WarehouseServiceInterface
 {
+    public function __construct(private InventoryServiceInterface $inventory)
+    {
+    }
     /**
      * Get inventory list with filters
      * 
@@ -37,8 +42,10 @@ class WarehouseService implements WarehouseServiceInterface
             Schema::hasColumn('product_warehouse', 'deal_stock');
 
         if ($hasNewStockColumns) {
-            $latestPwSub = '(select max(pw2.id) from product_warehouse as pw2 where pw2.variant_id = variants.id)';
+            // Only consider rows that actually carry snapshot columns (physical_stock not null)
+            $latestPwSub = '(select max(pw2.id) from product_warehouse as pw2 where pw2.variant_id = variants.id and pw2.physical_stock is not null)';
             $activeFlashSaleQtySub = '(select COALESCE(sum(ps.number - ps.buy),0) from productsales ps join flashsales fs on fs.id = ps.flashsale_id where ps.variant_id = variants.id and fs.status = 1 and fs.start <= UNIX_TIMESTAMP() and fs.end >= UNIX_TIMESTAMP())';
+            $activeDealQtySub = "(select COALESCE(sum(ds.qty - COALESCE(ds.buy, 0)),0) from deal_sales ds join deals d on d.id = ds.deal_id where d.status = 1 and d.start <= UNIX_TIMESTAMP() and d.end >= UNIX_TIMESTAMP() and ds.status = 1 and ds.product_id = posts.id and ((ds.variant_id is not null and ds.variant_id = variants.id) or (ds.variant_id is null)))";
 
             $query = Variant::select(
                 'variants.id as variant_id',
@@ -47,10 +54,10 @@ class WarehouseService implements WarehouseServiceInterface
                 'posts.id as product_id',
                 'posts.name as product_name',
                 'posts.image as product_image',
-                DB::raw('COALESCE(pw.physical_stock, 0) as physical_stock'),
+                DB::raw('COALESCE(pw.physical_stock, variants.stock, 0) as physical_stock'),
                 DB::raw("({$activeFlashSaleQtySub}) as flash_sale_stock_val"), // Alias mới để tránh xung đột
-                DB::raw('COALESCE(pw.deal_stock, 0) as deal_stock'),
-                DB::raw("GREATEST(COALESCE(pw.physical_stock,0) - ({$activeFlashSaleQtySub}) - COALESCE(pw.deal_stock,0), 0) as available_stock_val")
+                DB::raw("({$activeDealQtySub}) as deal_stock_val"),
+                DB::raw("GREATEST(COALESCE(pw.physical_stock, variants.stock, 0) - ({$activeFlashSaleQtySub}) - ({$activeDealQtySub}), 0) as available_stock_val")
             )
             ->join('posts', 'posts.id', '=', 'variants.product_id')
             ->leftJoin('product_warehouse as pw', function ($join) use ($latestPwSub) {
@@ -158,10 +165,11 @@ class WarehouseService implements WarehouseServiceInterface
     public function getVariantInventory(int $variantId): array
     {
         $variant = Variant::with(['product'])->findOrFail($variantId);
-        
-        $importTotal = countProduct($variantId, 'import');
-        $exportTotal = countProduct($variantId, 'export');
-        $currentStock = max(0, $importTotal - $exportTotal);
+
+        $stockSnapshot = $this->getStockSnapshot($variantId);
+        $importTotal = $stockSnapshot['import_total'];
+        $exportTotal = $stockSnapshot['export_total'];
+        $currentStock = $stockSnapshot['available'];
 
         // Get import history
         $importHistory = ProductWarehouse::where('variant_id', $variantId)
@@ -509,10 +517,9 @@ class WarehouseService implements WarehouseServiceInterface
                 $quantity = $item['quantity'] ?? 0;
                 
                 if ($variantId) {
-                    $importTotal = countProduct($variantId, 'import');
-                    $exportTotal = countProduct($variantId, 'export');
-                    $availableStock = max(0, $importTotal - $exportTotal);
-                    
+                    $stockSnapshot = $this->getStockSnapshot($variantId);
+                    $availableStock = $stockSnapshot['sellable'];
+
                     if ($quantity > $availableStock) {
                         $stockErrors["items.{$index}.quantity"] = [
                             "Số lượng vượt quá tồn kho. Tồn kho hiện tại: {$availableStock}"
@@ -589,18 +596,16 @@ class WarehouseService implements WarehouseServiceInterface
                     $quantity = $item['quantity'] ?? 0;
                     
                     if ($variantId) {
-                        // Calculate stock excluding current receipt
-                        $importTotal = countProduct($variantId, 'import');
-                        $exportTotal = countProduct($variantId, 'export');
-                        
+                        $stockSnapshot = $this->getStockSnapshot($variantId);
+
                         // Subtract current receipt's export quantity
                         $currentReceiptExport = ProductWarehouse::where('warehouse_id', $warehouse->id)
                             ->where('variant_id', $variantId)
                             ->where('type', 'export')
                             ->sum('qty');
-                        
-                        $availableStock = max(0, $importTotal - $exportTotal + $currentReceiptExport);
-                        
+
+                        $availableStock = max(0, $stockSnapshot['sellable'] + $currentReceiptExport);
+
                         if ($quantity > $availableStock) {
                             $stockErrors["items.{$index}.quantity"] = [
                                 "Số lượng vượt quá tồn kho. Tồn kho hiện tại: {$availableStock}"
@@ -778,12 +783,11 @@ class WarehouseService implements WarehouseServiceInterface
                 $dealStock = $latestWarehouseRow ? (int) ($latestWarehouseRow->deal_stock ?? 0) : 0;
                 $availableStock = max(0, $physicalStock - $flashSaleStock - $dealStock);
             } else {
-                $importTotal = countProduct($variant->id, 'import');
-                $exportTotal = countProduct($variant->id, 'export');
-                $availableStock = max(0, $importTotal - $exportTotal);
-                $physicalStock = $availableStock;
-                $flashSaleStock = 0;
-                $dealStock = 0;
+                $stockSnapshot = $this->getStockSnapshot($variant->id);
+                $physicalStock = $stockSnapshot['physical'];
+                $flashSaleStock = $stockSnapshot['flash'];
+                $dealStock = $stockSnapshot['deal'];
+                $availableStock = $stockSnapshot['available'];
             }
             
             return [
@@ -826,11 +830,13 @@ class WarehouseService implements WarehouseServiceInterface
         $availableStock = 0;
 
         if ($hasNewStockColumns) {
+            // Chỉ lấy bản ghi snapshot (physical_stock không null), bỏ qua các dòng export/import legacy
             $latestWarehouseRow = ProductWarehouse::where('variant_id', $variantId)
+                ->whereNotNull('physical_stock')
                 ->latest('id')
                 ->first();
 
-            $physicalStock = $latestWarehouseRow ? (int) ($latestWarehouseRow->physical_stock ?? 0) : 0;
+            $physicalStock = $latestWarehouseRow ? (int) ($latestWarehouseRow->physical_stock ?? 0) : (int) ($variant->stock ?? 0);
             $flashSaleStock = (int) ProductSale::query()
                 ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
                 ->where('productsales.variant_id', $variantId)
@@ -839,12 +845,28 @@ class WarehouseService implements WarehouseServiceInterface
                 ->where('fs.end', '>=', time())
                 ->selectRaw('SUM(number - buy) as total')
                 ->value('total') ?? 0;
-            $dealStock = $latestWarehouseRow ? (int) ($latestWarehouseRow->deal_stock ?? 0) : 0;
+            // Deal stock: realtime from active deals (qty - buy), matching variant_id or fallback product-level (variant_id IS NULL)
+            $dealStock = (int) SaleDeal::query()
+                ->join('deals as d', 'd.id', '=', 'deal_sales.deal_id')
+                ->where('d.status', '1')
+                ->where('d.start', '<=', time())
+                ->where('d.end', '>=', time())
+                ->where('deal_sales.status', '1')
+                ->where(function ($q) use ($variant) {
+                    $q->where(function ($q2) use ($variant) {
+                        $q2->whereNotNull('deal_sales.variant_id')
+                            ->where('deal_sales.variant_id', $variant->id);
+                    })->orWhere(function ($q3) use ($variant) {
+                        $q3->whereNull('deal_sales.variant_id')
+                            ->where('deal_sales.product_id', $variant->product_id);
+                    });
+                })
+                ->selectRaw('SUM(deal_sales.qty - COALESCE(deal_sales.buy,0)) as remaining')
+                ->value('remaining') ?? 0;
             $availableStock = max(0, $physicalStock - $flashSaleStock - $dealStock);
         } else {
-            $importTotal = countProduct($variantId, 'import');
-            $exportTotal = countProduct($variantId, 'export');
-            $physicalStock = max(0, $importTotal - $exportTotal);
+            $stockSnapshot = $this->getStockSnapshot($variantId);
+            $physicalStock = $stockSnapshot['physical'];
             $flashSaleStock = (int) ProductSale::query()
                 ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
                 ->where('productsales.variant_id', $variantId)
@@ -853,8 +875,8 @@ class WarehouseService implements WarehouseServiceInterface
                 ->where('fs.end', '>=', time())
                 ->selectRaw('SUM(number - buy) as total')
                 ->value('total') ?? 0;
-            $dealStock = 0;
-            $availableStock = max(0, $physicalStock - $flashSaleStock - $dealStock);
+            $dealStock = $stockSnapshot['deal'];
+            $availableStock = max(0, $stockSnapshot['available'] - $flashSaleStock - $dealStock);
         }
 
         $importAvgPrice = ProductWarehouse::where('variant_id', $variantId)
@@ -1119,9 +1141,8 @@ class WarehouseService implements WarehouseServiceInterface
             ->get();
         
         foreach ($variants as $variant) {
-            $importTotal = countProduct($variant->id, 'import');
-            $exportTotal = countProduct($variant->id, 'export');
-            $currentStock = max(0, $importTotal - $exportTotal);
+            $stockSnapshot = $this->getStockSnapshot($variant->id);
+            $currentStock = $stockSnapshot['available'];
             
             // Use average import price for stock value calculation
             $avgPrice = ProductWarehouse::where('variant_id', $variant->id)
@@ -1139,9 +1160,8 @@ class WarehouseService implements WarehouseServiceInterface
         $outOfStockItems = 0;
         
         foreach ($variants as $variant) {
-            $importTotal = countProduct($variant->id, 'import');
-            $exportTotal = countProduct($variant->id, 'export');
-            $currentStock = max(0, $importTotal - $exportTotal);
+            $stockSnapshot = $this->getStockSnapshot($variant->id);
+            $currentStock = $stockSnapshot['available'];
             
             if ($currentStock === 0) {
                 $outOfStockItems++;
@@ -1236,5 +1256,31 @@ class WarehouseService implements WarehouseServiceInterface
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Snapshot stock data from InventoryService for legacy callers.
+     */
+    private function getStockSnapshot(int $variantId): array
+    {
+        $dto = $this->inventory->getStock($variantId);
+
+        $physical = (int) ($dto->physicalStock ?? 0);
+        $reserved = (int) ($dto->reservedStock ?? 0);
+        $flash = (int) ($dto->flashSaleHold ?? 0);
+        $deal = (int) ($dto->dealHold ?? 0);
+        $available = (int) ($dto->availableStock ?? max(0, $physical - $reserved));
+        $sellable = (int) ($dto->sellableStock ?? max(0, $available - $flash - $deal));
+
+        return [
+            'physical' => $physical,
+            'reserved' => $reserved,
+            'flash' => $flash,
+            'deal' => $deal,
+            'available' => $available,
+            'sellable' => $sellable,
+            'import_total' => $physical + $reserved,
+            'export_total' => $reserved,
+        ];
     }
 }

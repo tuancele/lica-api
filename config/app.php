@@ -179,6 +179,7 @@ return [
         App\Modules\R2\Providers\R2ServiceProvider::class,
         App\Themes\ThemesServiceProvider::class,
         Milon\Barcode\BarcodeServiceProvider::class,
+        App\Providers\InventoryServiceProvider::class,
     ],
 
     /*

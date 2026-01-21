@@ -47,16 +47,20 @@
                             <td>
                                {{$value->option1_value ?? 'Mặc định'}}
                             </td>
+                            @php
+                                $stockDto = app(\App\Services\Inventory\Contracts\InventoryServiceInterface::class)->getStock((int) $value->id);
+                                $importTotal = (int) ($stockDto->physicalStock ?? 0);
+                                $exportTotal = (int) ($stockDto->reservedStock ?? 0);
+                                $availableTotal = (int) ($stockDto->availableStock ?? max(0, $importTotal - $exportTotal));
+                            @endphp
                             <td>
-                                {{countProduct($value->id,'import')}}
+                                {{$importTotal}}
                             </td>
                             <td>
-                                {{countProduct($value->id,'export')}}
+                                {{$exportTotal}}
                             </td>
                             <td>
-                                @php    $total1 = countProduct($value->id,'export');
-                                    $total2 = countProduct($value->id,'import');@endphp
-                                {{$total2-$total1}}
+                                {{$availableTotal}}
                             </td>
                         </tr>
                         @endforeach

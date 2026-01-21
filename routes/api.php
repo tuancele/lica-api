@@ -129,3 +129,5 @@ Route::prefix('price')->group(function () {
 Route::prefix('orders')->group(function () {
     Route::post('/process', 'OrderProcessingController@processOrder'); // POST /api/orders/process
 });
+
+require __DIR__.'/api_inventory.php';

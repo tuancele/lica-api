@@ -294,8 +294,8 @@ class OrderProcessingController extends Controller
             'quantity_request' => $quantity,
         ]);
 
-        // Trừ trực tiếp suất còn lại và tăng buy để báo cáo
-        $saleDeal->decrement('qty', $quantity);
+        // Deal quota accounting:
+        // Remaining is computed as (qty - buy), so only increment buy here.
         $saleDeal->increment('buy', $quantity);
 
         $saleDeal->refresh();

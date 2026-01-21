@@ -39,12 +39,49 @@ class ProductController extends Controller
             $data['product_id'] = $post->id;
             $data['gallerys'] = json_decode($post->gallery);
             $variants = Variant::where('product_id', $post->id)->orderBy('position', 'asc')->orderBy('id', 'asc')->get();
+
+            // Attach warehouse_stock (available_stock) to variants for Blade fallback
+            $variants = $variants->map(function ($v) {
+                try {
+                    $stockData = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($v->id);
+                    $v->warehouse_stock = (int) ($stockData['available_stock'] ?? $stockData['current_stock'] ?? 0);
+                } catch (\Throwable $e) {
+                    // Fallback legacy stock
+                    $v->warehouse_stock = (int) ($v->stock ?? 0);
+                }
+                return $v;
+            });
             $first = $variants->first();
             // Nếu không có variant thì tạo object rỗng để tránh lỗi view
             if (!$first) {
-                $first = new Variant();
-                $first->price = 0;
-                $first->sku = '';
+                // Thử tìm default variant của product (nếu tồn tại)
+                $defaultVariant = $post->variant($post->id);
+                if ($defaultVariant) {
+                    try {
+                        $stockData = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($defaultVariant->id);
+                        $defaultVariant->warehouse_stock = (int) ($stockData['available_stock'] ?? $stockData['current_stock'] ?? 0);
+                    } catch (\Throwable $e) {
+                        $defaultVariant->warehouse_stock = (int) ($defaultVariant->stock ?? $post->stock ?? 0);
+                    }
+                    $first = $defaultVariant;
+                    $variants = collect([$defaultVariant]);
+                } else {
+                    $first = new Variant();
+                    $first->price = 0;
+                    $first->sku = '';
+                    $first->warehouse_stock = (int) ($post->stock ?? 0);
+                    $variants = collect([$first]);
+                }
+            } else {
+                // Ensure first variant also has warehouse_stock set
+                if (!isset($first->warehouse_stock)) {
+                    try {
+                        $stockData = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($first->id);
+                        $first->warehouse_stock = (int) ($stockData['available_stock'] ?? $stockData['current_stock'] ?? 0);
+                    } catch (\Throwable $e) {
+                        $first->warehouse_stock = (int) ($first->stock ?? 0);
+                    }
+                }
             }
             $data['variants'] = $variants;
             $data['first'] = $first;

@@ -10,6 +10,7 @@ use Validator;
 use Illuminate\Support\Facades\Auth;
 use App\Modules\Order\Models\OrderDetail;
 use App\Modules\Warehouse\Models\Warehouse;
+use App\Services\Inventory\Contracts\InventoryServiceInterface;
 
 class WarehouseController extends Controller
 {
@@ -55,17 +56,16 @@ class WarehouseController extends Controller
     public function getVariantStockWeb($variantId)
     {
         try {
-            $importTotal = countProduct($variantId, 'import');
-            $exportTotal = countProduct($variantId, 'export');
-            $currentStock = max(0, $importTotal - $exportTotal);
+            $stock = app(InventoryServiceInterface::class)->getStock((int) $variantId);
+            $currentStock = (int) ($stock->availableStock ?? 0);
             
             return response()->json([
                 'success' => true,
                 'data' => [
                     'variant_id' => (int) $variantId,
                     'current_stock' => $currentStock,
-                    'import_total' => $importTotal,
-                    'export_total' => $exportTotal,
+                    'import_total' => (int) ($stock->physicalStock ?? 0),
+                    'export_total' => (int) ($stock->reservedStock ?? 0),
                 ]
             ]);
         } catch (\Exception $e) {

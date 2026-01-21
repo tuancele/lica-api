@@ -52,6 +52,12 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\Inventory\InventoryServiceInterface::class,
             \App\Services\Inventory\InventoryService::class
         );
+
+        // Bind Inventory v2 contract to the same implementation (compat layer).
+        $this->app->bind(
+            \App\Services\Inventory\Contracts\InventoryServiceInterface::class,
+            \App\Services\Inventory\InventoryService::class
+        );
     }
     /**
      * Bootstrap any application services.

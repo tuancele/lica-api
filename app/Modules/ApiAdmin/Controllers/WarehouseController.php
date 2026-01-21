@@ -16,6 +16,7 @@ use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
 use App\Modules\Warehouse\Models\ProductWarehouse;
 use App\Services\Warehouse\WarehouseServiceInterface;
+use App\Services\Inventory\Contracts\InventoryServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -150,7 +151,20 @@ class WarehouseController extends Controller
                 \Schema::hasColumn('product_warehouse', 'flash_sale_stock') &&
                 \Schema::hasColumn('product_warehouse', 'deal_stock');
 
-            $rows = $variants->map(function ($variant) use ($product, $hasNewColumns) {
+            $now = time();
+            $dealRemainingByVariant = \DB::table('deal_sales as ds')
+                ->join('deals as d', 'd.id', '=', 'ds.deal_id')
+                ->where('d.status', '1')
+                ->where('d.start', '<=', $now)
+                ->where('d.end', '>=', $now)
+                ->where('ds.status', '1')
+                ->where('ds.product_id', $product->id)
+                ->selectRaw('COALESCE(ds.variant_id, 0) as k, SUM(ds.qty - COALESCE(ds.buy,0)) as remaining')
+                ->groupBy('k')
+                ->pluck('remaining', 'k')
+                ->toArray();
+
+            $rows = $variants->map(function ($variant) use ($product, $hasNewColumns, $dealRemainingByVariant) {
                 if ($hasNewColumns) {
                     $latest = ProductWarehouse::where('variant_id', $variant->id)
                         ->orderByDesc('id')
@@ -158,16 +172,17 @@ class WarehouseController extends Controller
 
                     $physical = $latest ? (int) ($latest->physical_stock ?? 0) : 0;
                     $flash = $latest ? (int) ($latest->flash_sale_stock ?? 0) : 0;
-                    $deal = $latest ? (int) ($latest->deal_stock ?? 0) : 0;
-                    $available = $latest ? (int) ($latest->available_stock ?? max(0, $physical - $flash - $deal)) : max(0, $physical - $flash - $deal);
+                    // Deal is computed realtime from active deals (remaining = qty - buy).
+                    // If deal_sales.variant_id is NULL (no-variant product), it is stored under key 0.
+                    $deal = (int) ($dealRemainingByVariant[$variant->id] ?? $dealRemainingByVariant[0] ?? 0);
+                    $available = max(0, $physical - $flash - $deal);
                 } else {
-                    // Fallback when migration not applied
-                    $import = countProduct($variant->id, 'import');
-                    $export = countProduct($variant->id, 'export');
-                    $physical = max(0, $import - $export);
-                    $flash = 0;
-                    $deal = 0;
-                    $available = $physical;
+                    // Fallback when migration not applied: rely on InventoryService snapshot
+                    $stock = app(InventoryServiceInterface::class)->getStock($variant->id);
+                    $physical = (int) ($stock->physicalStock ?? 0);
+                    $flash = (int) ($stock->flashSaleHold ?? 0);
+                    $deal = (int) ($stock->dealHold ?? 0);
+                    $available = (int) ($stock->sellableStock ?? max(0, $physical - $flash - $deal));
                 }
 
                 return [

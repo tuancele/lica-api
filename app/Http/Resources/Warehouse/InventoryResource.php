@@ -25,7 +25,7 @@ class InventoryResource extends JsonResource
         // Ưu tiên dùng các alias val để tránh đè bởi logic Model Attribute
         $physicalStock = (int) ($this->physical_stock ?? 0);
         $flashStock = (int) ($this->flash_sale_stock_val ?? $this->flash_sale_stock ?? 0);
-        $dealStock = (int) ($this->deal_stock ?? 0);
+        $dealStock = (int) ($this->deal_stock_val ?? $this->deal_stock ?? 0);
         $availableStock = (int) ($this->available_stock_val ?? ($physicalStock - $flashStock - $dealStock));
 
         return [

@@ -744,26 +744,6 @@ class DealController extends Controller
                                 $errors["products.{$index}.variant_id"] = ["Sản phẩm không có phân loại"];
                             }
                         }
-
-    /**
-     * Resolve variant id; fallback to default variant of product if null.
-     */
-    private function resolveVariantId(int $productId, ?int $variantId = null): int
-    {
-        if ($variantId) {
-            return $variantId;
-        }
-
-        $product = Product::find($productId);
-        if ($product) {
-            $defaultVariant = $product->variant($productId);
-            if ($defaultVariant) {
-                return (int) $defaultVariant->id;
-            }
-        }
-
-        return $productId;
-    }
                     }
                 }
             }
@@ -862,5 +842,25 @@ class DealController extends Controller
     private function calculateSavings(float $originalPrice, float $dealPrice, int $qty): float
     {
         return ($originalPrice - $dealPrice) * $qty;
+    }
+
+    /**
+     * Resolve variant id; fallback to default variant of product if null.
+     */
+    private function resolveVariantId(int $productId, ?int $variantId = null): int
+    {
+        if ($variantId) {
+            return $variantId;
+        }
+
+        $product = Product::find($productId);
+        if ($product) {
+            $defaultVariant = $product->variant($productId);
+            if ($defaultVariant) {
+                return (int) $defaultVariant->id;
+            }
+        }
+
+        return $productId;
     }
 }

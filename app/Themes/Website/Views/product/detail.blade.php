@@ -791,15 +791,8 @@
                             // 计算变体的最终价格（按优先级：闪购 -> 促销 -> 原价）
                             $variantPriceInfo = getVariantFinalPrice($v->id, $detail->id);
                             
-                            // Calculate warehouse stock
-                            $warehouseStock = 0;
-                            if(function_exists('countProduct')) {
-                                $import = countProduct($v->id, 'import');
-                                $export = countProduct($v->id, 'export');
-                                $warehouseStock = max(0, $import - $export);
-                            } else {
-                                $warehouseStock = (int)($v->stock ?? 0);
-                            }
+                            // Calculate warehouse stock (prefer server-provided warehouse_stock)
+                            $warehouseStock = (int) ($v->warehouse_stock ?? ($v->stock ?? 0));
                             $isOutOfStock = $warehouseStock <= 0;
                         @endphp
                         <div class="item-variant @if($k==0) active @endif @if($isOutOfStock) out-of-stock @endif"

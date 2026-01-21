@@ -35,6 +35,7 @@ use App\Modules\Warehouse\Models\Warehouse;
 use App\Modules\Warehouse\Models\ProductWarehouse;
 use App\Services\Pricing\PriceEngineServiceInterface;
 use App\Services\Warehouse\WarehouseServiceInterface;
+use App\Services\Inventory\Contracts\InventoryServiceInterface;
 use App\Services\Cart\CartService;
 
 class CartController extends Controller
@@ -956,7 +957,9 @@ class CartController extends Controller
                                 $weight = $item['weight'] ?? 0;
                             }
 
-                            // Shopee-style deal quota: decrement deal_sales.qty at order creation time
+                            // Deal quota accounting:
+                            // IMPORTANT: Do NOT decrement qty and increment buy at the same time.
+                            // Remaining is computed as (qty - buy), so we only increment buy here.
                             if (isset($variant['is_deal']) && (int) $variant['is_deal'] === 1) {
                                 if (!$dealsale_id) {
                                     throw new \Exception('Thiếu dealsale_id cho sản phẩm Deal Sốc');
@@ -990,11 +993,10 @@ class CartController extends Controller
                                     throw new \Exception('Suất quà tặng vừa hết');
                                 }
 
-                                Log::info('[DEAL_SALE_UPDATE] DealID: ' . $dealsale_id . ' | Suất cũ: ' . ((int) $saleDeal->qty) . ' | Trừ: ' . $quantityDeal);
-                                $saleDeal->decrement('qty', $quantityDeal);
+                                Log::info('[DEAL_SALE_UPDATE] DealSaleID: ' . $dealsale_id . ' | Buy old: ' . ((int) $saleDeal->buy) . ' | Add: ' . $quantityDeal);
                                 $saleDeal->increment('buy', $quantityDeal);
                                 $saleDeal->refresh();
-                                Log::info('[DEAL_SALE_UPDATE] DealID: ' . $dealsale_id . ' | Suất mới sau khi trừ: ' . (int) $saleDeal->qty);
+                                Log::info('[DEAL_SALE_UPDATE] DealSaleID: ' . $dealsale_id . ' | Buy new: ' . (int) $saleDeal->buy);
                             }
                             
                             OrderDetail::insert([
@@ -1045,17 +1047,6 @@ class CartController extends Controller
                                 Facebook::track($dataf);
                             }
                         }
-
-                // Auto create export receipt for the order
-                try {
-                    $this->createExportReceiptFromOrder($order_id, $code);
-                } catch (\Exception $exportException) {
-                    // Log export receipt error but don't fail the order
-                    Log::error('Auto create export receipt failed: ' . $exportException->getMessage());
-                    Log::error('Order code: ' . $code);
-                    Log::error('Export error trace: ' . $exportException->getTraceAsString());
-                    // Continue with order success even if export receipt creation fails
-                }
 
                 // Send email notification (non-blocking - don't fail order if email fails)
                 try {
@@ -1139,22 +1130,38 @@ class CartController extends Controller
                         $addQty = (int)($item['qty'] ?? 0);
                         if ($addQty <= 0) continue;
 
-                        // Basic stock guard (Shopee variant stock)
-                        // Compatible with old products: if variant.stock is NULL, use product.stock
-                        $variantStock = isset($variant->stock) && $variant->stock !== null 
-                            ? (int)$variant->stock 
-                            : (isset($variant->product->stock) && $variant->product->stock == 1 ? 999 : 0);
-                        
-                        if ($variantStock > 0 && $addQty > $variantStock) {
-                            return response()->json([
-                                'status' => 'error',
-                                'message' => 'Số lượng vượt quá tồn kho của phân loại'
+                        // Stock guard: ưu tiên dùng Warehouse realtime (available_stock),
+                        // fallback về variant.stock / product.stock cho legacy.
+                        $availableStock = null;
+                        try {
+                            $stockInfo = $this->warehouseService->getVariantStock($variant->id);
+                            $availableStock = isset($stockInfo['available_stock'])
+                                ? (int)$stockInfo['available_stock']
+                                : (isset($stockInfo['current_stock']) ? (int)$stockInfo['current_stock'] : null);
+                        } catch (\Throwable $e) {
+                            Log::warning('[CartController@addCart] getVariantStock failed, fallback to legacy stock', [
+                                'variant_id' => $variant->id,
+                                'error' => $e->getMessage(),
                             ]);
                         }
-                        if ($variantStock === 0) {
+
+                        if ($availableStock === null) {
+                            // Legacy fallback (Shopee variant stock)
+                            $availableStock = isset($variant->stock) && $variant->stock !== null 
+                                ? (int)$variant->stock 
+                                : (isset($variant->product->stock) && $variant->product->stock == 1 ? 999 : 0);
+                        }
+                        
+                        if ($availableStock <= 0) {
                             return response()->json([
                                 'status' => 'error',
                                 'message' => 'Phân loại đã hết hàng'
+                            ]);
+                        }
+                        if ($addQty > $availableStock) {
+                            return response()->json([
+                                'status' => 'error',
+                                'message' => 'Số lượng vượt quá tồn kho khả dụng'
                             ]);
                         }
 
@@ -1188,22 +1195,36 @@ class CartController extends Controller
                     return response()->json(['status' => 'error', 'message' => 'Số lượng không hợp lệ']);
                 }
 
-                // Basic stock guard (Shopee variant stock)
-                // Compatible with old products: if variant.stock is NULL, use product.stock
-                $variantStock = isset($variant->stock) && $variant->stock !== null 
-                    ? (int)$variant->stock 
-                    : (isset($variant->product->stock) && $variant->product->stock == 1 ? 999 : 0);
-                
-                if ($variantStock > 0 && $addQty > $variantStock) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Số lượng vượt quá tồn kho của phân loại'
+                // Stock guard: ưu tiên Warehouse realtime (available_stock)
+                $availableStock = null;
+                try {
+                    $stockInfo = $this->warehouseService->getVariantStock($variant->id);
+                    $availableStock = isset($stockInfo['available_stock'])
+                        ? (int)$stockInfo['available_stock']
+                        : (isset($stockInfo['current_stock']) ? (int)$stockInfo['current_stock'] : null);
+                } catch (\Throwable $e) {
+                    Log::warning('[CartController@addCart] getVariantStock failed (single), fallback to legacy stock', [
+                        'variant_id' => $variant->id,
+                        'error' => $e->getMessage(),
                     ]);
                 }
-                if ($variantStock === 0) {
+
+                if ($availableStock === null) {
+                    $availableStock = isset($variant->stock) && $variant->stock !== null 
+                        ? (int)$variant->stock 
+                        : (isset($variant->product->stock) && $variant->product->stock == 1 ? 999 : 0);
+                }
+                
+                if ($availableStock <= 0) {
                     return response()->json([
                         'status' => 'error',
                         'message' => 'Phân loại đã hết hàng'
+                    ]);
+                }
+                if ($addQty > $availableStock) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Số lượng vượt quá tồn kho khả dụng'
                     ]);
                 }
 
@@ -1231,9 +1252,15 @@ class CartController extends Controller
                     'total' => $cart->totalQty
                 ]);
             }
-            return response()->json(['status' => 'error']);
+            return response()->json(['status' => 'error', 'message' => 'Không thể thêm sản phẩm vào giỏ hàng']);
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()]);
+            Log::error('[CartController@addCart] Exception: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage() ?: 'Có lỗi xảy ra trong quá trình xử lý'
+            ]);
         }
     }
 
@@ -1659,9 +1686,8 @@ class CartController extends Controller
         $stockErrors = [];
         foreach ($orderDetails as $detail) {
             if ($detail->variant_id) {
-                $import = countProduct($detail->variant_id, 'import');
-                $export = countProduct($detail->variant_id, 'export');
-                $availableStock = $import - $export;
+                $stockDto = app(InventoryServiceInterface::class)->getStock((int) $detail->variant_id);
+                $availableStock = (int) ($stockDto->sellableStock ?? $stockDto->availableStock ?? 0);
                 
                 if ($availableStock < $detail->qty) {
                     $hasStock = false;
@@ -1699,9 +1725,8 @@ class CartController extends Controller
             foreach ($orderDetails as $detail) {
                 if ($detail->variant_id) {
                     // Only export if stock is available
-                    $import = countProduct($detail->variant_id, 'import');
-                    $export = countProduct($detail->variant_id, 'export');
-                    $availableStock = $import - $export;
+                    $stockDto = app(InventoryServiceInterface::class)->getStock((int) $detail->variant_id);
+                    $availableStock = (int) ($stockDto->sellableStock ?? $stockDto->availableStock ?? 0);
                     
                     // Export only available stock (or full qty if enough stock)
                     $exportQty = min($detail->qty, $availableStock);

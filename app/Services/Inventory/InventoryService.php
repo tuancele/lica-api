@@ -2,758 +2,743 @@
 
 namespace App\Services\Inventory;
 
-use App\Modules\FlashSale\Models\ProductSale;
-use App\Modules\Product\Models\Product;
-use App\Modules\Product\Models\Variant;
-use App\Modules\Warehouse\Models\ProductWarehouse;
-use App\Modules\History\Models\History;
-use App\Services\Warehouse\WarehouseServiceInterface;
+use App\Exceptions\InsufficientStockException;
+use App\Exceptions\InvalidReservationException;
+use App\Events\Inventory\StockImported;
+use App\Events\Inventory\StockExported;
+use App\Events\Inventory\LowStockDetected;
+use App\Events\Inventory\OutOfStockDetected;
+use App\Models\InventoryStock;
+use App\Models\StockAlert;
+use App\Models\StockMovement;
+use App\Models\StockReceipt;
+use App\Models\StockReceiptItem;
+use App\Models\StockReservation;
+use App\Models\WarehouseV2;
+use App\Services\Inventory\Contracts\InventoryServiceInterface as InventoryV2ServiceInterface;
+use App\Services\Inventory\InventoryServiceInterface as LegacyInventoryServiceInterface;
+use App\Services\Inventory\DTOs\AdjustStockDTO;
+use App\Services\Inventory\DTOs\ExportStockDTO;
+use App\Services\Inventory\DTOs\ImportStockDTO;
+use App\Services\Inventory\DTOs\ReserveStockDTO;
+use App\Services\Inventory\DTOs\StockDTO;
+use App\Services\Inventory\DTOs\TransferStockDTO;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
 
-/**
- * Inventory Management Service
- * 
- * Quản lý tồn kho với hai loại:
- * - Physical Stock (S_phy): Tổng số lượng thực tế trong kho
- * - Flash Sale Virtual Stock (S_flash): Số lượng được "cắt" ra dành riêng cho Flash Sale
- */
-class InventoryService implements InventoryServiceInterface
+class InventoryService implements InventoryV2ServiceInterface, LegacyInventoryServiceInterface
 {
-    protected WarehouseServiceInterface $warehouseService;
-    
-    public function __construct(WarehouseServiceInterface $warehouseService)
+    public function getStock(int $variantId, ?int $warehouseId = null): StockDTO
     {
-        $this->warehouseService = $warehouseService;
+        $warehouseId = $warehouseId ?? $this->getDefaultWarehouseId();
+        $cacheKey = $this->getCacheKey($variantId, $warehouseId);
+        
+        if (config('inventory.cache.enabled', true)) {
+            return Cache::remember($cacheKey, config('inventory.cache.ttl_seconds', 60), function () use ($variantId, $warehouseId) {
+                return $this->fetchStock($variantId, $warehouseId);
+            });
+        }
+        return $this->fetchStock($variantId, $warehouseId);
     }
-    
-    /**
-     * Xử lý đơn hàng và trừ tồn kho
-     * 
-     * @param array $orderItems [
-     *   ['product_id' => int, 'variant_id' => int|null, 'quantity' => int, 'order_type' => 'flashsale'|'promotion'|'normal']
-     * ]
-     * @return array ['success' => bool, 'message' => string, 'errors' => array]
-     */
+
+    private function fetchStock(int $variantId, int $warehouseId): StockDTO
+    {
+        $stock = InventoryStock::where('warehouse_id', $warehouseId)
+            ->where('variant_id', $variantId)->first();
+        return $stock ? StockDTO::fromModel($stock) : StockDTO::empty($variantId, $warehouseId);
+    }
+
+    public function getStockBatch(array $variantIds, ?int $warehouseId = null): Collection
+    {
+        $warehouseId = $warehouseId ?? $this->getDefaultWarehouseId();
+        $stocks = InventoryStock::where('warehouse_id', $warehouseId)
+            ->whereIn('variant_id', $variantIds)->get()->keyBy('variant_id');
+        
+        return collect($variantIds)->map(fn($id) => 
+            $stocks->has($id) ? StockDTO::fromModel($stocks->get($id)) : StockDTO::empty($id, $warehouseId)
+        );
+    }
+
+    public function isAvailable(int $variantId, int $quantity, ?int $warehouseId = null): bool
+    {
+        $stock = $this->getStock($variantId, $warehouseId);
+        return $stock->sellableStock >= $quantity;
+    }
+
+    public function checkAvailabilityBatch(array $items, ?int $warehouseId = null): array
+    {
+        $variantIds = array_column($items, 'variant_id');
+        $stocks = $this->getStockBatch($variantIds, $warehouseId)->keyBy('variantId');
+        
+        return array_map(fn($item) => [
+            'variant_id' => $item['variant_id'],
+            'requested' => $item['quantity'],
+            'available' => $stocks->get($item['variant_id'])?->sellableStock ?? 0,
+            'is_available' => ($stocks->get($item['variant_id'])?->sellableStock ?? 0) >= $item['quantity'],
+        ], $items);
+    }
+
+    public function getLowStockItems(?int $warehouseId = null): Collection
+    {
+        $query = InventoryStock::with(['variant.product', 'warehouse'])->lowStock();
+        if ($warehouseId) $query->forWarehouse($warehouseId);
+        return $query->get();
+    }
+
+    public function getOutOfStockItems(?int $warehouseId = null): Collection
+    {
+        $query = InventoryStock::with(['variant.product', 'warehouse'])->outOfStock();
+        if ($warehouseId) $query->forWarehouse($warehouseId);
+        return $query->get();
+    }
+
+    public function import(ImportStockDTO $data): StockReceipt
+    {
+        return DB::transaction(function () use ($data) {
+            $receipt = StockReceipt::create([
+                'receipt_code' => StockReceipt::generateCode('import'),
+                'type' => 'import', 'status' => 'completed',
+                'to_warehouse_id' => $data->warehouseId,
+                'supplier_id' => $data->supplierId, 'supplier_name' => $data->supplierName,
+                'subject' => $data->subject, 'content' => $data->content,
+                'vat_invoice' => $data->vatInvoice, 'created_by' => $data->createdBy,
+                'completed_at' => now(), 'completed_by' => $data->createdBy,
+            ]);
+
+            $totalItems = 0; $totalQuantity = 0; $totalValue = 0;
+
+            foreach ($data->items as $item) {
+                $stock = $this->lockStock($item['variant_id'], $data->warehouseId);
+                $stockBefore = $stock->physical_stock;
+                $quantity = (int)$item['quantity'];
+                $unitPrice = (float)($item['unit_price'] ?? 0);
+                
+                $stock->increment('physical_stock', $quantity);
+                if ($unitPrice > 0) $stock->updateAverageCost($quantity, $unitPrice);
+                $stock->update(['last_movement_at' => now()]);
+                $stockAfter = $stock->fresh()->physical_stock;
+
+                StockReceiptItem::create([
+                    'receipt_id' => $receipt->id, 'variant_id' => $item['variant_id'],
+                    'quantity' => $quantity, 'unit_price' => $unitPrice,
+                    'stock_before' => $stockBefore, 'stock_after' => $stockAfter,
+                    'batch_number' => $item['batch_number'] ?? null,
+                    'expiry_date' => $item['expiry_date'] ?? null,
+                ]);
+
+                $this->recordMovement([
+                    'warehouse_id' => $data->warehouseId, 'variant_id' => $item['variant_id'],
+                    'movement_type' => 'import', 'quantity' => $quantity,
+                    'physical_before' => $stockBefore, 'physical_after' => $stockAfter,
+                    'reserved_before' => $stock->reserved_stock, 'reserved_after' => $stock->reserved_stock,
+                    'available_before' => $stockBefore - $stock->reserved_stock,
+                    'available_after' => $stockAfter - $stock->reserved_stock,
+                    'reference_type' => 'receipt', 'reference_id' => $receipt->id,
+                    'reference_code' => $receipt->receipt_code, 'created_by' => $data->createdBy,
+                ]);
+
+                $this->clearStockCache($item['variant_id'], $data->warehouseId);
+                StockAlert::autoResolve($data->warehouseId, $item['variant_id'], $stockAfter, $stock->low_stock_threshold);
+
+                $totalItems++; $totalQuantity += $quantity; $totalValue += ($quantity * $unitPrice);
+            }
+
+            $receipt->update(['total_items' => $totalItems, 'total_quantity' => $totalQuantity, 'total_value' => $totalValue]);
+            event(new StockImported($receipt));
+            return $receipt->fresh(['items.variant.product', 'toWarehouse', 'creator']);
+        });
+    }
+
+    public function export(ExportStockDTO $data): StockReceipt
+    {
+        return DB::transaction(function () use ($data) {
+            foreach ($data->items as $item) {
+                $stock = $this->getStock($item['variant_id'], $data->warehouseId);
+                if ($stock->availableStock < $item['quantity']) {
+                    throw new InsufficientStockException("Insufficient stock for variant {$item['variant_id']}");
+                }
+            }
+
+            $receipt = StockReceipt::create([
+                'receipt_code' => StockReceipt::generateCode('export'),
+                'type' => 'export', 'status' => 'completed',
+                'from_warehouse_id' => $data->warehouseId,
+                'customer_id' => $data->customerId, 'customer_name' => $data->customerName,
+                'reference_type' => $data->referenceType, 'reference_id' => $data->referenceId,
+                'subject' => $data->subject, 'content' => $data->content,
+                'vat_invoice' => $data->vatInvoice, 'created_by' => $data->createdBy,
+                'completed_at' => now(), 'completed_by' => $data->createdBy,
+            ]);
+
+            $totalItems = 0; $totalQuantity = 0; $totalValue = 0;
+
+            foreach ($data->items as $item) {
+                $stock = $this->lockStock($item['variant_id'], $data->warehouseId);
+                $stockBefore = $stock->physical_stock;
+                $quantity = (int)$item['quantity'];
+                $unitPrice = (float)($item['unit_price'] ?? 0);
+                
+                $stock->decrement('physical_stock', $quantity);
+                $stock->update(['last_movement_at' => now()]);
+                $stockAfter = $stock->fresh()->physical_stock;
+
+                StockReceiptItem::create([
+                    'receipt_id' => $receipt->id, 'variant_id' => $item['variant_id'],
+                    'quantity' => $quantity, 'unit_price' => $unitPrice,
+                    'stock_before' => $stockBefore, 'stock_after' => $stockAfter,
+                ]);
+
+                $this->recordMovement([
+                    'warehouse_id' => $data->warehouseId, 'variant_id' => $item['variant_id'],
+                    'movement_type' => 'export', 'quantity' => -$quantity,
+                    'physical_before' => $stockBefore, 'physical_after' => $stockAfter,
+                    'reserved_before' => $stock->reserved_stock, 'reserved_after' => $stock->reserved_stock,
+                    'available_before' => $stockBefore - $stock->reserved_stock,
+                    'available_after' => $stockAfter - $stock->reserved_stock,
+                    'reference_type' => 'receipt', 'reference_id' => $receipt->id,
+                    'reference_code' => $receipt->receipt_code, 'created_by' => $data->createdBy,
+                ]);
+
+                $this->clearStockCache($item['variant_id'], $data->warehouseId);
+                $this->checkAndCreateAlerts($stock->fresh());
+
+                $totalItems++; $totalQuantity += $quantity; $totalValue += ($quantity * $unitPrice);
+            }
+
+            $receipt->update(['total_items' => $totalItems, 'total_quantity' => $totalQuantity, 'total_value' => $totalValue]);
+            event(new StockExported($receipt));
+            return $receipt->fresh(['items.variant.product', 'fromWarehouse', 'creator']);
+        });
+    }
+
+    public function transfer(TransferStockDTO $data): StockReceipt
+    {
+        return DB::transaction(function () use ($data) {
+            foreach ($data->items as $item) {
+                $stock = $this->getStock($item['variant_id'], $data->fromWarehouseId);
+                if ($stock->availableStock < $item['quantity']) {
+                    throw new InsufficientStockException("Insufficient stock in source warehouse");
+                }
+            }
+
+            $receipt = StockReceipt::create([
+                'receipt_code' => StockReceipt::generateCode('transfer'),
+                'type' => 'transfer', 'status' => 'completed',
+                'from_warehouse_id' => $data->fromWarehouseId,
+                'to_warehouse_id' => $data->toWarehouseId,
+                'subject' => $data->subject ?? 'Chuyển kho',
+                'created_by' => $data->createdBy, 'completed_at' => now(),
+            ]);
+
+            foreach ($data->items as $item) {
+                $quantity = (int)$item['quantity'];
+
+                // Deduct from source
+                $source = $this->lockStock($item['variant_id'], $data->fromWarehouseId);
+                $source->decrement('physical_stock', $quantity);
+                
+                // Add to destination
+                $dest = $this->lockStock($item['variant_id'], $data->toWarehouseId);
+                $dest->increment('physical_stock', $quantity);
+
+                StockReceiptItem::create([
+                    'receipt_id' => $receipt->id, 'variant_id' => $item['variant_id'],
+                    'quantity' => $quantity, 'unit_price' => $source->average_cost,
+                ]);
+
+                $this->clearStockCache($item['variant_id'], $data->fromWarehouseId);
+                $this->clearStockCache($item['variant_id'], $data->toWarehouseId);
+            }
+
+            return $receipt->fresh(['items.variant.product', 'fromWarehouse', 'toWarehouse']);
+        });
+    }
+
+    public function adjust(AdjustStockDTO $data): StockReceipt
+    {
+        return DB::transaction(function () use ($data) {
+            $receipt = StockReceipt::create([
+                'receipt_code' => StockReceipt::generateCode('adjustment'),
+                'type' => 'adjustment', 'status' => 'completed',
+                'to_warehouse_id' => $data->warehouseId,
+                'subject' => $data->subject ?? 'Điều chỉnh tồn kho',
+                'created_by' => $data->createdBy, 'completed_at' => now(),
+            ]);
+
+            foreach ($data->items as $item) {
+                $stock = $this->lockStock($item['variant_id'], $data->warehouseId);
+                $stockBefore = $stock->physical_stock;
+                $newQuantity = (int)$item['new_quantity'];
+                
+                $stock->update(['physical_stock' => $newQuantity, 'last_stock_check' => now()]);
+
+                StockReceiptItem::create([
+                    'receipt_id' => $receipt->id, 'variant_id' => $item['variant_id'],
+                    'quantity' => abs($newQuantity - $stockBefore),
+                    'stock_before' => $stockBefore, 'stock_after' => $newQuantity,
+                ]);
+
+                $this->clearStockCache($item['variant_id'], $data->warehouseId);
+            }
+
+            return $receipt->fresh(['items.variant.product', 'toWarehouse']);
+        });
+    }
+
+    public function reserve(ReserveStockDTO $data): StockReservation
+    {
+        return DB::transaction(function () use ($data) {
+            $warehouseId = $data->warehouseId ?? $this->getDefaultWarehouseId();
+            $stock = $this->lockStock($data->variantId, $warehouseId);
+            
+            $available = $stock->physical_stock - $stock->reserved_stock - $stock->flash_sale_hold - $stock->deal_hold;
+            if ($available < $data->quantity) {
+                throw new InsufficientStockException("Cannot reserve {$data->quantity} units. Available: {$available}");
+            }
+            
+            $stock->increment('reserved_stock', $data->quantity);
+            
+            $reservation = StockReservation::create([
+                'warehouse_id' => $warehouseId, 'variant_id' => $data->variantId,
+                'quantity' => $data->quantity, 'reference_type' => $data->referenceType,
+                'reference_id' => $data->referenceId, 'reference_code' => $data->referenceCode,
+                'status' => 'active', 'expires_at' => $data->expiresAt,
+            ]);
+            
+            $this->clearStockCache($data->variantId, $warehouseId);
+            return $reservation;
+        });
+    }
+
+    public function reserveBatch(array $items): Collection
+    {
+        $reservations = collect();
+        DB::transaction(function () use ($items, &$reservations) {
+            foreach ($items as $item) {
+                $dto = $item instanceof ReserveStockDTO ? $item : ReserveStockDTO::fromArray($item);
+                $reservations->push($this->reserve($dto));
+            }
+        });
+        return $reservations;
+    }
+
+    public function confirmReservation(int $reservationId): bool
+    {
+        return DB::transaction(function () use ($reservationId) {
+            $reservation = StockReservation::lockForUpdate()->findOrFail($reservationId);
+            if ($reservation->status !== 'active') {
+                throw new InvalidReservationException("Reservation is not active");
+            }
+            
+            $stock = $this->lockStock($reservation->variant_id, $reservation->warehouse_id);
+            $stock->decrement('physical_stock', $reservation->quantity);
+            $stock->decrement('reserved_stock', $reservation->quantity);
+            
+            $reservation->update(['status' => 'confirmed', 'confirmed_at' => now()]);
+            $this->clearStockCache($reservation->variant_id, $reservation->warehouse_id);
+            $this->checkAndCreateAlerts($stock->fresh());
+            
+            return true;
+        });
+    }
+
+    public function releaseReservation(int $reservationId, ?int $userId = null, ?string $reason = null): bool
+    {
+        return DB::transaction(function () use ($reservationId, $userId, $reason) {
+            $reservation = StockReservation::lockForUpdate()->findOrFail($reservationId);
+            if ($reservation->status !== 'active') return false;
+            
+            $stock = $this->lockStock($reservation->variant_id, $reservation->warehouse_id);
+            $stock->decrement('reserved_stock', $reservation->quantity);
+            
+            $reservation->update([
+                'status' => 'released', 'released_at' => now(),
+                'released_by' => $userId, 'release_reason' => $reason,
+            ]);
+            
+            $this->clearStockCache($reservation->variant_id, $reservation->warehouse_id);
+            return true;
+        });
+    }
+
+    public function releaseReservationsByReference(string $referenceType, int $referenceId): int
+    {
+        $reservations = StockReservation::active()->forReference($referenceType, $referenceId)->get();
+        $count = 0;
+        foreach ($reservations as $r) {
+            if ($this->releaseReservation($r->id)) $count++;
+        }
+        return $count;
+    }
+
+    public function releaseExpiredReservations(): int
+    {
+        $expired = StockReservation::expired()->get();
+        $count = 0;
+        
+        foreach ($expired as $reservation) {
+            try {
+                DB::transaction(function () use ($reservation) {
+                    $stock = $this->lockStock($reservation->variant_id, $reservation->warehouse_id);
+                    $stock->decrement('reserved_stock', $reservation->quantity);
+                    $reservation->update(['status' => 'expired', 'released_at' => now()]);
+                    $this->clearStockCache($reservation->variant_id, $reservation->warehouse_id);
+                });
+                $count++;
+            } catch (\Exception $e) {
+                Log::error("Failed to release expired reservation #{$reservation->id}: " . $e->getMessage());
+            }
+        }
+        return $count;
+    }
+
+    public function deductForOrder(int $orderId): bool
+    {
+        $reservations = StockReservation::active()->forReference('order', $orderId)->get();
+        foreach ($reservations as $r) $this->confirmReservation($r->id);
+        return true;
+    }
+
+    public function restoreForOrder(int $orderId): bool
+    {
+        $reservations = StockReservation::forReference('order', $orderId)->get();
+        foreach ($reservations as $r) {
+            if ($r->status === 'active') $this->releaseReservation($r->id);
+            elseif ($r->status === 'confirmed') {
+                DB::transaction(function () use ($r) {
+                    $stock = $this->lockStock($r->variant_id, $r->warehouse_id);
+                    $stock->increment('physical_stock', $r->quantity);
+                    $r->update(['status' => 'released', 'released_at' => now()]);
+                    $this->clearStockCache($r->variant_id, $r->warehouse_id);
+                });
+            }
+        }
+        return true;
+    }
+
+    public function processReturn(int $orderId, array $items): StockReceipt
+    {
+        return $this->import(new ImportStockDTO(
+            code: "RTN-{$orderId}",
+            subject: "Trả hàng từ đơn #{$orderId}",
+            warehouseId: $this->getDefaultWarehouseId(),
+            items: $items,
+            createdBy: auth()->id() ?? 1,
+        ));
+    }
+
+    public function getMovementHistory(int $variantId, array $filters = []): Collection
+    {
+        $query = StockMovement::with(['warehouse', 'creator'])->forVariant($variantId)->orderBy('created_at', 'desc');
+        if (isset($filters['warehouse_id'])) $query->forWarehouse($filters['warehouse_id']);
+        if (isset($filters['limit'])) $query->limit($filters['limit']);
+        return $query->get();
+    }
+
+    public function getInventoryValuation(?int $warehouseId = null): array
+    {
+        $query = InventoryStock::with(['variant.product', 'warehouse']);
+        if ($warehouseId) $query->forWarehouse($warehouseId);
+        $stocks = $query->get();
+        
+        $totalValue = $stocks->sum(fn($s) => $s->physical_stock * $s->average_cost);
+        return [
+            'total_value' => $totalValue,
+            'total_items' => $stocks->sum('physical_stock'),
+            'sku_count' => $stocks->count(),
+        ];
+    }
+
+    public function getStockSummary(int $variantId, string $startDate, string $endDate, ?int $warehouseId = null): array
+    {
+        return StockMovement::getSummary($variantId, $warehouseId ?? $this->getDefaultWarehouseId(), $startDate, $endDate);
+    }
+
+    // Helper methods
+    private function getDefaultWarehouseId(): int
+    {
+        return Cache::remember('default_warehouse_id', 3600, fn() => WarehouseV2::where('is_default', true)->value('id') ?? 1);
+    }
+
+    private function lockStock(int $variantId, int $warehouseId): InventoryStock
+    {
+        return InventoryStock::lockForUpdate()->firstOrCreate(
+            ['warehouse_id' => $warehouseId, 'variant_id' => $variantId],
+            ['physical_stock' => 0, 'reserved_stock' => 0, 'low_stock_threshold' => 10]
+        );
+    }
+
+    private function recordMovement(array $data): StockMovement
+    {
+        $data['created_at'] = now();
+        $data['ip_address'] = request()->ip();
+        $data['created_by'] = $data['created_by'] ?? auth()->id();
+        return StockMovement::create($data);
+    }
+
+    private function getCacheKey(int $variantId, int $warehouseId): string
+    {
+        return "inventory_stock:{$warehouseId}:{$variantId}";
+    }
+
+    private function clearStockCache(int $variantId, int $warehouseId): void
+    {
+        Cache::forget($this->getCacheKey($variantId, $warehouseId));
+    }
+
+    private function checkAndCreateAlerts(InventoryStock $stock): void
+    {
+        if ($stock->physical_stock <= 0) {
+            StockAlert::createIfNotExists($stock->warehouse_id, $stock->variant_id, 'out_of_stock', $stock->physical_stock);
+            event(new OutOfStockDetected($stock));
+        } elseif ($stock->physical_stock <= $stock->low_stock_threshold) {
+            StockAlert::createIfNotExists($stock->warehouse_id, $stock->variant_id, 'low_stock', $stock->physical_stock, $stock->low_stock_threshold);
+            event(new LowStockDetected($stock));
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Legacy InventoryServiceInterface adapters
+    |--------------------------------------------------------------------------
+    |
+    | Keep compatibility for existing order/flash sale/deal code that depends
+    | on App\Services\Inventory\InventoryServiceInterface.
+    |
+    */
+
     public function processOrder(array $orderItems): array
     {
-        DB::beginTransaction();
-        
-        try {
-            $warnings = [];
-            
-            foreach ($orderItems as $index => $item) {
-                $productId = $item['product_id'];
-                $variantId = $item['variant_id'] ?? null;
-                $quantity = $item['quantity'];
-                $orderType = $item['order_type'] ?? 'normal';
-                
-                if ($orderType === 'flashsale') {
-                    // Xử lý đơn hàng Flash Sale
-                    $result = $this->processFlashSaleOrder($productId, $variantId, $quantity);
-                    if (!$result['success']) {
-                        DB::rollBack();
-                        return $result;
-                    }
-                    
-                    // Thu thập cảnh báo nếu có
-                    if (isset($result['warning'])) {
-                        $warnings[] = [
-                            'item_index' => $index,
-                            'product_id' => $productId,
-                            'variant_id' => $variantId,
-                            'message' => $result['warning'],
-                        ];
-                    }
-                } else {
-                    // Xử lý đơn hàng thường (Promotion, Deal Sốc, hoặc giá gốc)
-                    $result = $this->processNormalOrder($productId, $variantId, $quantity);
-                    if (!$result['success']) {
-                        DB::rollBack();
-                        return $result;
-                    }
-                }
+        $results = [];
+        foreach ($orderItems as $item) {
+            $variantId = (int) ($item['variant_id'] ?? 0);
+            $qty = (int) ($item['quantity'] ?? 0);
+            if ($variantId <= 0 || $qty <= 0) {
+                continue;
             }
-            
-            DB::commit();
-            
-            $response = [
-                'success' => true,
-                'message' => 'Xử lý đơn hàng thành công',
-            ];
-            
-            if (!empty($warnings)) {
-                $response['warnings'] = $warnings;
-            }
-            
-            return $response;
-            
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Process Order Error: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-                'items' => $orderItems
-            ]);
-            
-            return [
-                'success' => false,
-                'message' => 'Lỗi xử lý đơn hàng: ' . $e->getMessage(),
-            ];
+            $results[] = $this->deductStockForOrder($variantId, $qty, (string) ($item['reason'] ?? 'order'));
         }
+        return $results;
     }
-    
-    /**
-     * Xử lý đơn hàng Flash Sale (hỗ trợ mua vượt hạn mức)
-     * 
-     * Logic:
-     * - Nếu Q <= S_flash_rem: Trừ flash_stock_sold và physical_stock bình thường
-     * - Nếu Q > S_flash_rem: 
-     *   + flash_stock_sold chạm trần (đặt = flash_stock_limit)
-     *   + Trừ toàn bộ Q vào physical_stock
-     * 
-     * @param int $productId
-     * @param int|null $variantId
-     * @param int $quantity
-     * @return array
-     */
-    protected function processFlashSaleOrder(int $productId, ?int $variantId, int $quantity): array
-    {
-        // Tìm ProductSale đang active
-        $productSale = $this->findActiveProductSale($productId, $variantId);
-        
-        if (!$productSale) {
-            return [
-                'success' => false,
-                'message' => 'Sản phẩm không có trong Flash Sale',
-            ];
-        }
-        
-        // Kiểm tra tồn kho thực tế
-        // Nếu có variant_id, dùng variant_id; nếu không, tìm default variant của product
-        $stockVariantId = $variantId;
-        if (!$stockVariantId) {
-            $product = Product::find($productId);
-            if ($product) {
-                $defaultVariant = $product->variant($productId);
-                $stockVariantId = $defaultVariant ? $defaultVariant->id : $productId;
-            } else {
-                $stockVariantId = $productId;
-            }
-        }
-        
-        $physicalStock = $this->warehouseService->getVariantStock($stockVariantId);
-        if ($physicalStock['current_stock'] < $quantity) {
-            return [
-                'success' => false,
-                'message' => "Không đủ tồn kho. Tồn kho hiện tại: " . $physicalStock['current_stock'],
-            ];
-        }
-        
-        // Sử dụng Row Locking để tránh Race Condition
-        $productSale = ProductSale::where('id', $productSale->id)
-            ->lockForUpdate()
-            ->first();
-        
-        // Tính toán số lượng Flash Sale còn lại
-        // number = flash_stock_limit, buy = flash_stock_sold
-        $currentSold = $productSale->buy;
-        $stockLimit = $productSale->number;
-        $flashRemaining = $stockLimit - $currentSold;
-        
-        // Xử lý theo logic mua vượt hạn mức
-        if ($quantity <= $flashRemaining) {
-            // Trong hạn mức: Tăng flash_stock_sold và trừ physical_stock
-            $productSale->buy += $quantity;
-            $productSale->save();
-            
-            // Trừ physical stock
-            $this->warehouseService->deductStock($stockVariantId, $quantity, 'flashsale_order');
-            
-            $isFlashSaleExhausted = ($productSale->buy >= $productSale->number);
-            
-            return [
-                'success' => true,
-                'message' => 'Xử lý đơn hàng Flash Sale thành công',
-                'flash_sale_exhausted' => $isFlashSaleExhausted,
-                'flash_quantity' => $quantity,
-                'normal_quantity' => 0,
-            ];
-        } else {
-            // Vượt hạn mức: flash_stock_sold chạm trần, trừ toàn bộ Q vào physical_stock
-            $flashQuantity = $flashRemaining;
-            $normalQuantity = $quantity - $flashRemaining;
-            
-            // Lấy thông tin sản phẩm để logging
-            $product = Product::find($productId);
-            $productName = $product ? $product->name : "Product ID: {$productId}";
-            
-            // Tính giá để tính chênh lệch doanh thu
-            $flashPrice = (float) $productSale->price_sale;
-            $originalPrice = $this->getOriginalPriceForLogging($productId, $variantId);
-            $extraRevenue = ($originalPrice - $flashPrice) * $normalQuantity;
-            
-            // Đặt flash_stock_sold = flash_stock_limit (chạm trần)
-            $productSale->buy = $stockLimit;
-            $productSale->save();
-            
-            // Trừ toàn bộ quantity vào physical stock
-            $this->warehouseService->deductStock($stockVariantId, $quantity, 'flashsale_order');
-            
-            // Logging: Ghi lại đơn hàng mua vượt hạn mức Flash Sale
-            Log::info('[FlashSale_MixedPrice] Order processed with mixed pricing', [
-                'product_id' => $productId,
-                'variant_id' => $variantId,
-                'product_name' => $productName,
-                'flash_quantity' => $flashQuantity,
-                'normal_quantity' => $normalQuantity,
-                'total_quantity' => $quantity,
-                'flash_price' => $flashPrice,
-                'normal_price' => $originalPrice,
-                'extra_revenue' => $extraRevenue,
-                'flash_sale_id' => $productSale->flashsale_id,
-                'product_sale_id' => $productSale->id,
-            ]);
-            
-            return [
-                'success' => true,
-                'message' => 'Xử lý đơn hàng Flash Sale thành công (mua vượt hạn mức)',
-                'flash_sale_exhausted' => true,
-                'flash_quantity' => $flashQuantity,
-                'normal_quantity' => $normalQuantity,
-                'warning' => "Chỉ còn {$flashQuantity} sản phẩm giá Flash Sale, {$normalQuantity} sản phẩm còn lại sẽ được tính theo giá thường",
-            ];
-        }
-    }
-    
-    /**
-     * Xử lý đơn hàng thường (Promotion, Deal Sốc, hoặc giá gốc)
-     * 
-     * @param int $productId
-     * @param int|null $variantId
-     * @param int $quantity
-     * @return array
-     */
-    protected function processNormalOrder(int $productId, ?int $variantId, int $quantity): array
-    {
-        // Nếu có variant_id, dùng variant_id; nếu không, tìm default variant của product
-        $stockVariantId = $variantId;
-        if (!$stockVariantId) {
-            $product = Product::find($productId);
-            if ($product) {
-                $defaultVariant = $product->variant($productId);
-                $stockVariantId = $defaultVariant ? $defaultVariant->id : $productId;
-            } else {
-                $stockVariantId = $productId;
-            }
-        }
-        
-        // Tính tồn kho khả dụng (Physical Stock - Flash Sale Virtual Stock)
-        $availableStock = $this->getAvailableStock($productId, $variantId);
-        
-        if ($availableStock < $quantity) {
-            return [
-                'success' => false,
-                'message' => "Không đủ tồn kho. Tồn kho khả dụng: " . $availableStock,
-            ];
-        }
-        
-        // Giảm total_stock (Physical Stock) thông qua Warehouse Service
-        $this->warehouseService->deductStock($stockVariantId, $quantity, 'normal_order');
-        
-        return [
-            'success' => true,
-            'message' => 'Xử lý đơn hàng thành công',
-        ];
-    }
-    
-    /**
-     * Tính tồn kho khả dụng = Physical Stock - Flash Sale Virtual Stock
-     * 
-     * @param int $productId
-     * @param int|null $variantId
-     * @return int
-     */
-    /**
-     * Tính tồn kho khả dụng = Physical Stock - Flash Sale Virtual Stock
-     * 
-     * @param int $productId
-     * @param int|null $variantId
-     * @return int
-     */
+
     public function getAvailableStock(int $productId, ?int $variantId = null): int
     {
-        // Nếu có variant_id, dùng variant_id; nếu không, tìm default variant của product
-        $stockVariantId = $variantId;
-        if (!$stockVariantId) {
-            $product = Product::find($productId);
-            if ($product) {
-                $defaultVariant = $product->variant($productId);
-                $stockVariantId = $defaultVariant ? $defaultVariant->id : $productId;
-            } else {
-                $stockVariantId = $productId;
-            }
+        if ($variantId === null) {
+            $variantId = (int) \DB::table('variants')->where('product_id', $productId)->value('id');
         }
-        
-        // Lấy Physical Stock từ Warehouse
-        $physicalStock = $this->warehouseService->getVariantStock($stockVariantId);
-        $sPhy = $physicalStock['physical_stock'] ?? 0; // Luôn dùng physical_stock gốc
-        
-        // Lấy Flash Sale Virtual Stock (S_flash = number - buy)
-        $sFlash = $this->getFlashSaleVirtualStock($productId, $variantId);
-        
-        // Tồn kho khả dụng = S_phy - S_flash
-        return max(0, $sPhy - $sFlash);
-    }
-    
-    /**
-     * Lấy Flash Sale Virtual Stock (S_flash)
-     * S_flash = number - buy (số lượng còn lại trong Flash Sale)
-     * 
-     * @param int $productId
-     * @param int|null $variantId
-     * @return int
-     */
-    protected function getFlashSaleVirtualStock(int $productId, ?int $variantId = null): int
-    {
-        $productSale = $this->findActiveProductSale($productId, $variantId);
-        
-        if (!$productSale) {
-            return 0; // Không có Flash Sale active
+        if (!$variantId) {
+            return 0;
         }
-        
-        // S_flash = number (flash_stock_limit) - buy (flash_stock_sold)
-        return max(0, $productSale->number - $productSale->buy);
+        return (int) $this->getStock((int) $variantId)->sellableStock;
     }
-    
-    /**
-     * Tìm ProductSale đang active
-     * 
-     * @param int $productId
-     * @param int|null $variantId
-     * @return ProductSale|null
-     */
-    protected function findActiveProductSale(int $productId, ?int $variantId = null): ?ProductSale
-    {
-        $now = time();
-        
-        $query = ProductSale::whereHas('flashsale', function($q) use ($now) {
-            $q->where('status', '1')
-              ->where('start', '<=', $now)
-              ->where('end', '>=', $now);
-        })
-        ->where('product_id', $productId);
-        
-        if ($variantId) {
-            $query->where('variant_id', $variantId);
-        } else {
-            $query->whereNull('variant_id');
-        }
-        
-        return $query->first();
-    }
-    
-    /**
-     * Kiểm tra khi tạo Flash Sale: total_stock phải >= flash_stock_limit
-     * 
-     * @param int $productId
-     * @param int|null $variantId
-     * @param int $flashStockLimit
-     * @return array ['valid' => bool, 'message' => string]
-     */
+
     public function validateFlashSaleStock(int $productId, ?int $variantId, int $flashStockLimit): array
     {
-        // Nếu có variant_id, dùng variant_id; nếu không, tìm default variant của product
-        $stockVariantId = $variantId;
-        if (!$stockVariantId) {
-            $product = Product::find($productId);
-            if ($product) {
-                $defaultVariant = $product->variant($productId);
-                $stockVariantId = $defaultVariant ? $defaultVariant->id : $productId;
-            } else {
-                $stockVariantId = $productId;
-            }
+        $available = $this->getAvailableStock($productId, $variantId);
+        if ($available < $flashStockLimit) {
+            return ['success' => false, 'message' => "Insufficient stock. Available: {$available}, required: {$flashStockLimit}"];
         }
-        
-        $physicalStock = $this->warehouseService->getVariantStock($stockVariantId);
-        $sPhy = $physicalStock['current_stock'] ?? 0;
-        
-        if ($sPhy < $flashStockLimit) {
-            return [
-                'valid' => false,
-                'message' => "Tồn kho thực tế ($sPhy) không đủ để tạo Flash Sale với số lượng ($flashStockLimit)",
-            ];
-        }
-        
-        return [
-            'valid' => true,
-            'message' => 'Tồn kho hợp lệ',
-        ];
+        return ['success' => true, 'message' => 'OK'];
     }
 
-    /**
-     * Giữ hàng cho Flash Sale hoặc Deal Sốc.
-     */
     public function allocateStockForPromotion(int $variantId, int $quantity, string $type): array
     {
-        $type = strtolower($type);
-        if (!in_array($type, ['flash_sale', 'deal'], true)) {
-            return [
-                'success' => false,
-                'message' => 'Type không hợp lệ. Chỉ hỗ trợ flash_sale hoặc deal',
-            ];
+        if ($quantity <= 0) {
+            return ['success' => false, 'message' => 'Invalid quantity'];
         }
 
-        return DB::transaction(function () use ($variantId, $quantity, $type) {
-            $record = ProductWarehouse::where('variant_id', $variantId)->lockForUpdate()->first();
-            if (!$record) {
-                $record = new ProductWarehouse();
-                $record->variant_id = $variantId;
-                $record->physical_stock = 0;
-                $record->flash_sale_stock = 0;
-                $record->deal_stock = 0;
-                $record->qty = 0;
+        $warehouseId = $this->getDefaultWarehouseId();
+
+        return DB::transaction(function () use ($variantId, $quantity, $type, $warehouseId) {
+            $stock = $this->lockStock($variantId, $warehouseId);
+            $dto = $this->getStock($variantId, $warehouseId);
+
+            if ($dto->sellableStock < $quantity) {
+                throw new InsufficientStockException("Insufficient sellable stock for promotion. Available: {$dto->sellableStock}");
             }
 
-            $available = $record->available_stock;
-            if ($available < $quantity) {
-                return [
-                    'success' => false,
-                    'message' => "Không đủ tồn kho khả dụng. available_stock={$available}, cần {$quantity}",
-                ];
-            }
+            $field = $type === 'deal' ? 'deal_hold' : 'flash_sale_hold';
+            $movementType = $type === 'deal' ? 'deal_hold' : 'flash_sale_hold';
 
-            if ($type === 'flash_sale') {
-                $record->flash_sale_stock = ($record->flash_sale_stock ?? 0) + $quantity;
-            } else {
-                $record->deal_stock = ($record->deal_stock ?? 0) + $quantity;
-            }
+            $before = (int) $stock->{$field};
+            $stock->increment($field, $quantity);
+            $stock->update(['last_movement_at' => now()]);
 
-            $record->syncAvailableStock();
-            $record->save();
+            $this->recordMovement([
+                'warehouse_id' => $warehouseId,
+                'variant_id' => $variantId,
+                'movement_type' => $movementType,
+                'quantity' => $quantity,
+                'physical_before' => $stock->physical_stock,
+                'physical_after' => $stock->physical_stock,
+                'reserved_before' => $stock->reserved_stock,
+                'reserved_after' => $stock->reserved_stock,
+                'available_before' => $dto->availableStock,
+                'available_after' => $this->getStock($variantId, $warehouseId)->availableStock,
+                'reason' => "Promotion hold ({$type})",
+            ]);
 
-            return [
-                'success' => true,
-                'message' => 'Giữ hàng thành công',
-                'data' => [
-                    'variant_id' => $variantId,
-                    'available_stock' => $record->available_stock,
-                    'physical_stock' => $record->physical_stock,
-                    'flash_sale_stock' => $record->flash_sale_stock,
-                    'deal_stock' => $record->deal_stock,
-                ],
-            ];
+            $this->clearStockCache($variantId, $warehouseId);
+
+            return ['success' => true, 'message' => 'OK', 'before' => $before, 'after' => $before + $quantity];
         });
     }
 
-    /**
-     * Hoàn trả hàng từ kho khuyến mãi về kho khả dụng.
-     */
-    /**
-     * Hoàn trả hàng từ kho khuyến mãi về kho khả dụng hoặc kho vật lý.
-     * 
-     * Logic mới (Hoàn kho khi hủy đơn):
-     * - Nếu Flash Sale vẫn đang diễn ra: Cộng lại vào Flash Sale stock (vì Available không đổi)
-     * - Nếu Flash Sale đã kết thúc: Cộng lại vào Physical stock (giúp tăng Available)
-     */
-    /**
-     * Hoàn trả hàng từ kho khuyến mãi về kho khả dụng hoặc kho vật lý.
-     * 
-     * Logic mới (Hoàn kho khi hủy đơn):
-     * - Nếu Flash Sale vẫn đang diễn ra: Cộng lại vào Flash Sale stock (vì Available không đổi)
-     * - Nếu Flash Sale đã kết thúc: Cộng lại vào Physical stock (giúp tăng Available)
-     */
     public function releaseStockFromPromotion(int $variantId, int $quantity, string $type): array
     {
-        $type = strtolower($type);
-        if (!in_array($type, ['flash_sale', 'deal'], true)) {
-            return [
-                'success' => false,
-                'message' => 'Type không hợp lệ. Chỉ hỗ trợ flash_sale hoặc deal',
-            ];
+        if ($quantity <= 0) {
+            return ['success' => false, 'message' => 'Invalid quantity'];
         }
 
-        return DB::transaction(function () use ($variantId, $quantity, $type) {
-            $record = ProductWarehouse::where('variant_id', $variantId)->lockForUpdate()->first();
-            if (!$record) {
-                return [
-                    'success' => false,
-                    'message' => 'Không tìm thấy bản ghi tồn kho cho variant',
-                ];
-            }
+        $warehouseId = $this->getDefaultWarehouseId();
 
-            // Kiểm tra trạng thái Flash Sale/Deal hiện tại
-            $isPromotionActive = false;
-            if ($type === 'flash_sale') {
-                $now = time();
-                $isPromotionActive = ProductSale::whereHas('flashsale', function($q) use ($now) {
-                    $q->where('status', '1')->where('start', '<=', $now)->where('end', '>=', $now);
-                })->where('variant_id', $variantId)->exists();
-            } else {
-                // Tương tự cho Deal Sốc nếu cần
-                $isPromotionActive = true; 
-            }
+        return DB::transaction(function () use ($variantId, $quantity, $type, $warehouseId) {
+            $stock = $this->lockStock($variantId, $warehouseId);
 
-            if ($isPromotionActive) {
-                // Nếu đang trong thời gian diễn ra: Cộng lại vào reserved stock (Flash Sale/Deal)
-                if ($type === 'flash_sale') {
-                    $record->flash_sale_stock = ($record->flash_sale_stock ?? 0) + $quantity;
-                } else {
-                    $record->deal_stock = ($record->deal_stock ?? 0) + $quantity;
-                }
-            } else {
-                // Nếu đã kết thúc: Cộng trực tiếp vào Physical stock (Available sẽ tăng theo)
-                $record->physical_stock = ($record->physical_stock ?? 0) + $quantity;
-            }
+            $field = $type === 'deal' ? 'deal_hold' : 'flash_sale_hold';
+            $movementType = $type === 'deal' ? 'deal_release' : 'flash_sale_release';
 
-            $record->syncAvailableStock();
-            $record->save();
+            $before = (int) $stock->{$field};
+            $newValue = max(0, $before - $quantity);
+            $stock->update([$field => $newValue, 'last_movement_at' => now()]);
 
-            return [
-                'success' => true,
-                'message' => 'Hoàn trả hàng thành công',
-                'data' => [
-                    'variant_id' => $variantId,
-                    'available_stock' => $record->available_stock,
-                    'physical_stock' => $record->physical_stock,
-                    'flash_sale_stock' => $record->flash_sale_stock,
-                    'deal_stock' => $record->deal_stock,
-                ],
-            ];
+            $this->recordMovement([
+                'warehouse_id' => $warehouseId,
+                'variant_id' => $variantId,
+                'movement_type' => $movementType,
+                'quantity' => -$quantity,
+                'physical_before' => $stock->physical_stock,
+                'physical_after' => $stock->physical_stock,
+                'reserved_before' => $stock->reserved_stock,
+                'reserved_after' => $stock->reserved_stock,
+                'available_before' => $this->getStock($variantId, $warehouseId)->availableStock,
+                'available_after' => $this->getStock($variantId, $warehouseId)->availableStock,
+                'reason' => "Promotion release ({$type})",
+            ]);
+
+            $this->clearStockCache($variantId, $warehouseId);
+
+            return ['success' => true, 'message' => 'OK', 'before' => $before, 'after' => $newValue];
         });
     }
 
-    /**
-     * Trừ kho khi đặt hàng.
-     * Logic: 
-     * 1/ Nếu có flashsale: trừ vào Flash Sale stock (Available không đổi vì đã trừ khi tạo sale)
-     * 2/ Nếu không có flashsale: trừ vào physical_stock (Available giảm theo)
-     */
     public function deductStockForOrder(int $variantId, int $quantity, string $reason = 'order'): array
     {
-        if ($quantity <= 0) return ['success' => false, 'message' => 'Số lượng phải > 0'];
+        if ($quantity <= 0) {
+            return ['success' => false, 'message' => 'Invalid quantity'];
+        }
 
-        return DB::transaction(function () use ($variantId, $quantity, $reason) {
-            $record = ProductWarehouse::where('variant_id', $variantId)->lockForUpdate()->first();
-            if (!$record) {
-                // Khởi tạo nếu chưa có bản ghi (cho legacy data)
-                $record = new ProductWarehouse();
-                $record->variant_id = $variantId;
-                $record->physical_stock = 0;
-                $record->flash_sale_stock = 0;
-                $record->deal_stock = 0;
+        $warehouseId = $this->getDefaultWarehouseId();
+
+        return DB::transaction(function () use ($variantId, $quantity, $reason, $warehouseId) {
+            $dto = $this->getStock($variantId, $warehouseId);
+            if ($dto->sellableStock < $quantity) {
+                throw new InsufficientStockException("Insufficient sellable stock. Available: {$dto->sellableStock}");
             }
 
-            // Kiểm tra xem variant này có đang trong Flash Sale active không
-            $now = time();
-            $isFlashSaleActive = ProductSale::whereHas('flashsale', function($q) use ($now) {
-                $q->where('status', '1')->where('start', '<=', $now)->where('end', '>=', $now);
-            })->where('variant_id', $variantId)->exists();
+            $stock = $this->lockStock($variantId, $warehouseId);
+            $before = $stock->physical_stock;
+            $stock->decrement('physical_stock', $quantity);
+            $stock->update(['last_movement_at' => now()]);
+            $after = $stock->fresh()->physical_stock;
 
-            if ($isFlashSaleActive) {
-                // 1. Nếu có Flash Sale: Trừ vào Flash Sale stock
-                // Lưu ý: Available = physical - flash - deal. Khi flash giảm, Available sẽ tăng. 
-                // Để Available KHÔNG ĐỔI, ta phải trừ đồng thời cả Physical.
-                $record->flash_sale_stock = max(0, ($record->flash_sale_stock ?? 0) - $quantity);
-                $record->physical_stock = max(0, ($record->physical_stock ?? 0) - $quantity);
-            } else {
-                // 2. Nếu không có Flash Sale: Trừ vào physical_stock (Available sẽ giảm theo)
-                $record->physical_stock = max(0, ($record->physical_stock ?? 0) - $quantity);
-            }
+            $this->recordMovement([
+                'warehouse_id' => $warehouseId,
+                'variant_id' => $variantId,
+                'movement_type' => 'sale',
+                'quantity' => -$quantity,
+                'physical_before' => $before,
+                'physical_after' => $after,
+                'reserved_before' => $stock->reserved_stock,
+                'reserved_after' => $stock->reserved_stock,
+                'available_before' => $dto->availableStock,
+                'available_after' => $this->getStock($variantId, $warehouseId)->availableStock,
+                'reason' => $reason,
+            ]);
 
-            $record->syncAvailableStock();
-            $record->save();
+            $this->clearStockCache($variantId, $warehouseId);
+            $this->checkAndCreateAlerts($stock->fresh());
 
-            $this->recordHistory($isFlashSaleActive ? 'deduct_flash' : 'deduct_physical', $variantId, $quantity, $reason, $record);
-
-            return [
-                'success' => true,
-                'data' => [
-                    'variant_id' => $variantId,
-                    'available_stock' => $record->available_stock,
-                    'physical_stock' => $record->physical_stock,
-                    'flash_sale_stock' => $record->flash_sale_stock,
-                ]
-            ];
+            return ['success' => true, 'message' => 'OK', 'before' => $before, 'after' => $after];
         });
     }
 
-    /**
-     * Nhập kho thủ công: tăng physical_stock và sync available_stock.
-     */
     public function importStock(int $variantId, int $quantity, string $reason = 'manual_import'): array
     {
         if ($quantity <= 0) {
-            return ['success' => false, 'message' => 'Số lượng nhập phải > 0'];
+            return ['success' => false, 'message' => 'Invalid quantity'];
         }
 
-        try {
-            $result = DB::transaction(function () use ($variantId, $quantity, $reason) {
-                // Lấy bản ghi tồn kho MỚI NHẤT của variant
-                $record = ProductWarehouse::where('variant_id', $variantId)
-                    ->orderByDesc('id')
-                    ->lockForUpdate()
-                    ->first();
-                
-                if (!$record) {
-                    $record = new ProductWarehouse();
-                    $record->variant_id = $variantId;
-                    $record->physical_stock = 0;
-                    $record->flash_sale_stock = 0;
-                    $record->deal_stock = 0;
-                    $record->qty = 0;
-                }
+        $warehouseId = $this->getDefaultWarehouseId();
 
-                $record->physical_stock = ($record->physical_stock ?? 0) + $quantity;
-                $record->syncAvailableStock();
-                $record->save();
+        return DB::transaction(function () use ($variantId, $quantity, $reason, $warehouseId) {
+            $stock = $this->lockStock($variantId, $warehouseId);
+            $before = $stock->physical_stock;
+            $stock->increment('physical_stock', $quantity);
+            $stock->update(['last_movement_at' => now()]);
+            $after = $stock->fresh()->physical_stock;
 
-                $this->recordHistory('import', $variantId, $quantity, $reason, $record);
-
-                Log::info('[Inventory] Import stock', [
-                    'variant_id' => $variantId,
-                    'quantity' => $quantity,
-                    'reason' => $reason,
-                    'available_stock' => $record->available_stock,
-                    'physical_stock' => $record->physical_stock,
-                    'flash_sale_stock' => $record->flash_sale_stock,
-                    'deal_stock' => $record->deal_stock,
-                ]);
-
-                return [
-                    'success' => true,
-                    'message' => 'Nhập kho thành công',
-                    'data' => [
-                        'variant_id' => $variantId,
-                        'available_stock' => $record->available_stock,
-                        'physical_stock' => $record->physical_stock,
-                        'flash_sale_stock' => $record->flash_sale_stock,
-                        'deal_stock' => $record->deal_stock,
-                    ],
-                ];
-            });
-
-            return $result;
-        } catch (\Exception $e) {
-            Log::error('Import stock failed: ' . $e->getMessage(), [
+            $this->recordMovement([
+                'warehouse_id' => $warehouseId,
                 'variant_id' => $variantId,
+                'movement_type' => 'import',
                 'quantity' => $quantity,
+                'physical_before' => $before,
+                'physical_after' => $after,
+                'reserved_before' => $stock->reserved_stock,
+                'reserved_after' => $stock->reserved_stock,
+                'available_before' => max(0, $before - $stock->reserved_stock),
+                'available_after' => max(0, $after - $stock->reserved_stock),
                 'reason' => $reason,
-                'trace' => $e->getTraceAsString(),
             ]);
-            return ['success' => false, 'message' => 'Import stock thất bại: ' . $e->getMessage()];
-        }
+
+            $this->clearStockCache($variantId, $warehouseId);
+            StockAlert::autoResolve($warehouseId, $variantId, $after, (int) $stock->low_stock_threshold);
+
+            return ['success' => true, 'message' => 'OK', 'before' => $before, 'after' => $after];
+        });
     }
 
-    /**
-     * Xuất kho thủ công: giảm physical_stock; ưu tiên available_stock, thiếu sẽ ném lỗi.
-     */
     public function manualExportStock(int $variantId, int $quantity, string $reason = 'manual_export'): array
     {
         if ($quantity <= 0) {
-            return ['success' => false, 'message' => 'Số lượng xuất phải > 0'];
+            return ['success' => false, 'message' => 'Invalid quantity'];
         }
 
-        try {
-            $result = DB::transaction(function () use ($variantId, $quantity, $reason) {
-                $record = ProductWarehouse::where('variant_id', $variantId)->lockForUpdate()->first();
-                if (!$record) {
-                    throw new \RuntimeException('Không tìm thấy bản ghi tồn kho');
-                }
+        $warehouseId = $this->getDefaultWarehouseId();
 
-                $available = $record->available_stock;
-                if ($available < $quantity) {
-                    throw new \RuntimeException("Không đủ tồn khả dụng để xuất. available_stock={$available}, cần {$quantity}");
-                }
+        return DB::transaction(function () use ($variantId, $quantity, $reason, $warehouseId) {
+            $dto = $this->getStock($variantId, $warehouseId);
+            if ($dto->availableStock < $quantity) {
+                throw new InsufficientStockException("Insufficient stock. Available: {$dto->availableStock}");
+            }
 
-                $record->physical_stock = max(0, ($record->physical_stock ?? 0) - $quantity);
-                $record->syncAvailableStock();
-                $record->save();
+            $stock = $this->lockStock($variantId, $warehouseId);
+            $before = $stock->physical_stock;
+            $stock->decrement('physical_stock', $quantity);
+            $stock->update(['last_movement_at' => now()]);
+            $after = $stock->fresh()->physical_stock;
 
-                $this->recordHistory('manual_export', $variantId, $quantity, $reason, $record);
-
-                Log::info('[Inventory] Manual export', [
-                    'variant_id' => $variantId,
-                    'quantity' => $quantity,
-                    'reason' => $reason,
-                    'available_stock' => $record->available_stock,
-                    'physical_stock' => $record->physical_stock,
-                    'flash_sale_stock' => $record->flash_sale_stock,
-                    'deal_stock' => $record->deal_stock,
-                ]);
-
-                return [
-                    'success' => true,
-                    'message' => 'Xuất kho thành công',
-                    'data' => [
-                        'variant_id' => $variantId,
-                        'available_stock' => $record->available_stock,
-                        'physical_stock' => $record->physical_stock,
-                        'flash_sale_stock' => $record->flash_sale_stock,
-                        'deal_stock' => $record->deal_stock,
-                    ],
-                ];
-            });
-
-            return $result;
-        } catch (\RuntimeException $e) {
-            Log::warning('Manual export blocked: ' . $e->getMessage(), [
+            $this->recordMovement([
+                'warehouse_id' => $warehouseId,
                 'variant_id' => $variantId,
-                'quantity' => $quantity,
+                'movement_type' => 'export',
+                'quantity' => -$quantity,
+                'physical_before' => $before,
+                'physical_after' => $after,
+                'reserved_before' => $stock->reserved_stock,
+                'reserved_after' => $stock->reserved_stock,
+                'available_before' => $dto->availableStock,
+                'available_after' => $this->getStock($variantId, $warehouseId)->availableStock,
                 'reason' => $reason,
             ]);
-            return ['success' => false, 'message' => $e->getMessage()];
-        } catch (\Exception $e) {
-            Log::error('Manual export failed: ' . $e->getMessage(), [
-                'variant_id' => $variantId,
-                'quantity' => $quantity,
-                'reason' => $reason,
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return ['success' => false, 'message' => 'Manual export thất bại: ' . $e->getMessage()];
-        }
-    }
 
-    /**
-     * Ghi lịch sử thao tác vào bảng history (best effort).
-     */
-    protected function recordHistory(string $action, int $variantId, int $quantity, string $reason, ProductWarehouse $record): void
-    {
-        try {
-            History::insert([
-                'user_id' => Auth::id(),
-                'content' => "[{$action}] variant_id={$variantId}, qty={$quantity}, reason={$reason}, physical={$record->physical_stock}, flash={$record->flash_sale_stock}, deal={$record->deal_stock}, available={$record->available_stock}",
-                'created_at' => now(),
-            ]);
-        } catch (\Exception $e) {
-            Log::warning('Record history failed: ' . $e->getMessage(), [
-                'action' => $action,
-                'variant_id' => $variantId,
-                'quantity' => $quantity,
-            ]);
-        }
-    }
-    
-    /**
-     * Lấy giá gốc của sản phẩm để logging
-     * 
-     * @param int $productId
-     * @param int|null $variantId
-     * @return float
-     */
-    protected function getOriginalPriceForLogging(int $productId, ?int $variantId = null): float
-    {
-        if ($variantId) {
-            $variant = Variant::find($variantId);
-            return $variant ? (float) $variant->price : 0;
-        }
-        
-        $product = Product::find($productId);
-        if (!$product) {
-            return 0;
-        }
-        
-        $variant = $product->variant($productId);
-        return $variant ? (float) $variant->price : 0;
+            $this->clearStockCache($variantId, $warehouseId);
+            $this->checkAndCreateAlerts($stock->fresh());
+
+            return ['success' => true, 'message' => 'OK', 'before' => $before, 'after' => $after];
+        });
     }
 }
