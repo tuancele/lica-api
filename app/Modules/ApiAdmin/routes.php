@@ -7,7 +7,8 @@
  * for JSON responses and API authentication
  */
 Route::group([
-    'middleware' => ['api', 'auth:api'],
+    // Use web + auth so Admin API can be called from backend panel with session cookie
+    'middleware' => ['web', 'auth'],
     'prefix' => 'admin/api',
     'namespace' => 'App\Modules\ApiAdmin\Controllers'
 ], function () {

@@ -500,10 +500,47 @@
 
 ### 2. GET /admin/api/products/{id}
 
-**Mục tiêu:** 获取单个产品详情（包含关联数据：品牌、产地、分类、变体等）
+**Mục tiêu:** 获取单个产品详情（包含关联数据：品牌、产地、分类、变体等），chuẩn hóa dữ liệu cho trang Edit sản phẩm (Admin).
 
-**Tham số đầu vào:**
+**Tham số đầu vào (Path Params):**
 - `id` (integer, required): 产品ID（URL参数）
+
+**Trường dữ liệu chính trong `data`:**
+- `id` (int) – Product ID
+- `name` (string) – Tên sản phẩm
+- `slug` (string) – Đường dẫn chuẩn SEO
+- `video` (string|null) – URL video sản phẩm
+- `image` (string|null) – Ảnh chính
+- `gallery` (string[]) – Danh sách URL ảnh (được map vào `imageOther[]` ở form)
+- `content` (string) – Nội dung chi tiết (HTML)
+- `description` (string|null) – Mô tả ngắn
+- `cbmp` (string|null) – Mã CBMP
+- `status` (int) – 状态 0/1
+- `feature`, `best`, `verified` (string "0"/"1") – Cờ đánh dấu
+- `stock` (string|int) – Cờ stock cũ
+- `warehouse_stock` (int) – Tổng tồn kho thực tế
+- `is_out_of_stock` (bool) – Hết hàng hay chưa
+- `sort` (int) – Thứ tự sắp xếp
+- `has_variants` (int 0/1) – Có phân loại hay không
+- `option1_name` (string|null) – Tên nhóm phân loại (ví dụ "Dung tich")
+- `ingredient` (string|null) – Chuỗi thành phần
+- `brand_id`, `origin_id` (int|null) – ID Thương hiệu / Xuất xứ
+- `brand`, `origin` (object|null) – Thông tin chi tiết brand/origin
+- `categories` (int[]) – Mảng ID danh mục (leaf ở cuối), map vào `cat_id[]` ở form
+- `variants` (array<object>) – Danh sách biến thể; mỗi phần tử:
+  - `id`, `product_id`
+  - `sku`
+  - `option1_value`
+  - `image`
+  - `size_id`, `color_id`
+  - `weight` (float)
+  - `price` (float)
+  - `stock` (int)
+  - `warehouse_stock` (int)
+  - `is_out_of_stock` (bool)
+  - `position` (int)
+- `seo_title`, `seo_description` (string|null)
+- `created_at`, `updated_at` (ISO 8601 string)
 
 **Phản hồi mẫu (200):**
 ```json
@@ -511,41 +548,62 @@
   "success": true,
   "data": {
     "id": 1,
-    "name": "产品名称",
-    "slug": "product-slug",
-    "image": "https://example.com/image.jpg",
-    "gallery": ["https://example.com/img1.jpg", "https://example.com/img2.jpg"],
-    "content": "产品详细内容",
-    "description": "产品描述",
-    "status": "1",
+    "name": "San pham A",
+    "slug": "san-pham-a",
+    "video": "https://cdn.lica.vn/videos/sp-a.mp4",
+    "image": "https://cdn.lica.vn/uploads/products/sp-a-main.jpg",
+    "gallery": [
+      "https://cdn.lica.vn/uploads/products/sp-a-main.jpg",
+      "https://cdn.lica.vn/uploads/products/sp-a-2.jpg"
+    ],
+    "content": "<p>Noi dung chi tiet HTML...</p>",
+    "description": "Mo ta ngan san pham",
+    "cbmp": "123/CBMP-XY-2024",
+    "status": 1,
     "feature": "0",
     "best": "0",
     "stock": "1",
+    "warehouse_stock": 120,
+    "is_out_of_stock": false,
+    "verified": "1",
+    "sort": 0,
     "has_variants": 1,
-    "option1_name": "规格",
+    "option1_name": "Dung tich",
+    "ingredient": "Water, Niacinamide...",
+    "brand_id": 5,
+    "origin_id": 2,
     "brand": {
-      "id": 1,
-      "name": "品牌名称"
+      "id": 5,
+      "name": "Brand X",
+      "slug": "brand-x"
     },
     "origin": {
-      "id": 1,
-      "name": "产地名称"
+      "id": 2,
+      "name": "Korea",
+      "slug": "korea"
     },
-    "categories": [1, 2, 3],
+    "categories": [1, 10, 25],
     "variants": [
       {
         "id": 1,
-        "sku": "SKU-001",
-        "price": 100000,
-        "sale": 80000,
-        "stock": 50,
-        "option1_value": "500ml"
+        "sku": "SKU-001-30ML",
+        "product_id": 1,
+        "option1_value": "30ml",
+        "image": "https://cdn.lica.vn/uploads/products/sp-a-main.jpg",
+        "size_id": null,
+        "color_id": null,
+        "weight": 0.2,
+        "price": 250000,
+        "stock": 100,
+        "warehouse_stock": 100,
+        "is_out_of_stock": false,
+        "position": 1
       }
     ],
-    "seo_title": "SEO标题",
-    "seo_description": "SEO描述",
+    "seo_title": "San pham A - Title",
+    "seo_description": "Mo ta SEO ngan",
     "created_at": "2024-01-01T00:00:00.000000Z",
-    "updated_at": "2024-01-01T00:00:00.000000Z"
+    "updated_at": "2024-05-01T00:00:00.000000Z"
   }
 }
 ```
@@ -613,11 +671,40 @@
 
 ### 4. PUT /admin/api/products/{id}
 
-**Mục tiêu:** 更新现有产品
+**Mục tiêu:** 更新现有产品（包括基本信息、SEO、hình ảnh, danh mục, thương hiệu/xuất xứ, phân loại và tồn kho ban đầu），được dùng làm kênh lưu chính cho trang Edit sản phẩm Admin.
 
 **Tham số đầu vào:**
-- `id` (integer, required): 产品ID（URL参数）
-- Body参数同 POST /admin/api/products（除slug外，slug允许更新但需保持唯一）
+- `id` (integer, required, Path): 产品ID（URL参数）
+
+**Body (JSON) – các trường quan trọng:**
+- `name` (string, required, 1-250) – Tên sản phẩm
+- `slug` (string, required, unique:posts,slug,{id}, regex: `^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+- `content` (string, optional) – Nội dung chi tiết (HTML)
+- `description` (string, optional, max:500) – Mô tả ngắn
+- `video` (string, optional, url, max:500) – URL video sản phẩm
+- `imageOther` (string[], optional) – Danh sách URL ảnh hiện tại (theo thứ tự mới)
+- `imageOtherRemoved` (string[], optional) – Danh sách URL ảnh cần xóa
+- `cat_id` (int[], optional) – Mảng ID danh mục (leaf ở cuối là danh mục trực tiếp)
+- `brand_id` (int, optional, exists:brands,id) – ID thương hiệu
+- `origin_id` (int, optional, exists:origins,id) – ID xuất xứ
+- `ingredient` (string, optional) – Chuỗi thành phần
+- `cbmp` (string, optional, max:250) – Mã CBMP
+- `price` (numeric, optional, min:0) – Giá bán (single mode)
+- `stock_qty` (int, optional, min:0) – Tồn kho ban đầu (single mode)
+- `weight` (numeric, optional, min:0) – Trọng lượng (single mode)
+- `sku` (string, optional, max:100) – SKU (single mode, unique sẽ được service xử lý)
+- `has_variants` (int|string, optional, in:0,1) – 1 = dùng phân loại, 0 = single
+- `option1_name` (string, required_if:has_variants,1, max:50) – Tên nhóm phân loại
+- `variants_json` (string, required_if:has_variants,1) – JSON phân loại (Shopee-style), backend sẽ parse và đồng bộ bảng `variants`
+- `status` (int, optional, in:0,1)
+- `feature` (int, optional, in:0,1)
+- `best` (int, optional, in:0,1)
+- `stock` (int, optional, in:0,1) – Cờ có tồn hay không (giữ logic cũ)
+- `seo_title` (string, optional, max:250)
+- `seo_description` (string, optional, max:500)
+- `r2_session_key` (string, optional) – Khóa session upload R2 để backend dọn dẹp URL tạm
+
+> Ghi chú: Form FE gửi thêm `_token` (CSRF) và `_method` (nếu dùng), nhưng API chuẩn sử dụng `PUT` thuần với JSON body như trên.
 
 **Phản hồi mẫu (200):**
 ```json
@@ -626,8 +713,62 @@
   "message": "产品更新成功",
   "data": {
     "id": 1,
-    "name": "更新后的产品名称",
-    "slug": "updated-product-slug"
+    "name": "San pham A (updated)",
+    "slug": "san-pham-a",
+    "video": "https://cdn.lica.vn/videos/sp-a.mp4",
+    "image": "https://cdn.lica.vn/uploads/products/sp-a-main.jpg",
+    "gallery": [
+      "https://cdn.lica.vn/uploads/products/sp-a-main.jpg",
+      "https://cdn.lica.vn/uploads/products/sp-a-2.jpg"
+    ],
+    "content": "<p>Noi dung chi tiet sau khi cap nhat...</p>",
+    "description": "Mo ta ngan sau khi cap nhat",
+    "cbmp": "123/CBMP-XY-2024",
+    "status": 1,
+    "feature": "0",
+    "best": "0",
+    "stock": "1",
+    "warehouse_stock": 120,
+    "is_out_of_stock": false,
+    "verified": "1",
+    "sort": 0,
+    "has_variants": 1,
+    "option1_name": "Dung tich",
+    "ingredient": "Water, Niacinamide...",
+    "brand_id": 5,
+    "origin_id": 2,
+    "brand": {
+      "id": 5,
+      "name": "Brand X",
+      "slug": "brand-x"
+    },
+    "origin": {
+      "id": 2,
+      "name": "Korea",
+      "slug": "korea"
+    },
+    "categories": [1, 10, 25],
+    "variants": [
+      {
+        "id": 1,
+        "sku": "SKU-001-30ML",
+        "product_id": 1,
+        "option1_value": "30ml",
+        "image": "https://cdn.lica.vn/uploads/products/sp-a-main.jpg",
+        "size_id": null,
+        "color_id": null,
+        "weight": 0.2,
+        "price": 250000,
+        "stock": 100,
+        "warehouse_stock": 100,
+        "is_out_of_stock": false,
+        "position": 1
+      }
+    ],
+    "seo_title": "San pham A - Title",
+    "seo_description": "Mo ta SEO ngan",
+    "created_at": "2024-01-01T00:00:00.000000Z",
+    "updated_at": "2024-06-01T00:00:00.000000Z"
   }
 }
 ```

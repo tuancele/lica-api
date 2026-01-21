@@ -72,6 +72,11 @@ Route::prefix('v1/origins')->namespace('Api\V1')->group(function () {
     Route::get('/options', 'OriginController@options'); // GET /api/v1/origins/options (for select options)
 });
 
+// Media API V1 - upload to Cloudflare R2
+Route::prefix('v1/media')->namespace('Api\V1')->group(function () {
+    Route::post('/upload', 'MediaController@upload'); // POST /api/v1/media/upload
+});
+
 // Flash Sale API V1 - RESTful 标准
 Route::prefix('v1/flash-sales')->namespace('Api\V1')->group(function () {
     Route::get('/active', 'FlashSaleController@getActive'); // GET /api/v1/flash-sales/active

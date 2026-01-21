@@ -196,11 +196,44 @@ class ProductService implements ProductServiceInterface
                 $existingGallery = is_array($decoded) ? $decoded : [];
             }
 
-            // Nếu form đã gửi lên đầy đủ imageOther[] (sau khi kéo thả sắp xếp),
-            // thì ưu tiên THỨ TỰ trong form và không cần dùng existingGallery để tránh phá vỡ thứ tự mới.
-            // Chỉ khi form không gửi imageOther (user không động vào ảnh) mới dùng existingGallery làm nguồn.
+            // Gallery sync rule:
+            // - Nếu form gửi imageOther[]: ưu tiên THỨ TỰ trong form.
+            // - Nhưng cần chống mất ảnh cũ do DOM/serialize: merge missing existing images nếu không nằm trong danh sách removed.
+            // - Xóa ảnh phải explicit qua imageOtherRemoved[] để không bị restore.
+            // - Nếu form không gửi imageOther[] (user không đụng vào gallery), dùng gallery hiện tại từ DB.
             $formImages = $data['imageOther'] ?? [];
-            $useExisting = empty($formImages) || !is_array($formImages);
+            if (!is_array($formImages)) {
+                $formImages = [];
+            }
+            // Loại bỏ giá trị rỗng / null trước khi xử lý
+            $formImages = array_values(array_filter($formImages, function ($v) {
+                return is_string($v) && trim($v) !== '';
+            }));
+
+            $removed = $data['imageOtherRemoved'] ?? [];
+            if (!is_array($removed)) {
+                $removed = [];
+            }
+            $removed = array_values(array_filter($removed, function ($v) {
+                return is_string($v) && trim($v) !== '';
+            }));
+
+            // Remove deleted from existing and form list
+            if (!empty($removed)) {
+                $existingGallery = array_values(array_diff($existingGallery, $removed));
+                $formImages = array_values(array_diff($formImages, $removed));
+            }
+
+            $useExisting = empty($formImages);
+
+            if (!$useExisting) {
+                // If DOM/serialize missed some existing images, append them back (but not those removed)
+                foreach ($existingGallery as $oldUrl) {
+                    if (!in_array($oldUrl, $formImages, true)) {
+                        $formImages[] = $oldUrl;
+                    }
+                }
+            }
 
             $gallery = $this->imageService->processGallery(
                 $formImages,

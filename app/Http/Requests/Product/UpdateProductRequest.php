@@ -79,6 +79,14 @@ class UpdateProductRequest extends FormRequest
                 'url',
                 'max:500'
             ],
+            'imageOtherRemoved' => [
+                'nullable',
+                'array'
+            ],
+            'imageOtherRemoved.*' => [
+                'url',
+                'max:500'
+            ],
             'cat_id' => [
                 'nullable',
                 'array'
@@ -198,6 +206,7 @@ class UpdateProductRequest extends FormRequest
             'brand_id.exists' => 'Thương hiệu không tồn tại',
             'origin_id.exists' => 'Xuất xứ không tồn tại',
             'imageOther.*.url' => 'URL hình ảnh không hợp lệ',
+            'imageOtherRemoved.*.url' => 'URL hình ảnh không hợp lệ',
         ];
     }
 

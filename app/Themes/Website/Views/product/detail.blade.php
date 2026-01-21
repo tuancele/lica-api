@@ -249,24 +249,35 @@
                         <div class="main-slider" id="mainSlider">
                             <div class="slides-wrapper" id="slidesWrapper">
                                 @php
+                                    $cdnBase = config('filesystems.disks.r2.url') ?? '';
+                                    $normalizeCdnUrl = function ($url) use ($cdnBase) {
+                                        $final = getImage($url);
+                                        if ($cdnBase) {
+                                            $base = rtrim($cdnBase, '/');
+                                            // Force CDN domain for image host
+                                            return preg_replace('#^https?://[^/]+#', $base, $final);
+                                        }
+                                        return $final;
+                                    };
+
                                     $hasVideo = !empty($detail->video);
-                                    // Xây dựng danh sách media: 1 video (nếu có) + tối đa 9 hình
+                                    // Build media list: 1 video (if any) + main image + gallery images
                                     $mediaItems = [];
                                     if ($hasVideo) {
                                         $mediaItems[] = [
                                             'type' => 'video',
-                                            'src' => getImage($detail->video),
+                                            'src' => $normalizeCdnUrl($detail->video),
                                         ];
                                     }
-                                    // Ảnh bìa luôn là ảnh đầu tiên
-                                    $mainImage = getImage($detail->image);
+                                    // Main image is always first image
+                                    $mainImage = $normalizeCdnUrl($detail->image);
                                     $mediaItems[] = [
                                         'type' => 'image',
                                         'src' => $mainImage,
                                     ];
-                                    if(isset($gallerys) && !empty($gallerys)) {
-                                        foreach($gallerys as $image) {
-                                            $imgSrc = getImage($image);
+                                    if (isset($gallerys) && !empty($gallerys)) {
+                                        foreach ($gallerys as $image) {
+                                            $imgSrc = $normalizeCdnUrl($image);
                                             if ($imgSrc != $mainImage) {
                                                 $mediaItems[] = [
                                                     'type' => 'image',
@@ -287,7 +298,7 @@
                                             <video src="{{$item['src']}}" controls playsinline muted></video>
                                         @else
                                             <div class="skeleton--img-square js-skeleton">
-                                                <img src="{{$item['src']}}" alt="{{$detail->name}}" class="js-skeleton-img">
+                                                <img src="{{$item['src']}}" alt="{{$detail->name}}" class="js-skeleton-img" loading="lazy">
                                             </div>
                                         @endif
                                     </div>
@@ -362,7 +373,7 @@
                                     }
 
                                     if (thumbSrc) {
-                                        thumbnail.innerHTML = `<img src="${thumbSrc}" alt="Thumbnail ${index + 1}">`;
+                                        thumbnail.innerHTML = `<img src="${thumbSrc}" alt="Thumbnail ${index + 1}" loading="lazy">`;
                                     }
                                     thumbnail.addEventListener('click', () => this.goToSlide(index));
                                     this.thumbnailsContainer.appendChild(thumbnail);
@@ -858,7 +869,7 @@
                             <div class="item_deal_info">
                                 <div class="thumb_deal">
                                     <div class="skeleton--img-sm js-skeleton">
-                                        <img src="{{getImage($product_deal->image)}}" alt="{{$product_deal->name}}" class="js-skeleton-img">
+                                        <img src="{{getImage($product_deal->image)}}" alt="{{$product_deal->name}}" class="js-skeleton-img" loading="lazy">
                                     </div>
                                 </div>
                                 <div class="info_deal">
@@ -1291,7 +1302,7 @@
                             @foreach($images as $image)
                             <a href="{{getImage($image)}}" class="item_gallery image-link">
                                 <div class="skeleton--img-sm js-skeleton">
-                                    <img src="{{getImage($image)}}" alt="{{$rName}}" class="js-skeleton-img">
+                                    <img src="{{getImage($image)}}" alt="{{$rName}}" class="js-skeleton-img" loading="lazy">
                                 </div>
                             </a>
                             @endforeach
@@ -1489,7 +1500,7 @@
             <div class="align-center product-info">
                 <div class="thumb">
                     <div class="skeleton--img-sm js-skeleton" style="width: 72px; height: 72px;">
-                        <img src="{{getImage($detail->image)}}" width="72" height="72" alt="{{$detail->name}}" class="js-skeleton-img">
+                        <img src="{{getImage($detail->image)}}" width="72" height="72" alt="{{$detail->name}}" class="js-skeleton-img" loading="lazy">
                     </div>
                 </div>
                 <div class="description ms-2">
@@ -1536,7 +1547,7 @@
         <div class="align-center bg-gray br-10 pe-3 ps-3 pt-3 pb-3 mb-3">
             <div class="thumb-pro">
                 <div class="skeleton--img-sm js-skeleton" style="width: 65px; height: 65px;">
-                    <img src="{{getImage($detail->image)}}" width="65" height="65" alt="{{$detail->name}}" class="js-skeleton-img">
+                    <img src="{{getImage($detail->image)}}" width="65" height="65" alt="{{$detail->name}}" class="js-skeleton-img" loading="lazy">
                 </div>
             </div>
             <div class="des-pro ps-3">

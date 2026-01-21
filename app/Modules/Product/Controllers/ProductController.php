@@ -186,10 +186,23 @@ class ProductController extends Controller
     public function update(UpdateProductRequest $request)
     {
         try {
+            // Ensure gallery array is clean (avoid empty strings)
+            $validated = $request->validated();
+            if (isset($validated['imageOther']) && is_array($validated['imageOther'])) {
+                $validated['imageOther'] = array_values(array_filter($validated['imageOther'], function ($v) {
+                    return is_string($v) && trim($v) !== '';
+                }));
+            }
+            if (isset($validated['imageOtherRemoved']) && is_array($validated['imageOtherRemoved'])) {
+                $validated['imageOtherRemoved'] = array_values(array_filter($validated['imageOtherRemoved'], function ($v) {
+                    return is_string($v) && trim($v) !== '';
+                }));
+            }
+
             // Update product using service
             $product = $this->productService->updateProduct(
                 $request->id,
-                $request->validated()
+                $validated
             );
             
             return response()->json([

@@ -90,7 +90,7 @@
     .content { padding: 0 !important; }
 </style>
 
-<div class="shopee-main-container">
+<div id="product-edit-app" class="shopee-main-container" data-id="{{$detail->id}}">
     <!-- Left Column: Tips -->
     <div class="shopee-left-col hidden-sm hidden-xs">
         <div class="tip-card">
@@ -141,6 +141,7 @@
                         </div>
                         <input type="file" id="hidden-file-input" multiple style="display: none;" accept="image/*">
                     </div>
+                    <div id="imageOtherRemovedContainer" style="display:none;"></div>
                 </div>
 
                 <div class="form-item">
@@ -463,6 +464,22 @@ $(document).ready(function() {
         },
         onPreviewAdd: () => refreshImgStatus(),
         onPreviewRemove: () => refreshImgStatus()
+    });
+
+    // Track removed existing gallery images explicitly to avoid accidental restore/lose
+    $('.list_image').on('click', '.remove-btn', function () {
+        const $box = $(this).closest('.image-upload-box.has-img');
+        if (!$box.length) return;
+
+        // Only mark remove for existing images (already in DB)
+        if ($box.attr('data-existing') === 'true') {
+            const url = ($box.find('input[name="imageOther[]"]').val() || '').toString();
+            if (url) {
+                $('#imageOtherRemovedContainer').append(
+                    '<input type="hidden" name="imageOtherRemoved[]" value="' + url.replace(/"/g, '&quot;') + '">'
+                );
+            }
+        }
     });
     
     const r2VariantUploadRoute = "{{ route('r2.upload') }}";
@@ -824,7 +841,18 @@ $(document).ready(function() {
 
     $('#tblForm').on('submit', function() { buildVariantsJson(); });
 
-    $(".list_image").sortable({ items: ".image-upload-box.has-img", update: function() { refreshImgStatus(); } });
+    $(".list_image").sortable({
+        items: ".image-upload-box.has-img",
+        axis: "x",
+        tolerance: "pointer",
+        distance: 5,
+        revert: true,
+        helper: "clone",
+        containment: ".list_image",
+        forcePlaceholderSize: true,
+        placeholder: "image-upload-placeholder",
+        update: function() { refreshImgStatus(); }
+    });
     
     // Load stock from Warehouse API for single product (no variants)
     if ($hasVariants.val() === '0') {

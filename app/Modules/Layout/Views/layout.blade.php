@@ -387,6 +387,7 @@
     <script src="/public/admin/toastr.js"></script>
     <script src="/public/admin/form.validator.min.js"></script>
     <script src="/public/admin/ControlPanel.js"></script>
+    <script src="/js/admin-product-edit.js?v=1"></script>
     <script type="text/javascript">
       toastr.options = {
           closeButton: true,
