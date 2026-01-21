@@ -17,8 +17,17 @@ class InventoryResource extends JsonResource
      * @param  \Illuminate\Http\Request  $request
      * @return array
      */
+    /**
+     * Transform the resource into an array.
+     */
     public function toArray($request): array
     {
+        // Ưu tiên dùng các alias val để tránh đè bởi logic Model Attribute
+        $physicalStock = (int) ($this->physical_stock ?? 0);
+        $flashStock = (int) ($this->flash_sale_stock_val ?? $this->flash_sale_stock ?? 0);
+        $dealStock = (int) ($this->deal_stock ?? 0);
+        $availableStock = (int) ($this->available_stock_val ?? ($physicalStock - $flashStock - $dealStock));
+
         return [
             'variant_id' => $this->variant_id,
             'variant_sku' => $this->variant_sku ?? null,
@@ -26,11 +35,10 @@ class InventoryResource extends JsonResource
             'product_id' => $this->product_id,
             'product_name' => $this->product_name,
             'product_image' => $this->product_image ?? null,
-            'import_total' => (int) ($this->import_total ?? 0),
-            'export_total' => (int) ($this->export_total ?? 0),
-            'current_stock' => max(0, (int) ($this->import_total ?? 0) - (int) ($this->export_total ?? 0)),
-            'last_import_date' => $this->last_import_date?->toISOString(),
-            'last_export_date' => $this->last_export_date?->toISOString(),
+            'physical_stock' => $physicalStock,
+            'flash_sale_stock' => $flashStock,
+            'deal_stock' => $dealStock,
+            'available_stock' => $availableStock >= 0 ? $availableStock : 0,
         ];
     }
 }

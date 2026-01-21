@@ -179,6 +179,19 @@ class OrderController extends Controller
                     && !in_array((int) $oldStatus, $cancelStatuses, true)) {
                     try {
                         $this->rollbackDealQuota($order);
+                        
+                        // Hoàn kho thông minh (S_phy - S_flash logic)
+                        $orderDetails = OrderDetail::where('order_id', $order->id)->get();
+                        foreach ($orderDetails as $detail) {
+                            if ($detail->variant_id) {
+                                app(\App\Services\Inventory\InventoryServiceInterface::class)->releaseStockFromPromotion(
+                                    (int)$detail->variant_id,
+                                    (int)$detail->qty,
+                                    'flash_sale' // Mặc định xử lý theo luồng flash_sale (tự check active trong service)
+                                );
+                            }
+                        }
+
                         // Tạo phiếu nhập lại kho (tương tự luồng hủy/hoàn)
                         $this->createImportReceiptFromOrder($order);
                     } catch (\Exception $e) {

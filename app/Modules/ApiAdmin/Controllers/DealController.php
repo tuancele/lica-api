@@ -10,6 +10,7 @@ use App\Modules\Deal\Models\ProductDeal;
 use App\Modules\Deal\Models\SaleDeal;
 use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
+use App\Services\Inventory\InventoryServiceInterface;
 use App\Services\Promotion\ProductStockValidatorInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,10 +28,12 @@ use Illuminate\Support\Facades\Validator;
 class DealController extends Controller
 {
     protected ProductStockValidatorInterface $productStockValidator;
+    protected InventoryServiceInterface $inventoryService;
 
-    public function __construct(ProductStockValidatorInterface $productStockValidator)
+    public function __construct(ProductStockValidatorInterface $productStockValidator, InventoryServiceInterface $inventoryService)
     {
         $this->productStockValidator = $productStockValidator;
+        $this->inventoryService = $inventoryService;
     }
 
     /**
@@ -249,12 +252,18 @@ class DealController extends Controller
                 // Add products
                 if ($request->has('products') && is_array($request->products)) {
                     foreach ($request->products as $productData) {
-                        ProductDeal::create([
+                        $pd = ProductDeal::create([
                             'deal_id' => $deal->id,
                             'product_id' => $productData['product_id'],
                             'variant_id' => $productData['variant_id'] ?? null,
                             'status' => $productData['status'],
                         ]);
+
+                        $resolvedVariantId = $this->resolveVariantId($productData['product_id'], $productData['variant_id'] ?? null);
+                        $allocate = $this->inventoryService->allocateStockForPromotion($resolvedVariantId, (int) $deal->limited, 'deal');
+                        if (empty($allocate['success'])) {
+                            throw new \Exception($allocate['message'] ?? 'Không đủ tồn kho khả dụng', 422);
+                        }
                     }
                 }
 
@@ -269,6 +278,12 @@ class DealController extends Controller
                             'qty' => $saleProductData['qty'],
                             'status' => $saleProductData['status'],
                         ]);
+
+                        $resolvedVariantId = $this->resolveVariantId($saleProductData['product_id'], $saleProductData['variant_id'] ?? null);
+                        $allocate = $this->inventoryService->allocateStockForPromotion($resolvedVariantId, (int) $saleProductData['qty'], 'deal');
+                        if (empty($allocate['success'])) {
+                            throw new \Exception($allocate['message'] ?? 'Không đủ tồn kho khả dụng', 422);
+                        }
                     }
                 }
 
@@ -436,6 +451,12 @@ class DealController extends Controller
                                 'variant_id' => $productData['variant_id'] ?? null,
                                 'status' => $productData['status'],
                             ]);
+
+                            $resolvedVariantId = $this->resolveVariantId($productData['product_id'], $productData['variant_id'] ?? null);
+                            $allocate = $this->inventoryService->allocateStockForPromotion($resolvedVariantId, (int) $deal->limited, 'deal');
+                            if (empty($allocate['success'])) {
+                                throw new \Exception($allocate['message'] ?? 'Không đủ tồn kho khả dụng', 422);
+                            }
                         }
                     }
                 }
@@ -456,6 +477,12 @@ class DealController extends Controller
                                 'qty' => $saleProductData['qty'],
                                 'status' => $saleProductData['status'],
                             ]);
+
+                            $resolvedVariantId = $this->resolveVariantId($saleProductData['product_id'], $saleProductData['variant_id'] ?? null);
+                            $allocate = $this->inventoryService->allocateStockForPromotion($resolvedVariantId, (int) $saleProductData['qty'], 'deal');
+                            if (empty($allocate['success'])) {
+                                throw new \Exception($allocate['message'] ?? 'Không đủ tồn kho khả dụng', 422);
+                            }
                         }
                     }
                 }
@@ -717,6 +744,26 @@ class DealController extends Controller
                                 $errors["products.{$index}.variant_id"] = ["Sản phẩm không có phân loại"];
                             }
                         }
+
+    /**
+     * Resolve variant id; fallback to default variant of product if null.
+     */
+    private function resolveVariantId(int $productId, ?int $variantId = null): int
+    {
+        if ($variantId) {
+            return $variantId;
+        }
+
+        $product = Product::find($productId);
+        if ($product) {
+            $defaultVariant = $product->variant($productId);
+            if ($defaultVariant) {
+                return (int) $defaultVariant->id;
+            }
+        }
+
+        return $productId;
+    }
                     }
                 }
             }

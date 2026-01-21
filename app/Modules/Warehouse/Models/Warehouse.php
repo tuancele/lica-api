@@ -6,6 +6,17 @@ use Illuminate\Database\Eloquent\Model;
 class Warehouse extends Model
 {
     protected $table = "warehouse";
+
+    protected $fillable = [
+        'code',
+        'subject',
+        'content',
+        'type',
+        'user_id',
+        'created_at',
+        'updated_at',
+    ];
+
     public function user(){
     	return $this->belongsTo('App\User','user_id','id');
     }

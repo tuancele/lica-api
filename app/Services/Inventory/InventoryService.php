@@ -5,9 +5,12 @@ namespace App\Services\Inventory;
 use App\Modules\FlashSale\Models\ProductSale;
 use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
+use App\Modules\Warehouse\Models\ProductWarehouse;
+use App\Modules\History\Models\History;
 use App\Services\Warehouse\WarehouseServiceInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * Inventory Management Service
@@ -271,6 +274,13 @@ class InventoryService implements InventoryServiceInterface
      * @param int|null $variantId
      * @return int
      */
+    /**
+     * Tính tồn kho khả dụng = Physical Stock - Flash Sale Virtual Stock
+     * 
+     * @param int $productId
+     * @param int|null $variantId
+     * @return int
+     */
     public function getAvailableStock(int $productId, ?int $variantId = null): int
     {
         // Nếu có variant_id, dùng variant_id; nếu không, tìm default variant của product
@@ -287,7 +297,7 @@ class InventoryService implements InventoryServiceInterface
         
         // Lấy Physical Stock từ Warehouse
         $physicalStock = $this->warehouseService->getVariantStock($stockVariantId);
-        $sPhy = $physicalStock['current_stock'] ?? 0;
+        $sPhy = $physicalStock['physical_stock'] ?? 0; // Luôn dùng physical_stock gốc
         
         // Lấy Flash Sale Virtual Stock (S_flash = number - buy)
         $sFlash = $this->getFlashSaleVirtualStock($productId, $variantId);
@@ -379,6 +389,349 @@ class InventoryService implements InventoryServiceInterface
             'valid' => true,
             'message' => 'Tồn kho hợp lệ',
         ];
+    }
+
+    /**
+     * Giữ hàng cho Flash Sale hoặc Deal Sốc.
+     */
+    public function allocateStockForPromotion(int $variantId, int $quantity, string $type): array
+    {
+        $type = strtolower($type);
+        if (!in_array($type, ['flash_sale', 'deal'], true)) {
+            return [
+                'success' => false,
+                'message' => 'Type không hợp lệ. Chỉ hỗ trợ flash_sale hoặc deal',
+            ];
+        }
+
+        return DB::transaction(function () use ($variantId, $quantity, $type) {
+            $record = ProductWarehouse::where('variant_id', $variantId)->lockForUpdate()->first();
+            if (!$record) {
+                $record = new ProductWarehouse();
+                $record->variant_id = $variantId;
+                $record->physical_stock = 0;
+                $record->flash_sale_stock = 0;
+                $record->deal_stock = 0;
+                $record->qty = 0;
+            }
+
+            $available = $record->available_stock;
+            if ($available < $quantity) {
+                return [
+                    'success' => false,
+                    'message' => "Không đủ tồn kho khả dụng. available_stock={$available}, cần {$quantity}",
+                ];
+            }
+
+            if ($type === 'flash_sale') {
+                $record->flash_sale_stock = ($record->flash_sale_stock ?? 0) + $quantity;
+            } else {
+                $record->deal_stock = ($record->deal_stock ?? 0) + $quantity;
+            }
+
+            $record->syncAvailableStock();
+            $record->save();
+
+            return [
+                'success' => true,
+                'message' => 'Giữ hàng thành công',
+                'data' => [
+                    'variant_id' => $variantId,
+                    'available_stock' => $record->available_stock,
+                    'physical_stock' => $record->physical_stock,
+                    'flash_sale_stock' => $record->flash_sale_stock,
+                    'deal_stock' => $record->deal_stock,
+                ],
+            ];
+        });
+    }
+
+    /**
+     * Hoàn trả hàng từ kho khuyến mãi về kho khả dụng.
+     */
+    /**
+     * Hoàn trả hàng từ kho khuyến mãi về kho khả dụng hoặc kho vật lý.
+     * 
+     * Logic mới (Hoàn kho khi hủy đơn):
+     * - Nếu Flash Sale vẫn đang diễn ra: Cộng lại vào Flash Sale stock (vì Available không đổi)
+     * - Nếu Flash Sale đã kết thúc: Cộng lại vào Physical stock (giúp tăng Available)
+     */
+    /**
+     * Hoàn trả hàng từ kho khuyến mãi về kho khả dụng hoặc kho vật lý.
+     * 
+     * Logic mới (Hoàn kho khi hủy đơn):
+     * - Nếu Flash Sale vẫn đang diễn ra: Cộng lại vào Flash Sale stock (vì Available không đổi)
+     * - Nếu Flash Sale đã kết thúc: Cộng lại vào Physical stock (giúp tăng Available)
+     */
+    public function releaseStockFromPromotion(int $variantId, int $quantity, string $type): array
+    {
+        $type = strtolower($type);
+        if (!in_array($type, ['flash_sale', 'deal'], true)) {
+            return [
+                'success' => false,
+                'message' => 'Type không hợp lệ. Chỉ hỗ trợ flash_sale hoặc deal',
+            ];
+        }
+
+        return DB::transaction(function () use ($variantId, $quantity, $type) {
+            $record = ProductWarehouse::where('variant_id', $variantId)->lockForUpdate()->first();
+            if (!$record) {
+                return [
+                    'success' => false,
+                    'message' => 'Không tìm thấy bản ghi tồn kho cho variant',
+                ];
+            }
+
+            // Kiểm tra trạng thái Flash Sale/Deal hiện tại
+            $isPromotionActive = false;
+            if ($type === 'flash_sale') {
+                $now = time();
+                $isPromotionActive = ProductSale::whereHas('flashsale', function($q) use ($now) {
+                    $q->where('status', '1')->where('start', '<=', $now)->where('end', '>=', $now);
+                })->where('variant_id', $variantId)->exists();
+            } else {
+                // Tương tự cho Deal Sốc nếu cần
+                $isPromotionActive = true; 
+            }
+
+            if ($isPromotionActive) {
+                // Nếu đang trong thời gian diễn ra: Cộng lại vào reserved stock (Flash Sale/Deal)
+                if ($type === 'flash_sale') {
+                    $record->flash_sale_stock = ($record->flash_sale_stock ?? 0) + $quantity;
+                } else {
+                    $record->deal_stock = ($record->deal_stock ?? 0) + $quantity;
+                }
+            } else {
+                // Nếu đã kết thúc: Cộng trực tiếp vào Physical stock (Available sẽ tăng theo)
+                $record->physical_stock = ($record->physical_stock ?? 0) + $quantity;
+            }
+
+            $record->syncAvailableStock();
+            $record->save();
+
+            return [
+                'success' => true,
+                'message' => 'Hoàn trả hàng thành công',
+                'data' => [
+                    'variant_id' => $variantId,
+                    'available_stock' => $record->available_stock,
+                    'physical_stock' => $record->physical_stock,
+                    'flash_sale_stock' => $record->flash_sale_stock,
+                    'deal_stock' => $record->deal_stock,
+                ],
+            ];
+        });
+    }
+
+    /**
+     * Trừ kho khi đặt hàng.
+     * Logic: 
+     * 1/ Nếu có flashsale: trừ vào Flash Sale stock (Available không đổi vì đã trừ khi tạo sale)
+     * 2/ Nếu không có flashsale: trừ vào physical_stock (Available giảm theo)
+     */
+    public function deductStockForOrder(int $variantId, int $quantity, string $reason = 'order'): array
+    {
+        if ($quantity <= 0) return ['success' => false, 'message' => 'Số lượng phải > 0'];
+
+        return DB::transaction(function () use ($variantId, $quantity, $reason) {
+            $record = ProductWarehouse::where('variant_id', $variantId)->lockForUpdate()->first();
+            if (!$record) {
+                // Khởi tạo nếu chưa có bản ghi (cho legacy data)
+                $record = new ProductWarehouse();
+                $record->variant_id = $variantId;
+                $record->physical_stock = 0;
+                $record->flash_sale_stock = 0;
+                $record->deal_stock = 0;
+            }
+
+            // Kiểm tra xem variant này có đang trong Flash Sale active không
+            $now = time();
+            $isFlashSaleActive = ProductSale::whereHas('flashsale', function($q) use ($now) {
+                $q->where('status', '1')->where('start', '<=', $now)->where('end', '>=', $now);
+            })->where('variant_id', $variantId)->exists();
+
+            if ($isFlashSaleActive) {
+                // 1. Nếu có Flash Sale: Trừ vào Flash Sale stock
+                // Lưu ý: Available = physical - flash - deal. Khi flash giảm, Available sẽ tăng. 
+                // Để Available KHÔNG ĐỔI, ta phải trừ đồng thời cả Physical.
+                $record->flash_sale_stock = max(0, ($record->flash_sale_stock ?? 0) - $quantity);
+                $record->physical_stock = max(0, ($record->physical_stock ?? 0) - $quantity);
+            } else {
+                // 2. Nếu không có Flash Sale: Trừ vào physical_stock (Available sẽ giảm theo)
+                $record->physical_stock = max(0, ($record->physical_stock ?? 0) - $quantity);
+            }
+
+            $record->syncAvailableStock();
+            $record->save();
+
+            $this->recordHistory($isFlashSaleActive ? 'deduct_flash' : 'deduct_physical', $variantId, $quantity, $reason, $record);
+
+            return [
+                'success' => true,
+                'data' => [
+                    'variant_id' => $variantId,
+                    'available_stock' => $record->available_stock,
+                    'physical_stock' => $record->physical_stock,
+                    'flash_sale_stock' => $record->flash_sale_stock,
+                ]
+            ];
+        });
+    }
+
+    /**
+     * Nhập kho thủ công: tăng physical_stock và sync available_stock.
+     */
+    public function importStock(int $variantId, int $quantity, string $reason = 'manual_import'): array
+    {
+        if ($quantity <= 0) {
+            return ['success' => false, 'message' => 'Số lượng nhập phải > 0'];
+        }
+
+        try {
+            $result = DB::transaction(function () use ($variantId, $quantity, $reason) {
+                // Lấy bản ghi tồn kho MỚI NHẤT của variant
+                $record = ProductWarehouse::where('variant_id', $variantId)
+                    ->orderByDesc('id')
+                    ->lockForUpdate()
+                    ->first();
+                
+                if (!$record) {
+                    $record = new ProductWarehouse();
+                    $record->variant_id = $variantId;
+                    $record->physical_stock = 0;
+                    $record->flash_sale_stock = 0;
+                    $record->deal_stock = 0;
+                    $record->qty = 0;
+                }
+
+                $record->physical_stock = ($record->physical_stock ?? 0) + $quantity;
+                $record->syncAvailableStock();
+                $record->save();
+
+                $this->recordHistory('import', $variantId, $quantity, $reason, $record);
+
+                Log::info('[Inventory] Import stock', [
+                    'variant_id' => $variantId,
+                    'quantity' => $quantity,
+                    'reason' => $reason,
+                    'available_stock' => $record->available_stock,
+                    'physical_stock' => $record->physical_stock,
+                    'flash_sale_stock' => $record->flash_sale_stock,
+                    'deal_stock' => $record->deal_stock,
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Nhập kho thành công',
+                    'data' => [
+                        'variant_id' => $variantId,
+                        'available_stock' => $record->available_stock,
+                        'physical_stock' => $record->physical_stock,
+                        'flash_sale_stock' => $record->flash_sale_stock,
+                        'deal_stock' => $record->deal_stock,
+                    ],
+                ];
+            });
+
+            return $result;
+        } catch (\Exception $e) {
+            Log::error('Import stock failed: ' . $e->getMessage(), [
+                'variant_id' => $variantId,
+                'quantity' => $quantity,
+                'reason' => $reason,
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return ['success' => false, 'message' => 'Import stock thất bại: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Xuất kho thủ công: giảm physical_stock; ưu tiên available_stock, thiếu sẽ ném lỗi.
+     */
+    public function manualExportStock(int $variantId, int $quantity, string $reason = 'manual_export'): array
+    {
+        if ($quantity <= 0) {
+            return ['success' => false, 'message' => 'Số lượng xuất phải > 0'];
+        }
+
+        try {
+            $result = DB::transaction(function () use ($variantId, $quantity, $reason) {
+                $record = ProductWarehouse::where('variant_id', $variantId)->lockForUpdate()->first();
+                if (!$record) {
+                    throw new \RuntimeException('Không tìm thấy bản ghi tồn kho');
+                }
+
+                $available = $record->available_stock;
+                if ($available < $quantity) {
+                    throw new \RuntimeException("Không đủ tồn khả dụng để xuất. available_stock={$available}, cần {$quantity}");
+                }
+
+                $record->physical_stock = max(0, ($record->physical_stock ?? 0) - $quantity);
+                $record->syncAvailableStock();
+                $record->save();
+
+                $this->recordHistory('manual_export', $variantId, $quantity, $reason, $record);
+
+                Log::info('[Inventory] Manual export', [
+                    'variant_id' => $variantId,
+                    'quantity' => $quantity,
+                    'reason' => $reason,
+                    'available_stock' => $record->available_stock,
+                    'physical_stock' => $record->physical_stock,
+                    'flash_sale_stock' => $record->flash_sale_stock,
+                    'deal_stock' => $record->deal_stock,
+                ]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Xuất kho thành công',
+                    'data' => [
+                        'variant_id' => $variantId,
+                        'available_stock' => $record->available_stock,
+                        'physical_stock' => $record->physical_stock,
+                        'flash_sale_stock' => $record->flash_sale_stock,
+                        'deal_stock' => $record->deal_stock,
+                    ],
+                ];
+            });
+
+            return $result;
+        } catch (\RuntimeException $e) {
+            Log::warning('Manual export blocked: ' . $e->getMessage(), [
+                'variant_id' => $variantId,
+                'quantity' => $quantity,
+                'reason' => $reason,
+            ]);
+            return ['success' => false, 'message' => $e->getMessage()];
+        } catch (\Exception $e) {
+            Log::error('Manual export failed: ' . $e->getMessage(), [
+                'variant_id' => $variantId,
+                'quantity' => $quantity,
+                'reason' => $reason,
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return ['success' => false, 'message' => 'Manual export thất bại: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Ghi lịch sử thao tác vào bảng history (best effort).
+     */
+    protected function recordHistory(string $action, int $variantId, int $quantity, string $reason, ProductWarehouse $record): void
+    {
+        try {
+            History::insert([
+                'user_id' => Auth::id(),
+                'content' => "[{$action}] variant_id={$variantId}, qty={$quantity}, reason={$reason}, physical={$record->physical_stock}, flash={$record->flash_sale_stock}, deal={$record->deal_stock}, available={$record->available_stock}",
+                'created_at' => now(),
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Record history failed: ' . $e->getMessage(), [
+                'action' => $action,
+                'variant_id' => $variantId,
+                'quantity' => $quantity,
+            ]);
+        }
     }
     
     /**

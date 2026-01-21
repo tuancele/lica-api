@@ -12,6 +12,7 @@ Homestead.yaml
 npm-debug.log
 yarn-error.log
 .htaccess
+/MD
 
 # --- QUAN TRỌNG: Không cache cấu hình cứng ---
 /bootstrap/cache/*.php

@@ -6,11 +6,13 @@ use App\Modules\Warehouse\Models\Warehouse;
 use App\Modules\Warehouse\Models\ProductWarehouse;
 use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
+use App\Modules\FlashSale\Models\ProductSale;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Service class for Warehouse business logic
@@ -29,17 +31,69 @@ class WarehouseService implements WarehouseServiceInterface
      */
     public function getInventory(array $filters = [], int $perPage = 10): LengthAwarePaginator
     {
-        $query = Variant::select(
-            'variants.id as variant_id',
-            'variants.sku as variant_sku',
-            'variants.option1_value as variant_option',
-            'posts.id as product_id',
-            'posts.name as product_name',
-            'posts.image as product_image'
-        )
-        ->join('posts', 'posts.id', '=', 'variants.product_id')
-        ->where('posts.type', 'product')
-        ->where('posts.status', 1);
+        $hasNewStockColumns =
+            Schema::hasColumn('product_warehouse', 'physical_stock') &&
+            Schema::hasColumn('product_warehouse', 'flash_sale_stock') &&
+            Schema::hasColumn('product_warehouse', 'deal_stock');
+
+        if ($hasNewStockColumns) {
+            $latestPwSub = '(select max(pw2.id) from product_warehouse as pw2 where pw2.variant_id = variants.id)';
+            $activeFlashSaleQtySub = '(select COALESCE(sum(ps.number - ps.buy),0) from productsales ps join flashsales fs on fs.id = ps.flashsale_id where ps.variant_id = variants.id and fs.status = 1 and fs.start <= UNIX_TIMESTAMP() and fs.end >= UNIX_TIMESTAMP())';
+
+            $query = Variant::select(
+                'variants.id as variant_id',
+                'variants.sku as variant_sku',
+                'variants.option1_value as variant_option',
+                'posts.id as product_id',
+                'posts.name as product_name',
+                'posts.image as product_image',
+                DB::raw('COALESCE(pw.physical_stock, 0) as physical_stock'),
+                DB::raw("({$activeFlashSaleQtySub}) as flash_sale_stock_val"), // Alias mới để tránh xung đột
+                DB::raw('COALESCE(pw.deal_stock, 0) as deal_stock'),
+                DB::raw("GREATEST(COALESCE(pw.physical_stock,0) - ({$activeFlashSaleQtySub}) - COALESCE(pw.deal_stock,0), 0) as available_stock_val")
+            )
+            ->join('posts', 'posts.id', '=', 'variants.product_id')
+            ->leftJoin('product_warehouse as pw', function ($join) use ($latestPwSub) {
+                $join->on('pw.variant_id', '=', 'variants.id')
+                    ->whereRaw("pw.id = ({$latestPwSub})");
+            })
+            ->where('posts.type', 'product')
+            ->where('posts.status', 1);
+        } else {
+            // Fallback for environments where migration hasn't been executed yet.
+            // Keep API stable (no 500), and return stock based on legacy import-export totals.
+            $query = Variant::select(
+                'variants.id as variant_id',
+                'variants.sku as variant_sku',
+                'variants.option1_value as variant_option',
+                'posts.id as product_id',
+                'posts.name as product_name',
+                'posts.image as product_image'
+            )
+            ->join('posts', 'posts.id', '=', 'variants.product_id')
+            ->where('posts.type', 'product')
+            ->where('posts.status', 1);
+
+            $query->selectRaw('
+                COALESCE(SUM(CASE WHEN pw_import.qty IS NOT NULL THEN pw_import.qty ELSE 0 END), 0) as import_total,
+                COALESCE(SUM(CASE WHEN pw_export.qty IS NOT NULL THEN pw_export.qty ELSE 0 END), 0) as export_total,
+                MAX(CASE WHEN pw_import.created_at IS NOT NULL THEN pw_import.created_at END) as last_import_date,
+                MAX(CASE WHEN pw_export.created_at IS NOT NULL THEN pw_export.created_at END) as last_export_date,
+                (COALESCE(SUM(CASE WHEN pw_import.qty IS NOT NULL THEN pw_import.qty ELSE 0 END), 0) - COALESCE(SUM(CASE WHEN pw_export.qty IS NOT NULL THEN pw_export.qty ELSE 0 END), 0)) as available_stock,
+                (COALESCE(SUM(CASE WHEN pw_import.qty IS NOT NULL THEN pw_import.qty ELSE 0 END), 0) - COALESCE(SUM(CASE WHEN pw_export.qty IS NOT NULL THEN pw_export.qty ELSE 0 END), 0)) as physical_stock,
+                0 as flash_sale_stock,
+                0 as deal_stock
+            ')
+            ->leftJoin('product_warehouse as pw_import', function($join) {
+                $join->on('pw_import.variant_id', '=', 'variants.id')
+                     ->where('pw_import.type', '=', 'import');
+            })
+            ->leftJoin('product_warehouse as pw_export', function($join) {
+                $join->on('pw_export.variant_id', '=', 'variants.id')
+                     ->where('pw_export.type', '=', 'export');
+            })
+            ->groupBy('variants.id', 'variants.sku', 'variants.option1_value', 'posts.id', 'posts.name', 'posts.image');
+        }
 
         // Filter by keyword
         if (isset($filters['keyword']) && !empty($filters['keyword'])) {
@@ -60,29 +114,20 @@ class WarehouseService implements WarehouseServiceInterface
             $query->where('posts.id', $filters['product_id']);
         }
 
-        // Get import/export totals
-        $query->selectRaw('
-            COALESCE(SUM(CASE WHEN pw_import.qty IS NOT NULL THEN pw_import.qty ELSE 0 END), 0) as import_total,
-            COALESCE(SUM(CASE WHEN pw_export.qty IS NOT NULL THEN pw_export.qty ELSE 0 END), 0) as export_total,
-            MAX(CASE WHEN pw_import.created_at IS NOT NULL THEN pw_import.created_at END) as last_import_date,
-            MAX(CASE WHEN pw_export.created_at IS NOT NULL THEN pw_export.created_at END) as last_export_date
-        ')
-        ->leftJoin('product_warehouse as pw_import', function($join) {
-            $join->on('pw_import.variant_id', '=', 'variants.id')
-                 ->where('pw_import.type', '=', 'import');
-        })
-        ->leftJoin('product_warehouse as pw_export', function($join) {
-            $join->on('pw_export.variant_id', '=', 'variants.id')
-                 ->where('pw_export.type', '=', 'export');
-        })
-        ->groupBy('variants.id', 'variants.sku', 'variants.option1_value', 'posts.id', 'posts.name', 'posts.image');
-
         // Filter by stock range
         if (isset($filters['min_stock'])) {
-            $query->havingRaw('(import_total - export_total) >= ?', [$filters['min_stock']]);
+            if ($hasNewStockColumns) {
+                $query->whereRaw('COALESCE(pw.qty, 0) >= ?', [$filters['min_stock']]);
+            } else {
+                $query->havingRaw('available_stock >= ?', [$filters['min_stock']]);
+            }
         }
         if (isset($filters['max_stock'])) {
-            $query->havingRaw('(import_total - export_total) <= ?', [$filters['max_stock']]);
+            if ($hasNewStockColumns) {
+                $query->whereRaw('COALESCE(pw.qty, 0) <= ?', [$filters['max_stock']]);
+            } else {
+                $query->havingRaw('available_stock <= ?', [$filters['max_stock']]);
+            }
         }
 
         // Sort
@@ -90,7 +135,11 @@ class WarehouseService implements WarehouseServiceInterface
         $sortOrder = $filters['sort_order'] ?? 'asc';
         
         if ($sortBy === 'stock') {
-            $query->orderByRaw("(import_total - export_total) {$sortOrder}");
+            if ($hasNewStockColumns) {
+                $query->orderByRaw("COALESCE(pw.qty, 0) {$sortOrder}");
+            } else {
+                $query->orderByRaw("available_stock {$sortOrder}");
+            }
         } elseif ($sortBy === 'variant_name') {
             $query->orderBy('variants.option1_value', $sortOrder);
         } else {
@@ -252,19 +301,29 @@ class WarehouseService implements WarehouseServiceInterface
                 'subject' => $data['subject'],
                 'content' => $content,
                 'type' => 'import',
-                'user_id' => Auth::id(),
+                'user_id' => Auth::id() ?? 1,
             ]);
 
             // Create product warehouse items
             if (isset($data['items']) && is_array($data['items'])) {
                 foreach ($data['items'] as $item) {
+                    $variantId = (int)$item['variant_id'];
+                    $qty = (int)($item['quantity'] ?? 0);
+                    $price = (float)($item['price'] ?? 0);
+
+                    // 1. Tạo bản ghi nhật ký nhập kho
                     ProductWarehouse::create([
                         'warehouse_id' => $warehouse->id,
-                        'variant_id' => $item['variant_id'],
-                        'price' => $item['price'] ?? 0,
-                        'qty' => $item['quantity'] ?? 0,
+                        'variant_id' => $variantId,
+                        'price' => $price,
+                        'qty' => $qty,
                         'type' => 'import',
+                        'created_at' => now(),
                     ]);
+
+                    // 2. Cập nhật physical_stock thông qua InventoryService
+                    // Hệ thống mới cần snapshot tồn kho thực tế
+                    app(\App\Services\Inventory\InventoryServiceInterface::class)->importStock($variantId, $qty, 'warehouse_import: ' . $warehouse->code);
                 }
             }
 
@@ -672,21 +731,71 @@ class WarehouseService implements WarehouseServiceInterface
      */
     public function getProductVariants(int $productId): array
     {
-        $variants = Variant::select('id', 'sku', 'option1_value')
+        $product = Product::where('type', 'product')->findOrFail($productId);
+
+        $variants = Variant::select('id', 'sku', 'product_id', 'option1_value', 'price', 'stock')
             ->where('product_id', $productId)
             ->orderBy('option1_value', 'asc')
             ->get();
 
-        return $variants->map(function($variant) {
-            $importTotal = countProduct($variant->id, 'import');
-            $exportTotal = countProduct($variant->id, 'export');
-            $currentStock = max(0, $importTotal - $exportTotal);
+        // Auto-create a fallback variant for single products so warehouse import/export can work.
+        if ($variants->isEmpty() && (int) $product->has_variants === 0) {
+            $fallbackSku = $product->slug
+                ? 'SKU-' . strtoupper(str_replace(' ', '-', $product->slug))
+                : 'PROD-' . $productId . '-DEFAULT';
+
+            $fallbackVariant = Variant::firstOrCreate(
+                ['product_id' => $productId],
+                [
+                    'sku' => $fallbackSku,
+                    'option1_value' => $product->option1_name ?: 'Default',
+                    'price' => (float) ($product->getAttribute('price') ?? 0),
+                    'stock' => (int) ($product->getAttribute('stock') ?? 0),
+                    'position' => 0,
+                    'user_id' => Auth::id(),
+                ]
+            );
+
+            $fallbackVariant->setAttribute('is_default_variant', true);
+            $variants = collect([$fallbackVariant]);
+        }
+
+        $hasNewStockColumns =
+            Schema::hasColumn('product_warehouse', 'physical_stock') &&
+            Schema::hasColumn('product_warehouse', 'flash_sale_stock') &&
+            Schema::hasColumn('product_warehouse', 'deal_stock');
+
+        return $variants->map(function($variant) use ($hasNewStockColumns) {
+            $isDefault = (bool) $variant->getAttribute('is_default_variant');
+
+            if ($hasNewStockColumns) {
+                $latestWarehouseRow = ProductWarehouse::where('variant_id', $variant->id)
+                    ->latest('id')
+                    ->first();
+
+                $physicalStock = $latestWarehouseRow ? (int) ($latestWarehouseRow->physical_stock ?? 0) : 0;
+                $flashSaleStock = $latestWarehouseRow ? (int) ($latestWarehouseRow->flash_sale_stock ?? 0) : 0;
+                $dealStock = $latestWarehouseRow ? (int) ($latestWarehouseRow->deal_stock ?? 0) : 0;
+                $availableStock = max(0, $physicalStock - $flashSaleStock - $dealStock);
+            } else {
+                $importTotal = countProduct($variant->id, 'import');
+                $exportTotal = countProduct($variant->id, 'export');
+                $availableStock = max(0, $importTotal - $exportTotal);
+                $physicalStock = $availableStock;
+                $flashSaleStock = 0;
+                $dealStock = 0;
+            }
             
             return [
                 'id' => $variant->id,
+                'product_id' => $variant->product_id,
                 'sku' => $variant->sku,
-                'option1_value' => $variant->option1_value ?? 'Mặc định',
-                'current_stock' => $currentStock,
+                'option1_value' => $variant->option1_value ?? 'Default',
+                'physical_stock' => $physicalStock,
+                'flash_sale_stock' => $flashSaleStock,
+                'deal_stock' => $dealStock,
+                'current_stock' => $availableStock,
+                'is_default' => $isDefault,
             ];
         })->toArray();
     }
@@ -700,16 +809,59 @@ class WarehouseService implements WarehouseServiceInterface
     public function getVariantStock(int $variantId): array
     {
         $variant = Variant::findOrFail($variantId);
-        
-        $importTotal = countProduct($variantId, 'import');
-        $exportTotal = countProduct($variantId, 'export');
-        $currentStock = max(0, $importTotal - $exportTotal);
-        
+
+        $activeFlashSaleQtySub = ProductSale::query()
+            ->selectRaw('COALESCE(SUM(productsales.number),0)')
+            ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
+            ->whereColumn('productsales.variant_id', 'variants.id');
+
+        $hasNewStockColumns =
+            Schema::hasColumn('product_warehouse', 'physical_stock') &&
+            Schema::hasColumn('product_warehouse', 'flash_sale_stock') &&
+            Schema::hasColumn('product_warehouse', 'deal_stock');
+
+        $physicalStock = 0;
+        $flashSaleStock = 0;
+        $dealStock = 0;
+        $availableStock = 0;
+
+        if ($hasNewStockColumns) {
+            $latestWarehouseRow = ProductWarehouse::where('variant_id', $variantId)
+                ->latest('id')
+                ->first();
+
+            $physicalStock = $latestWarehouseRow ? (int) ($latestWarehouseRow->physical_stock ?? 0) : 0;
+            $flashSaleStock = (int) ProductSale::query()
+                ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
+                ->where('productsales.variant_id', $variantId)
+                ->where('fs.status', 1)
+                ->where('fs.start', '<=', time())
+                ->where('fs.end', '>=', time())
+                ->selectRaw('SUM(number - buy) as total')
+                ->value('total') ?? 0;
+            $dealStock = $latestWarehouseRow ? (int) ($latestWarehouseRow->deal_stock ?? 0) : 0;
+            $availableStock = max(0, $physicalStock - $flashSaleStock - $dealStock);
+        } else {
+            $importTotal = countProduct($variantId, 'import');
+            $exportTotal = countProduct($variantId, 'export');
+            $physicalStock = max(0, $importTotal - $exportTotal);
+            $flashSaleStock = (int) ProductSale::query()
+                ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
+                ->where('productsales.variant_id', $variantId)
+                ->where('fs.status', 1)
+                ->where('fs.start', '<=', time())
+                ->where('fs.end', '>=', time())
+                ->selectRaw('SUM(number - buy) as total')
+                ->value('total') ?? 0;
+            $dealStock = 0;
+            $availableStock = max(0, $physicalStock - $flashSaleStock - $dealStock);
+        }
+
         $importAvgPrice = ProductWarehouse::where('variant_id', $variantId)
             ->where('type', 'import')
             ->where('price', '>', 0)
             ->avg('price');
-        
+
         $exportAvgPrice = ProductWarehouse::where('variant_id', $variantId)
             ->where('type', 'export')
             ->where('price', '>', 0)
@@ -719,9 +871,11 @@ class WarehouseService implements WarehouseServiceInterface
             'variant_id' => $variant->id,
             'variant_sku' => $variant->sku,
             'variant_option' => $variant->option1_value ?? 'Mặc định',
-            'import_total' => $importTotal,
-            'export_total' => $exportTotal,
-            'current_stock' => $currentStock,
+            'physical_stock' => $physicalStock,
+            'flash_sale_stock' => $flashSaleStock,
+            'deal_stock' => $dealStock,
+            'available_stock' => $availableStock,
+            'current_stock' => $availableStock,
             'price' => [
                 'import_avg' => $importAvgPrice ? (float) $importAvgPrice : null,
                 'export_avg' => $exportAvgPrice ? (float) $exportAvgPrice : null,

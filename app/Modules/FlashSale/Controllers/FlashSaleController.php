@@ -76,22 +76,20 @@ class FlashSaleController extends Controller
             if ($product->has_variants == 1 && $product->variants) {
                 // Product has variants - calculate stock for each variant
                 $product->variants = $product->variants->map(function($variant) use ($product) {
-                    $variant->actual_stock = $this->productStockValidator->getProductStock(
-                        $product->id,
-                        $variant->id
-                    );
+                    $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($variant->id);
+                    $variant->actual_stock = $warehouseStock['physical_stock'] ?? 0;
                     // Calculate available stock (S_phy - S_flash)
-                    $variant->available_stock = $this->inventoryService->getAvailableStock(
-                        $product->id,
-                        $variant->id
-                    );
+                    $variant->available_stock = $warehouseStock['available_stock'] ?? 0;
                     return $variant;
                 });
             } else {
                 // Product without variants
-                $product->actual_stock = $this->productStockValidator->getProductStock($product->id);
+                $variant = $product->variant($product->id);
+                $stockId = $variant ? $variant->id : $product->id;
+                $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($stockId);
+                $product->actual_stock = $warehouseStock['physical_stock'] ?? 0;
                 // Calculate available stock (S_phy - S_flash)
-                $product->available_stock = $this->inventoryService->getAvailableStock($product->id);
+                $product->available_stock = $warehouseStock['available_stock'] ?? 0;
             }
             return $product;
         });
@@ -670,23 +668,21 @@ class FlashSaleController extends Controller
                 } else {
                     // No specific variants selected, show all
                     $product->variants = $product->variants->map(function($variant) use ($product) {
-                        $variant->actual_stock = $this->productStockValidator->getProductStock(
-                            $product->id,
-                            $variant->id
-                        );
+                        $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($variant->id);
+                        $variant->actual_stock = $warehouseStock['physical_stock'] ?? 0;
                         // Calculate available stock (S_phy - S_flash)
-                        $variant->available_stock = $this->inventoryService->getAvailableStock(
-                            $product->id,
-                            $variant->id
-                        );
+                        $variant->available_stock = $warehouseStock['available_stock'] ?? 0;
                         return $variant;
                     });
                 }
             } else {
                 // Product without variants
-                $product->actual_stock = $this->productStockValidator->getProductStock($product->id);
+                $variant = $product->variant($product->id);
+                $stockId = $variant ? $variant->id : $product->id;
+                $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($stockId);
+                $product->actual_stock = $warehouseStock['physical_stock'] ?? 0;
                 // Calculate available stock (S_phy - S_flash)
-                $product->available_stock = $this->inventoryService->getAvailableStock($product->id);
+                $product->available_stock = $warehouseStock['available_stock'] ?? 0;
             }
             return $product;
         });
@@ -755,11 +751,13 @@ class FlashSaleController extends Controller
                     }
                     
                     // Calculate available stock (S_phy - S_flash)
-                    $availableStock = $this->inventoryService->getAvailableStock($product->id, $v->id);
+                    $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($v->id);
+                    $availableStock = $warehouseStock['available_stock'] ?? 0;
+                    $actual_stock = $warehouseStock['physical_stock'] ?? 0;
                     
                     $html .= '<tr>';
                     $html .= '<td width="5%" style="text-align: center;">';
-                    $html .= '<input style="margin: 0px;display: inline-block;" type="checkbox" name="productid[]" class="checkbox wgr-checkbox" value="'.$product->id.'_v'.$v->id.'" data-product-id="'.$product->id.'" data-variant-id="'.$v->id.'" data-original-price="'.$v->price.'" data-stock="'.$variantStock.'" data-available-stock="'.$availableStock.'">';
+                    $html .= '<input style="margin: 0px;display: inline-block;" type="checkbox" name="productid[]" class="checkbox wgr-checkbox" value="'.$product->id.'_v'.$v->id.'" data-product-id="'.$product->id.'" data-variant-id="'.$v->id.'" data-original-price="'.$v->price.'" data-stock="'.$actual_stock.'" data-available-stock="'.$availableStock.'">';
                     $html .= '</td>';
                     $html .= '<td width="35%">';
                     $html .= '<img src="'.$image.'" style="width:50px;height: 50px;float: left;margin-right: 5px;">';
@@ -775,11 +773,15 @@ class FlashSaleController extends Controller
             } else {
                 // Product without variants
                 // Calculate available stock (S_phy - S_flash)
-                $availableStock = $this->inventoryService->getAvailableStock($product->id);
+                $variant = $product->variant($product->id);
+                $stockId = $variant ? $variant->id : $product->id;
+                $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($stockId);
+                $availableStock = $warehouseStock['available_stock'] ?? 0;
+                $actual_stock = $warehouseStock['physical_stock'] ?? 0;
                 
                 $html .= '<tr>';
                 $html .= '<td width="5%" style="text-align: center;">';
-                $html .= '<input style="margin: 0px;display: inline-block;" type="checkbox" name="productid[]" class="checkbox wgr-checkbox" value="'.$product->id.'" data-product-id="'.$product->id.'" data-variant-id="" data-original-price="'.$price.'" data-stock="'.$stock.'" data-available-stock="'.$availableStock.'">';
+                $html .= '<input style="margin: 0px;display: inline-block;" type="checkbox" name="productid[]" class="checkbox wgr-checkbox" value="'.$product->id.'" data-product-id="'.$product->id.'" data-variant-id="" data-original-price="'.$price.'" data-stock="'.$actual_stock.'" data-available-stock="'.$availableStock.'">';
                 $html .= '</td>';
                 $html .= '<td width="35%">';
                 $html .= '<img src="'.$image.'" style="width:50px;height: 50px;float: left;margin-right: 5px;">';

@@ -1013,7 +1013,16 @@ class CartController extends Controller
                                 'created_at' => date('Y-m-d H:i:s')
                             ]);
 
-                            // Update FlashSale Stock
+                            // Update FlashSale Stock & Physical Stock (S_phy - S_flash logic)
+                            if ($variant_id) {
+                                app(\App\Services\Inventory\InventoryServiceInterface::class)->deductStockForOrder(
+                                    (int)$variant_id, 
+                                    (int)($variant['qty'] ?? 1),
+                                    'order: ' . $code
+                                );
+                            }
+
+                            // Update legacy FlashSale table counter
                             $date = strtotime(date('Y-m-d H:i:s'));
                             $flash = FlashSale::where([['status', '1'], ['start', '<=', $date], ['end', '>=', $date]])->first();
                             if ($flash) {

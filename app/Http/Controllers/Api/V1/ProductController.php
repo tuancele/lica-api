@@ -199,17 +199,24 @@ class ProductController extends Controller
             $variants = $product->variants->map(function($variant) use ($product) {
                 $variantPriceInfo = $this->getVariantPriceInfo($variant->id, $product->id);
                 
-                // Get warehouse stock
+                // Get warehouse stock (prefer available_stock from new warehouse ledger)
                 $warehouseStock = 0;
+                $physicalStock = 0;
+                $flashStock = 0;
+                $dealStock = 0;
                 try {
                     $stockData = $this->warehouseService->getVariantStock($variant->id);
-                    $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
+                    $warehouseStock = (int) ($stockData['available_stock'] ?? $stockData['current_stock'] ?? 0);
+                    $physicalStock = (int) ($stockData['physical_stock'] ?? 0);
+                    $flashStock = (int) ($stockData['flash_sale_stock'] ?? 0);
+                    $dealStock = (int) ($stockData['deal_stock'] ?? 0);
                 } catch (\Exception $e) {
                     Log::warning('Failed to get warehouse stock for variant: ' . $variant->id, [
                         'error' => $e->getMessage()
                     ]);
                     // Fallback to variant stock if warehouse service fails
                     $warehouseStock = (int) ($variant->stock ?? 0);
+                    $physicalStock = $warehouseStock;
                 }
                 
                 // Build option label
@@ -248,6 +255,10 @@ class ProductController extends Controller
                         'unit' => $variant->size->unit ?? '',
                     ] : null,
                     'price_info' => $variantPriceInfo,
+                    'physical_stock' => $physicalStock,
+                    'flash_sale_stock' => $flashStock,
+                    'deal_stock' => $dealStock,
+                    'available_stock' => $warehouseStock,
                     'option_label' => $optLabel,
                 ];
             });

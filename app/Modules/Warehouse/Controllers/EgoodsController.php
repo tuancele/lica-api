@@ -124,16 +124,20 @@ class EgoodsController extends Controller
                         if(isset($price) && isset($qty)){
                             $total = countProduct($variantId,'import');
                             if($qty[$key] <= $total){
+                                $quantity = (int)$qty[$key];
                                 ProductWarehouse::insertGetId(
                                     [
                                         'variant_id' => $variantId,
                                         'price' => (isset($price))?$price[$key]:"",
-                                        'qty' => (isset($qty))?$qty[$key]:"",
+                                        'qty' => $quantity,
                                         'type' => 'export',
                                         'warehouse_id' => $id,
                                         'created_at' => date('Y-m-d H:i:s'),
                                     ]
                                 );
+
+                                // Cập nhật physical_stock thông qua InventoryService (Xuất kho - trừ physical_stock)
+                                app(\App\Services\Inventory\InventoryServiceInterface::class)->manualExportStock((int)$variantId, $quantity, 'web_export: ' . $request->code);
                             }
                         }
                     }
@@ -305,16 +309,20 @@ class EgoodsController extends Controller
                         if(isset($price) && isset($qty)){
                             $total = countProduct($variantId,'import');
                             if($qty[$key] <= $total){
+                                $quantity = (int)$qty[$key];
                                 ProductWarehouse::insertGetId(
                                     [
                                         'variant_id' => $variantId,
                                         'price' => $price[$key],
-                                        'qty' => $qty[$key],
+                                        'qty' => $quantity,
                                         'type' => 'export',
                                         'warehouse_id' => $request->id,
                                         'created_at' => date('Y-m-d H:i:s'),
                                     ]
                                 );
+
+                                // Cập nhật physical_stock thông qua InventoryService (Xuất kho - trừ physical_stock)
+                                app(\App\Services\Inventory\InventoryServiceInterface::class)->manualExportStock((int)$variantId, $quantity, 'web_export_update: ' . $request->code);
                             }
                         }
                     }

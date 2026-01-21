@@ -132,3 +132,14 @@ $(document).ready(function() {
     });
 });
 </script>
+<style>
+    .image-upload-placeholder {
+        width: 80px;
+        height: 80px;
+        border: 2px dashed #bbb;
+        border-radius: 4px;
+        background: #fafafa;
+        box-sizing: border-box;
+        margin: 0;
+    }
+</style>

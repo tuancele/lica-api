@@ -18,8 +18,12 @@
         $productSale = $productSales->where('variant_id', $variant->id)->first();
         $price_sale = $productSale ? $productSale->price_sale : '';
         $number_sale = $productSale ? $productSale->number : '';
-        $actual_stock = isset($variant->actual_stock) ? $variant->actual_stock : 0;
-        $available_stock = isset($variant->available_stock) ? $variant->available_stock : $actual_stock;
+        
+        // Get stock info from warehouse system for accuracy
+        $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($variant->id);
+        $actual_stock = $warehouseStock['physical_stock'] ?? 0;
+        $available_stock = $warehouseStock['available_stock'] ?? 0;
+        
         // Flash Sale Virtual Stock = number - buy (if exists)
         $flash_virtual_stock = $productSale ? ($productSale->number - $productSale->buy) : 0;
     @endphp
@@ -78,8 +82,13 @@
             $price_sale = $productSale->price_sale;
             $number_sale = $productSale->number;
         }
-        $actual_stock = isset($product->actual_stock) ? $product->actual_stock : 0;
-        $available_stock = isset($product->available_stock) ? $product->available_stock : $actual_stock;
+        
+        // Get stock info from warehouse system for accuracy
+        $stockId = $variant ? $variant->id : $product->id;
+        $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($stockId);
+        $actual_stock = $warehouseStock['physical_stock'] ?? 0;
+        $available_stock = $warehouseStock['available_stock'] ?? 0;
+        
         // Flash Sale Virtual Stock = number - buy (if exists)
         $flash_virtual_stock = $productSale ? ($productSale->number - $productSale->buy) : 0;
     @endphp

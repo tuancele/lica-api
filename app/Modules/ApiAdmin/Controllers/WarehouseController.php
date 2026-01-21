@@ -12,9 +12,15 @@ use App\Http\Resources\Warehouse\ImportReceiptResource;
 use App\Http\Resources\Warehouse\ImportReceiptCollection;
 use App\Http\Resources\Warehouse\ExportReceiptResource;
 use App\Http\Resources\Warehouse\ExportReceiptCollection;
+use App\Modules\Product\Models\Product;
+use App\Modules\Product\Models\Variant;
+use App\Modules\Warehouse\Models\ProductWarehouse;
 use App\Services\Warehouse\WarehouseServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
@@ -98,6 +104,105 @@ class WarehouseController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Lấy danh sách tồn kho thất bại',
+                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get inventory per product (variants) with physical, reserved and available stocks.
+     *
+     * GET /admin/api/v1/warehouse/inventory/by-product/{productId}
+     */
+    public function inventoryByProduct(int $productId): JsonResponse
+    {
+        try {
+            $product = Product::with(['variants' => function ($q) {
+                $q->orderBy('position', 'asc')->orderBy('id', 'asc');
+            }])->findOrFail($productId);
+
+            $variants = $product->variants;
+
+            // Fallback: single product without variants -> create a default variant to unblock stock workflows.
+            if ($variants->isEmpty() && (int) $product->has_variants === 0) {
+                $fallbackSku = $product->slug
+                    ? 'SKU-' . strtoupper(str_replace(' ', '-', $product->slug))
+                    : 'PROD-' . $productId . '-DEFAULT';
+
+                $fallbackVariant = Variant::firstOrCreate(
+                    ['product_id' => $productId],
+                    [
+                        'sku' => $fallbackSku,
+                        'option1_value' => $product->option1_name ?: 'Default',
+                        'price' => (float) ($product->getAttribute('price') ?? 0),
+                        'stock' => (int) ($product->getAttribute('stock') ?? 0),
+                        'position' => 0,
+                        'user_id' => Auth::id(),
+                    ]
+                );
+
+                $fallbackVariant->setAttribute('is_default_variant', true);
+                $variants = collect([$fallbackVariant]);
+            }
+
+            $hasNewColumns =
+                \Schema::hasColumn('product_warehouse', 'physical_stock') &&
+                \Schema::hasColumn('product_warehouse', 'flash_sale_stock') &&
+                \Schema::hasColumn('product_warehouse', 'deal_stock');
+
+            $rows = $variants->map(function ($variant) use ($product, $hasNewColumns) {
+                if ($hasNewColumns) {
+                    $latest = ProductWarehouse::where('variant_id', $variant->id)
+                        ->orderByDesc('id')
+                        ->first();
+
+                    $physical = $latest ? (int) ($latest->physical_stock ?? 0) : 0;
+                    $flash = $latest ? (int) ($latest->flash_sale_stock ?? 0) : 0;
+                    $deal = $latest ? (int) ($latest->deal_stock ?? 0) : 0;
+                    $available = $latest ? (int) ($latest->available_stock ?? max(0, $physical - $flash - $deal)) : max(0, $physical - $flash - $deal);
+                } else {
+                    // Fallback when migration not applied
+                    $import = countProduct($variant->id, 'import');
+                    $export = countProduct($variant->id, 'export');
+                    $physical = max(0, $import - $export);
+                    $flash = 0;
+                    $deal = 0;
+                    $available = $physical;
+                }
+
+                return [
+                    'variant_id' => $variant->id,
+                    'variant_sku' => $variant->sku,
+                    'variant_option' => $variant->option1_value ?? 'Mặc định',
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'product_image' => $product->image,
+                    'physical_stock' => $physical,
+                    'flash_sale_stock' => $flash,
+                    'deal_stock' => $deal,
+                    'available_stock' => $available,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => InventoryResource::collection($rows->map(fn($row) => (object) $row)),
+            ], 200);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sản phẩm không tồn tại',
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Get inventory by product failed: ' . $e->getMessage(), [
+                'method' => __METHOD__,
+                'product_id' => $productId,
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Lấy tồn kho theo sản phẩm thất bại',
                 'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误'
             ], 500);
         }
@@ -267,12 +372,18 @@ class WarehouseController extends Controller
     {
         try {
             $receipt = $this->warehouseService->createImportReceipt($request->validated());
-            
             return response()->json([
                 'success' => true,
-                'message' => 'Tạo phiếu nhập hàng thành công',
+                'message' => 'Import receipt created',
                 'data' => new ImportReceiptResource($receipt),
-            ], 201);
+            ], 200);
+            
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
             
         } catch (\Exception $e) {
             Log::error('Create import receipt failed: ' . $e->getMessage(), [
@@ -282,7 +393,7 @@ class WarehouseController extends Controller
             
             return response()->json([
                 'success' => false,
-                'message' => 'Tạo phiếu nhập hàng thất bại',
+                'message' => 'Create import receipt failed',
                 'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误'
             ], 500);
         }
@@ -528,46 +639,73 @@ class WarehouseController extends Controller
      * @param StoreExportReceiptRequest $request
      * @return JsonResponse
      */
-    public function createExportReceipt(StoreExportReceiptRequest $request): JsonResponse
+    public function createExportReceipt(Request $request): JsonResponse
     {
         try {
-            $receipt = $this->warehouseService->createExportReceipt($request->validated());
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Tạo phiếu xuất hàng thành công',
-                'data' => new ExportReceiptResource($receipt),
-            ], 201);
-            
-        } catch (\Exception $e) {
-            $errorMessage = $e->getMessage();
-            $errors = null;
-            
-            // Try to parse JSON error message
-            if (strpos($errorMessage, '{') === 0) {
-                $errorData = json_decode($errorMessage, true);
-                if (isset($errorData['errors'])) {
-                    $errors = $errorData['errors'];
+            $payload = $request->json()->all();
+            $items = $payload['items'] ?? [];
+
+            if (!is_array($items) || empty($items)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Thiếu danh sách items',
+                ], 422);
+            }
+
+            $errors = [];
+            foreach ($items as $idx => $row) {
+                if (!isset($row['variant_id']) || !isset($row['quantity'])) {
+                    $errors["items.{$idx}"] = ['variant_id và quantity là bắt buộc'];
+                } elseif ((int)$row['quantity'] <= 0) {
+                    $errors["items.{$idx}.quantity"] = ['quantity phải > 0'];
                 }
             }
-            
-            Log::error('Create export receipt failed: ' . $errorMessage, [
+            if (!empty($errors)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tham số không hợp lệ',
+                    'errors' => $errors,
+                ], 422);
+            }
+
+            $updated = [];
+            DB::beginTransaction();
+            try {
+                foreach ($items as $row) {
+                    $variantId = (int)$row['variant_id'];
+                    $qty = (int)$row['quantity'];
+                    $result = $this->inventoryService->manualExportStock($variantId, $qty, 'api_export_receipt');
+                    if (!$result['success']) {
+                        DB::rollBack();
+                        return response()->json([
+                            'success' => false,
+                            'message' => $result['message'] ?? 'Xuất kho thất bại',
+                        ], 422);
+                    }
+                    $updated[] = $result['data'];
+                }
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Xuất kho thành công',
+                'data' => InventoryResource::collection(collect($updated)),
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Create export receipt failed: ' . $e->getMessage(), [
                 'method' => __METHOD__,
                 'trace' => $e->getTraceAsString()
             ]);
             
-            if ($errors) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Không đủ tồn kho để xuất hàng',
-                    'errors' => $errors,
-                ], 422);
-            }
-            
             return response()->json([
                 'success' => false,
                 'message' => 'Tạo phiếu xuất hàng thất bại',
-                'error' => config('app.debug') ? $errorMessage : '服务器内部错误'
+                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误'
             ], 500);
         }
     }
@@ -774,6 +912,12 @@ class WarehouseController extends Controller
                 'success' => true,
                 'data' => $variants,
             ], 200);
+            
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sản phẩm không tồn tại hoặc không phải loại product',
+            ], 404);
             
         } catch (\Exception $e) {
             Log::error('Get product variants failed: ' . $e->getMessage(), [

@@ -164,6 +164,7 @@ Route::group([
         // Inventory Management
         Route::get('/inventory', 'WarehouseController@getInventory');
         Route::get('/inventory/{variantId}', 'WarehouseController@getVariantInventory');
+        Route::get('/inventory/by-product/{productId}', 'WarehouseController@inventoryByProduct');
         
         // Import Receipts Management
         Route::prefix('import-receipts')->group(function () {
