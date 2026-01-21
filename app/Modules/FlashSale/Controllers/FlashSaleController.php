@@ -9,7 +9,6 @@ use App\Modules\Product\Models\Product;
 use App\Modules\FlashSale\Models\ProductSale;
 use App\Services\Promotion\ProductStockValidatorInterface;
 use App\Services\Inventory\InventoryServiceInterface;
-use App\Models\WarehouseV2;
 use Validator;
 use Illuminate\Support\Facades\Auth;
 use Session;
@@ -55,7 +54,6 @@ class FlashSaleController extends Controller
             $user->save();
         }
         $data['apiToken'] = $user?->api_token ?? '';
-        $data['warehouseId'] = optional(WarehouseV2::getDefault())->id;
 
         // Optimized: UI will load products via Inventory API v2.
         return view($this->view.'::create', $data);
@@ -73,7 +71,6 @@ class FlashSaleController extends Controller
             $user->save();
         }
         $data['apiToken'] = $user?->api_token ?? '';
-        $data['warehouseId'] = optional(WarehouseV2::getDefault())->id;
         $data['detail'] = $detail;
         $data['productsales'] = ProductSale::where('flashsale_id',$detail->id)
             ->with(['product.variants', 'variant'])

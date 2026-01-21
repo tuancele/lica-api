@@ -5,7 +5,7 @@
     'title' => 'Flash Sale (V2) - Edit',
 ])
 
-<section class="content" data-api-token="{{ $apiToken ?? '' }}" data-warehouse-id="{{ $warehouseId ?? '' }}">
+<section class="content" data-api-token="{{ $apiToken ?? '' }}">
     <form role="form" id="flashsale-form" method="post" ajax="{{route('flashsale.update')}}">
         @csrf
         <input type="hidden" name="id" value="{{$detail->id}}">
@@ -85,13 +85,36 @@
                                 <tbody class="js-items-body">
                                     @php
                                         $rows = [];
+                                        $stockMap = [];
+                                        // Build stock map from backend-calculated data (same as create page logic)
+                                        foreach(($products ?? []) as $product) {
+                                            if ($product->has_variants == 1 && $product->variants) {
+                                                foreach($product->variants as $variant) {
+                                                    $stockMap[$variant->id] = [
+                                                        'physical_stock' => (int) ($variant->actual_stock ?? 0),
+                                                        'available_stock' => (int) ($variant->available_stock ?? 0),
+                                                        'sellable_stock' => (int) ($variant->sellable_stock ?? 0),
+                                                    ];
+                                                }
+                                            } else {
+                                                $variant = $product->variant($product->id);
+                                                $stockId = $variant ? $variant->id : $product->id;
+                                                $stockMap[$stockId] = [
+                                                    'physical_stock' => (int) ($product->actual_stock ?? 0),
+                                                    'available_stock' => (int) ($product->available_stock ?? 0),
+                                                    'sellable_stock' => (int) ($product->sellable_stock ?? 0),
+                                                ];
+                                            }
+                                        }
                                         foreach(($productsales ?? []) as $ps) {
                                             $variant = $ps->variant;
                                             $product = $ps->product;
                                             if (!$variant || !$product) { continue; }
+                                            $variantId = (int) $variant->id;
+                                            $stock = $stockMap[$variantId] ?? ['physical_stock' => 0, 'available_stock' => 0, 'sellable_stock' => 0];
                                             $rows[] = [
                                                 'product_id' => (int) $product->id,
-                                                'variant_id' => (int) $variant->id,
+                                                'variant_id' => $variantId,
                                                 'product_name' => (string) ($product->name ?? ''),
                                                 'product_image' => (string) ($product->image ?? ''),
                                                 'sku' => (string) ($variant->sku ?? ''),
@@ -99,6 +122,9 @@
                                                 'price' => (float) ($variant->price ?? 0),
                                                 'sale_price' => (float) ($ps->price_sale ?? 0),
                                                 'qty' => (int) ($ps->number ?? 0),
+                                                'phy' => $stock['physical_stock'],
+                                                'avail' => $stock['available_stock'],
+                                                'sell' => $stock['sellable_stock'],
                                             ];
                                         }
                                     @endphp
@@ -149,9 +175,9 @@
                                                            min="1"
                                                            placeholder="Qty">
                                                 </td>
-                                                <td class="text-right js-phy">-</td>
-                                                <td class="text-right js-avail">-</td>
-                                                <td class="text-right js-sell">-</td>
+                                                <td class="text-right js-phy" data-phy="{{ $r['phy'] }}">{{ $r['phy'] }}</td>
+                                                <td class="text-right js-avail" data-avail="{{ $r['avail'] }}">{{ $r['avail'] }}</td>
+                                                <td class="text-right js-sell" data-sell="{{ $r['sell'] }}">{{ $r['sell'] }}</td>
                                                 <td class="text-center">
                                                     <button type="button" class="btn btn-xs btn-danger js-remove">Del</button>
                                                 </td>

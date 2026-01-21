@@ -5,7 +5,7 @@
     'title' => 'Flash Sale (V2)',
 ])
 
-<section class="content" data-api-token="{{ $apiToken ?? '' }}" data-warehouse-id="{{ $warehouseId ?? '' }}">
+<section class="content" data-api-token="{{ $apiToken ?? '' }}">
     <form role="form" id="flashsale-form" method="post" ajax="{{route('flashsale.store')}}">
         @csrf
         <div class="box">

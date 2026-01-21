@@ -3,7 +3,7 @@
     const API_BASE = '/api/v2/inventory';
     const $content = $('section.content');
     const apiToken = $content.data('api-token') || $('meta[name="api-token"]').attr('content') || '';
-    const warehouseId = $content.data('warehouse-id') || '';
+    // Do not force warehouse_id from UI. Let API use default warehouse to stay consistent everywhere.
 
     $.ajaxSetup({
         headers: {
@@ -224,7 +224,7 @@
             const variantId = Number($tr.data('variant-id') || 0);
             if (!variantId) return;
             const tries = attempt || 1;
-            const params = warehouseId ? { warehouse_id: warehouseId } : {};
+            const params = {};
             $.getJSON(API_BASE + '/stocks/' + variantId, params)
                 .done(function (res) {
                     const d = res.data || {};
@@ -243,7 +243,6 @@
                             keyword: sku,
                             per_page: 1,
                             page: 1,
-                            warehouse_id: warehouseId || undefined
                         }).done(function (res) {
                             const item = (res.data || [])[0];
                             if (item) {
