@@ -41,9 +41,34 @@
     }
 
     function setRowStock($tr, stock) {
-        $tr.find('.js-phy').text(String(stock.physical_stock ?? 0));
-        $tr.find('.js-avail').text(String(stock.available_stock ?? 0));
-        $tr.find('.js-sell').text(String(stock.sellable_stock ?? stock.available_stock ?? 0));
+        // Memory: preserve initial values from Blade if API returns 0 but initial was non-zero
+        const $phy = $tr.find('.js-phy');
+        const $avail = $tr.find('.js-avail');
+        const $sell = $tr.find('.js-sell');
+        
+        // Read initial values from data-* attributes (set by Blade) if not already stored
+        if (!$tr.data('initial-phy')) {
+            const initialPhy = Number($phy.data('phy') || $phy.text() || 0);
+            const initialAvail = Number($avail.data('avail') || $avail.text() || 0);
+            const initialSell = Number($sell.data('sell') || $sell.text() || 0);
+            $tr.data('initial-phy', initialPhy);
+            $tr.data('initial-avail', initialAvail);
+            $tr.data('initial-sell', initialSell);
+        }
+        
+        // Normalize field names: API returns snake_case, but handle both formats
+        const phy = stock.physical_stock ?? stock.physicalStock ?? 0;
+        const avail = stock.available_stock ?? stock.availableStock ?? 0;
+        const sell = stock.sellable_stock ?? stock.sellableStock ?? stock.available_stock ?? stock.availableStock ?? 0;
+        
+        // Use API value if > 0, otherwise fallback to initial value (preserve Blade prefill)
+        const finalPhy = phy > 0 ? phy : ($tr.data('initial-phy') || 0);
+        const finalAvail = avail > 0 ? avail : ($tr.data('initial-avail') || 0);
+        const finalSell = sell > 0 ? sell : ($tr.data('initial-sell') || 0);
+        
+        $phy.text(String(finalPhy));
+        $avail.text(String(finalAvail));
+        $sell.text(String(finalSell));
     }
 
     function validateRow($tr) {
@@ -228,10 +253,11 @@
             $.getJSON(API_BASE + '/stocks/' + variantId, params)
                 .done(function (res) {
                     const d = res.data || {};
+                    // API returns snake_case via StockDTO->toArray()
                     setRowStock($tr, {
-                        physical_stock: d.physicalStock ?? 0,
-                        available_stock: d.availableStock ?? 0,
-                        sellable_stock: d.sellableStock ?? d.availableStock ?? 0
+                        physical_stock: d.physical_stock ?? d.physicalStock ?? 0,
+                        available_stock: d.available_stock ?? d.availableStock ?? 0,
+                        sellable_stock: d.sellable_stock ?? d.sellableStock ?? d.available_stock ?? d.availableStock ?? 0
                     });
                     validateRow($tr);
                 })
@@ -246,11 +272,17 @@
                         }).done(function (res) {
                             const item = (res.data || [])[0];
                             if (item) {
-                                setRowStock($tr, {
+                                // List API returns items with variant nested, normalize field names
+                                const stockData = item.variant ? {
+                                    physical_stock: item.physical_stock ?? item.physicalStock ?? 0,
+                                    available_stock: item.available_stock ?? item.availableStock ?? 0,
+                                    sellable_stock: item.sellable_stock ?? item.sellableStock ?? item.available_stock ?? item.availableStock ?? 0
+                                } : {
                                     physical_stock: item.physical_stock ?? 0,
                                     available_stock: item.available_stock ?? 0,
                                     sellable_stock: item.sellable_stock ?? item.available_stock ?? 0
-                                });
+                                };
+                                setRowStock($tr, stockData);
                                 validateRow($tr);
                                 return;
                             }
