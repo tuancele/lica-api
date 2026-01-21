@@ -6,7 +6,7 @@
 ])
 
 <section class="content" data-api-token="{{ $apiToken ?? '' }}">
-    <form role="form" id="flashsale-form" method="post" ajax="{{route('flashsale.store')}}">
+    <form role="form" id="tblForm" method="post" action="{{route('flashsale.store')}}" ajax="{{route('flashsale.store')}}">
         @csrf
         <div class="box">
             <div class="box-header with-border">
