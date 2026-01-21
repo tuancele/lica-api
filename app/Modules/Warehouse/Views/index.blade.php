@@ -4,7 +4,7 @@
 @include('Layout::breadcrumb',[
     'title' => 'Kho hàng',
 ])
-<section class="content">
+<section class="content" data-api-token="{{ $apiToken }}">
 <div class="box">
     <div class="box-header with-border">
         <form id="warehouse-filter-form">
@@ -155,5 +155,5 @@
 <!-- Select2 for product search -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/css/select2.min.css">
 <script src="https://cdn.jsdelivr.net/npm/select2@4.0.13/dist/js/select2.full.min.js"></script>
-<script src="/js/warehouse-admin-v1.js"></script>
+<script src="/js/warehouse-admin-v2.js"></script>
 @endsection

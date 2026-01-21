@@ -9,6 +9,7 @@ use App\Modules\Product\Models\Product;
 use App\Modules\FlashSale\Models\ProductSale;
 use App\Services\Promotion\ProductStockValidatorInterface;
 use App\Services\Inventory\InventoryServiceInterface;
+use App\Models\WarehouseV2;
 use Validator;
 use Illuminate\Support\Facades\Auth;
 use Session;
@@ -48,8 +49,16 @@ class FlashSaleController extends Controller
     
     public function create(){
         active('flashsale','flashsale');
-        // Optimized: Do not load all products
-        return view($this->view.'::create');
+        $user = Auth::user();
+        if ($user && empty($user->api_token)) {
+            $user->api_token = bin2hex(random_bytes(20));
+            $user->save();
+        }
+        $data['apiToken'] = $user?->api_token ?? '';
+        $data['warehouseId'] = optional(WarehouseV2::getDefault())->id;
+
+        // Optimized: UI will load products via Inventory API v2.
+        return view($this->view.'::create', $data);
     }
     
     public function edit($id){
@@ -58,6 +67,13 @@ class FlashSaleController extends Controller
         if(!isset($detail) && empty($detail)){
             return redirect()->route('flashsale');
         }
+        $user = Auth::user();
+        if ($user && empty($user->api_token)) {
+            $user->api_token = bin2hex(random_bytes(20));
+            $user->save();
+        }
+        $data['apiToken'] = $user?->api_token ?? '';
+        $data['warehouseId'] = optional(WarehouseV2::getDefault())->id;
         $data['detail'] = $detail;
         $data['productsales'] = ProductSale::where('flashsale_id',$detail->id)
             ->with(['product.variants', 'variant'])
@@ -71,25 +87,27 @@ class FlashSaleController extends Controller
             }])
             ->get();
         
-        // Calculate actual stock and available stock for each product/variant
+        // Calculate actual stock and available stock for each product/variant using Inventory V2
         $productsWithStock = $products->map(function($product) {
             if ($product->has_variants == 1 && $product->variants) {
                 // Product has variants - calculate stock for each variant
                 $product->variants = $product->variants->map(function($variant) use ($product) {
-                    $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($variant->id);
-                    $variant->actual_stock = $warehouseStock['physical_stock'] ?? 0;
-                    // Calculate available stock (S_phy - S_flash)
-                    $variant->available_stock = $warehouseStock['available_stock'] ?? 0;
+                    $stockDto = $this->inventoryService->getStock($variant->id);
+                    $variant->actual_stock = $stockDto->physicalStock;
+                    $variant->available_stock = $stockDto->availableStock;
+                    $variant->flash_sale_hold = $stockDto->flashSaleHold;
+                    $variant->sellable_stock = $stockDto->sellableStock; // Available - FlashSale - Deal
                     return $variant;
                 });
             } else {
                 // Product without variants
                 $variant = $product->variant($product->id);
                 $stockId = $variant ? $variant->id : $product->id;
-                $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($stockId);
-                $product->actual_stock = $warehouseStock['physical_stock'] ?? 0;
-                // Calculate available stock (S_phy - S_flash)
-                $product->available_stock = $warehouseStock['available_stock'] ?? 0;
+                $stockDto = $this->inventoryService->getStock($stockId);
+                $product->actual_stock = $stockDto->physicalStock;
+                $product->available_stock = $stockDto->availableStock;
+                $product->flash_sale_hold = $stockDto->flashSaleHold;
+                $product->sellable_stock = $stockDto->sellableStock; // Available - FlashSale - Deal
             }
             return $product;
         });
@@ -103,6 +121,22 @@ class FlashSaleController extends Controller
     {
         DB::beginTransaction();
         try {
+            // Map old desired holds (remaining = number - buy) for Warehouse V2 sync.
+            $oldSales = ProductSale::where('flashsale_id', (int) $request->id)->get();
+            $oldDesiredByVariantId = [];
+            foreach ($oldSales as $ps) {
+                $vid = (int) ($ps->variant_id ?? 0);
+                if ($vid <= 0) {
+                    $product = Product::find((int) $ps->product_id);
+                    $variant = $product ? $product->variant((int) $ps->product_id) : null;
+                    $vid = (int) ($variant?->id ?? 0);
+                }
+                if ($vid <= 0) {
+                    continue;
+                }
+                $oldDesiredByVariantId[$vid] = max(0, (int) $ps->number - (int) $ps->buy);
+            }
+
             $validator = Validator::make($request->all(), [
                 'start' => 'required',
                 'end' => 'required',
@@ -232,6 +266,7 @@ class FlashSaleController extends Controller
 
             // Process pricesale data
             if(isset($pricesale) && !empty($pricesale)){
+                $newDesiredByVariantId = [];
                 foreach ($pricesale as $productId => $variants) {
                     if(is_array($variants)){
                         // Product has variants
@@ -249,7 +284,7 @@ class FlashSaleController extends Controller
                                 $numberValue
                             );
                             
-                            if (!$stockValidation['valid']) {
+                            if (empty($stockValidation['success'])) {
                                 $product = Product::find($productIdInt);
                                 $productName = $product ? $product->name : "ID {$productIdInt}";
                                 DB::rollBack();
@@ -297,6 +332,9 @@ class FlashSaleController extends Controller
                                 $productSale->user_id = Auth::id();
                                 $productSale->save();
                             }
+
+                            $buy = (int) ($productSale->buy ?? 0);
+                            $newDesiredByVariantId[$variantIdInt] = max(0, $numberValue - $buy);
                         }
                     } else {
                         // Product without variants
@@ -312,7 +350,7 @@ class FlashSaleController extends Controller
                             $numberValue
                         );
                         
-                        if (!$stockValidation['valid']) {
+                        if (empty($stockValidation['success'])) {
                             $product = Product::find($productIdInt);
                             $productName = $product ? $product->name : "ID {$productIdInt}";
                             DB::rollBack();
@@ -359,6 +397,26 @@ class FlashSaleController extends Controller
                             $productSale->user_id = Auth::id();
                             $productSale->save();
                         }
+
+                        $variant = Product::find($productIdInt)?->variant($productIdInt);
+                        $variantIdInt = (int) ($variant?->id ?? 0);
+                        if ($variantIdInt > 0) {
+                            $buy = (int) ($productSale->buy ?? 0);
+                            $newDesiredByVariantId[$variantIdInt] = max(0, $numberValue - $buy);
+                        }
+                    }
+                }
+
+                // Sync flash_sale_hold in Warehouse V2 (allocate/release by delta).
+                $allVariantIds = array_values(array_unique(array_merge(array_keys($oldDesiredByVariantId), array_keys($newDesiredByVariantId))));
+                foreach ($allVariantIds as $variantIdInt) {
+                    $oldQty = (int) ($oldDesiredByVariantId[$variantIdInt] ?? 0);
+                    $newQty = (int) ($newDesiredByVariantId[$variantIdInt] ?? 0);
+                    $delta = $newQty - $oldQty;
+                    if ($delta > 0) {
+                        $this->inventoryService->allocateStockForPromotion($variantIdInt, $delta, 'flash_sale');
+                    } elseif ($delta < 0) {
+                        $this->inventoryService->releaseStockFromPromotion($variantIdInt, abs($delta), 'flash_sale');
                     }
                 }
             }
@@ -435,7 +493,7 @@ class FlashSaleController extends Controller
                                     $numberValue
                                 );
                                 
-                                if (!$stockValidation['valid']) {
+                                if (empty($stockValidation['success'])) {
                                     $product = Product::find($productId);
                                     $productName = $product ? $product->name : "ID {$productId}";
                                     DB::rollBack();
@@ -470,6 +528,12 @@ class FlashSaleController extends Controller
                                 $productSale->buy = 0;
                                 $productSale->user_id = Auth::id();
                                 $productSale->save();
+
+                                // Sync flash_sale_hold for Warehouse V2 (remaining = number - buy).
+                                $desired = max(0, $numberValue - 0);
+                                if ($desired > 0) {
+                                    $this->inventoryService->allocateStockForPromotion((int) $variantId, $desired, 'flash_sale');
+                                }
                             }
                         } else {
                             // Product without variants
@@ -483,7 +547,7 @@ class FlashSaleController extends Controller
                                 $numberValue
                             );
                             
-                            if (!$stockValidation['valid']) {
+                            if (empty($stockValidation['success'])) {
                                 $product = Product::find($productId);
                                 $productName = $product ? $product->name : "ID {$productId}";
                                 DB::rollBack();
@@ -518,6 +582,13 @@ class FlashSaleController extends Controller
                             $productSale->buy = 0;
                             $productSale->user_id = Auth::id();
                             $productSale->save();
+
+                            $variant = Product::find((int) $productId)?->variant((int) $productId);
+                            $variantIdInt = (int) ($variant?->id ?? 0);
+                            $desired = max(0, $numberValue - 0);
+                            if ($variantIdInt > 0 && $desired > 0) {
+                                $this->inventoryService->allocateStockForPromotion($variantIdInt, $desired, 'flash_sale');
+                            }
                         }
                     }
                 }
@@ -668,10 +739,10 @@ class FlashSaleController extends Controller
                 } else {
                     // No specific variants selected, show all
                     $product->variants = $product->variants->map(function($variant) use ($product) {
-                        $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($variant->id);
-                        $variant->actual_stock = $warehouseStock['physical_stock'] ?? 0;
-                        // Calculate available stock (S_phy - S_flash)
-                        $variant->available_stock = $warehouseStock['available_stock'] ?? 0;
+                        $stockDto = $this->inventoryService->getStock($variant->id);
+                        $variant->actual_stock = $stockDto->physicalStock;
+                        $variant->available_stock = $stockDto->availableStock;
+                        $variant->sellable_stock = $stockDto->sellableStock;
                         return $variant;
                     });
                 }
@@ -679,10 +750,10 @@ class FlashSaleController extends Controller
                 // Product without variants
                 $variant = $product->variant($product->id);
                 $stockId = $variant ? $variant->id : $product->id;
-                $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($stockId);
-                $product->actual_stock = $warehouseStock['physical_stock'] ?? 0;
-                // Calculate available stock (S_phy - S_flash)
-                $product->available_stock = $warehouseStock['available_stock'] ?? 0;
+                $stockDto = $this->inventoryService->getStock($stockId);
+                $product->actual_stock = $stockDto->physicalStock;
+                $product->available_stock = $stockDto->availableStock;
+                $product->sellable_stock = $stockDto->sellableStock;
             }
             return $product;
         });

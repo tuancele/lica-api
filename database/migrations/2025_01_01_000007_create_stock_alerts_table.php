@@ -59,7 +59,7 @@ return new class extends Migration
                 ->references('id')
                 ->on('warehouses_v2')
                 ->onDelete('cascade');
-            
+
             // Indexes
             $table->index('status', 'idx_alert_status');
             $table->index('alert_type', 'idx_alert_type');

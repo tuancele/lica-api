@@ -165,7 +165,7 @@ class WarehouseService implements WarehouseServiceInterface
     public function getVariantInventory(int $variantId): array
     {
         $variant = Variant::with(['product'])->findOrFail($variantId);
-
+        
         $stockSnapshot = $this->getStockSnapshot($variantId);
         $importTotal = $stockSnapshot['import_total'];
         $exportTotal = $stockSnapshot['export_total'];
@@ -519,7 +519,7 @@ class WarehouseService implements WarehouseServiceInterface
                 if ($variantId) {
                     $stockSnapshot = $this->getStockSnapshot($variantId);
                     $availableStock = $stockSnapshot['sellable'];
-
+                    
                     if ($quantity > $availableStock) {
                         $stockErrors["items.{$index}.quantity"] = [
                             "Số lượng vượt quá tồn kho. Tồn kho hiện tại: {$availableStock}"
@@ -597,15 +597,15 @@ class WarehouseService implements WarehouseServiceInterface
                     
                     if ($variantId) {
                         $stockSnapshot = $this->getStockSnapshot($variantId);
-
+                        
                         // Subtract current receipt's export quantity
                         $currentReceiptExport = ProductWarehouse::where('warehouse_id', $warehouse->id)
                             ->where('variant_id', $variantId)
                             ->where('type', 'export')
                             ->sum('qty');
-
+                        
                         $availableStock = max(0, $stockSnapshot['sellable'] + $currentReceiptExport);
-
+                        
                         if ($quantity > $availableStock) {
                             $stockErrors["items.{$index}.quantity"] = [
                                 "Số lượng vượt quá tồn kho. Tồn kho hiện tại: {$availableStock}"

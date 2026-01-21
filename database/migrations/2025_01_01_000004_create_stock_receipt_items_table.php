@@ -50,7 +50,7 @@ return new class extends Migration
                 ->references('id')
                 ->on('stock_receipts')
                 ->onDelete('cascade');
-            
+
             // Indexes
             $table->index('receipt_id', 'idx_item_receipt');
             $table->index('variant_id', 'idx_item_variant');

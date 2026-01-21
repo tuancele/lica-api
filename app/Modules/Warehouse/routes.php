@@ -6,9 +6,13 @@ Route::group(['middleware' => 'web'], function () {
 			Route::get('quantity', 'WarehouseController@quantity')->name('quantity');
 			Route::get('revenue', 'WarehouseController@revenue')->name('revenue');
 		});
-		// Legacy export/import goods routes removed in favor of Inventory v2 APIs.
-		// If frontend still calls old URLs, respond 410 Gone to surface migration quickly.
-		Route::any('export-goods/{any?}', fn() => abort(410))->where('any', '.*');
-		Route::any('import-goods/{any?}', fn() => abort(410))->where('any', '.*');
+		// Legacy export/import goods routes: redirect to new Warehouse V2 UI.
+		Route::get('export-goods/{any?}', function () {
+			return redirect()->route('warehouse');
+		})->where('any', '.*');
+
+		Route::get('import-goods/{any?}', function () {
+			return redirect()->route('warehouse');
+		})->where('any', '.*');
 	});
 });

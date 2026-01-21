@@ -19,11 +19,12 @@
         $price_sale = $productSale ? $productSale->price_sale : '';
         $number_sale = $productSale ? $productSale->number : '';
         
-        // Get stock info from warehouse system for accuracy
-        $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($variant->id);
-        $actual_stock = $warehouseStock['physical_stock'] ?? 0;
-        $available_stock = $warehouseStock['available_stock'] ?? 0;
-        
+        // Get stock info from Inventory V2 system for accuracy
+        $stockDto = app(\App\Services\Inventory\Contracts\InventoryServiceInterface::class)->getStock($variant->id);
+        $actual_stock = $stockDto->physicalStock;
+        $available_stock = $stockDto->availableStock;
+        $sellable_stock = $stockDto->sellableStock; // Available - FlashSale - Deal
+
         // Flash Sale Virtual Stock = number - buy (if exists)
         $flash_virtual_stock = $productSale ? ($productSale->number - $productSale->buy) : 0;
     @endphp
@@ -83,12 +84,13 @@
             $number_sale = $productSale->number;
         }
         
-        // Get stock info from warehouse system for accuracy
+        // Get stock info from Inventory V2 system for accuracy
         $stockId = $variant ? $variant->id : $product->id;
-        $warehouseStock = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($stockId);
-        $actual_stock = $warehouseStock['physical_stock'] ?? 0;
-        $available_stock = $warehouseStock['available_stock'] ?? 0;
-        
+        $stockDto = app(\App\Services\Inventory\Contracts\InventoryServiceInterface::class)->getStock($stockId);
+        $actual_stock = $stockDto->physicalStock;
+        $available_stock = $stockDto->availableStock;
+        $sellable_stock = $stockDto->sellableStock; // Available - FlashSale - Deal
+
         // Flash Sale Virtual Stock = number - buy (if exists)
         $flash_virtual_stock = $productSale ? ($productSale->number - $productSale->buy) : 0;
     @endphp

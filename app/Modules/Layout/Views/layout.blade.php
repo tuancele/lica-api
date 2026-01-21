@@ -233,16 +233,10 @@
               </a>
             </li>
             <li class="treeview @if(Session::get('sidebar_active')=='warehouse') active @endif">
-              <a href="#">
+              <a href="{{route('warehouse')}}">
               <i class="fa fa-cubes" aria-hidden="true"></i>
-                <span>Kho hàng</span>
-                <i class="fa fa-angle-left pull-right"></i>
+                <span>Kho hàng (V2)</span>
               </a>
-              <ul class="treeview-menu">
-                <li @if(Session::get('sidebar_sub_active')=='importgoods') class="active" @endif><a href="{{route('importgoods')}}"><i class="fa fa-circle-o"></i> Nhập hàng</a></li>
-                <li @if(Session::get('sidebar_sub_active')=='exportgoods') class="active" @endif><a href="{{route('exportgoods')}}"><i class="fa fa-circle-o"></i> Xuất hàng</a></li>
-                <li @if(Session::get('sidebar_sub_active')=='warehouse') class="active" @endif><a href="{{route('warehouse')}}"><i class="fa fa-circle-o"></i> Tồn kho</a></li>
-              </ul>
             </li>
             <li class="treeview @if(Session::get('sidebar_active')=='delivery') active @endif">
               <a href="#">

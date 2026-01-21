@@ -3457,5 +3457,843 @@ Module Quản lý Kho hàng đã được nâng cấp sang RESTful API V1 với 
 
 ---
 
-**最后更新:** 2026-01-20
+## Warehouse Management API V2 (Inventory Module)
+
+### Overview
+Module Quản lý Kho hàng V2 được xây dựng hoàn toàn mới với kiến trúc hiện đại, hỗ trợ:
+- Quản lý tồn kho đa kho (multi-warehouse)
+- Theo dõi biến động tồn kho chi tiết (stock movements)
+- Giữ hàng cho Flash Sale và Deal Sốc
+- Kiểm soát tồn kho vật lý vs khả dụng
+- Báo cáo định giá tồn kho
+
+**Base URL:** `/api/v2/inventory`
+
+**Authentication:** Required (auth:api middleware)
+
+---
+
+### A. Stock Management (Quản lý Tồn kho)
+
+#### 1. GET /api/v2/inventory/stocks
+
+**Mục tiêu:** Lấy danh sách tồn kho với phân trang và bộ lọc realtime
+
+**Tham số đầu vào (Query Params):**
+- `warehouse_id` (integer, optional): Lọc theo kho, mặc định kho chính
+- `keyword` (string, optional): Tìm theo SKU hoặc tên sản phẩm
+- `low_stock_only` (boolean, optional): Chỉ lấy sản phẩm sắp hết hàng
+- `out_of_stock_only` (boolean, optional): Chỉ lấy sản phẩm hết hàng
+- `per_page` (integer, optional): Số lượng mỗi trang, mặc định 20
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "warehouse_id": 1,
+      "variant_id": 10,
+      "physical_stock": 100,
+      "reserved_stock": 20,
+      "available_stock": 80,
+      "flash_sale_hold": 10,
+      "deal_hold": 5,
+      "low_stock_threshold": 10,
+      "reorder_point": 20,
+      "average_cost": 150000,
+      "last_cost": 160000,
+      "location_code": "A1-B2-C3",
+      "last_stock_check": "2026-01-20T10:00:00.000000Z",
+      "last_movement_at": "2026-01-21T08:30:00.000000Z",
+      "variant": {
+        "id": 10,
+        "sku": "SKU-001",
+        "option1_value": "500ml",
+        "price": 200000,
+        "product": {
+          "id": 5,
+          "name": "Sản phẩm A",
+          "image": "https://cdn.example.com/img.jpg"
+        }
+      },
+      "warehouse": {
+        "id": 1,
+        "name": "Kho Hà Nội",
+        "code": "HN01"
+      }
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "last_page": 5,
+    "per_page": 20,
+    "total": 100
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 2. GET /api/v2/inventory/stocks/{variantId}
+
+**Mục tiêu:** Lấy chi tiết tồn kho của một variant
+
+**Tham số đầu vào:**
+- `variantId` (integer, required): ID variant (URL parameter)
+- `warehouse_id` (integer, optional, Query): ID kho, mặc định kho chính
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "variantId": 10,
+    "warehouseId": 1,
+    "physicalStock": 100,
+    "reservedStock": 20,
+    "availableStock": 80,
+    "flashSaleHold": 10,
+    "dealHold": 5,
+    "sellableStock": 65,
+    "lowStockThreshold": 10,
+    "reorderPoint": 20,
+    "averageCost": 150000,
+    "lastCost": 160000,
+    "locationCode": "A1-B2-C3"
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 3. POST /api/v2/inventory/stocks/check-availability
+
+**Mục tiêu:** Kiểm tra khả dụng của nhiều sản phẩm cùng lúc (batch check)
+
+**Tham số đầu vào (Body - JSON):**
+```json
+{
+  "warehouse_id": 1,
+  "items": [
+    {
+      "variant_id": 10,
+      "quantity": 5
+    },
+    {
+      "variant_id": 15,
+      "quantity": 3
+    }
+  ]
+}
+```
+
+**Validation:**
+- `items`: required|array
+- `items.*.variant_id`: required|integer
+- `items.*.quantity`: required|integer|min:1
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "variant_id": 10,
+      "requested": 5,
+      "available": 80,
+      "is_available": true
+    },
+    {
+      "variant_id": 15,
+      "requested": 3,
+      "available": 2,
+      "is_available": false
+    }
+  ],
+  "all_available": false
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 4. GET /api/v2/inventory/stocks/low-stock
+
+**Mục tiêu:** Lấy danh sách sản phẩm sắp hết hàng (dưới ngưỡng cảnh báo)
+
+**Tham số đầu vào (Query Params):**
+- `warehouse_id` (integer, optional): Lọc theo kho
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "warehouse_id": 1,
+      "variant_id": 10,
+      "physical_stock": 8,
+      "available_stock": 8,
+      "low_stock_threshold": 10,
+      "reorder_point": 20,
+      "variant": {
+        "id": 10,
+        "sku": "SKU-001",
+        "option1_value": "500ml",
+        "product": {
+          "id": 5,
+          "name": "Sản phẩm A"
+        }
+      },
+      "warehouse": {
+        "id": 1,
+        "name": "Kho Hà Nội"
+      }
+    }
+  ]
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### B. Receipt Management (Quản lý Phiếu Nhập/Xuất/Chuyển kho)
+
+#### 5. POST /api/v2/inventory/receipts/import
+
+**Mục tiêu:** Tạo phiếu nhập kho mới
+
+**Tham số đầu vào (Body - JSON):**
+```json
+{
+  "code": "NH-2026-001",
+  "subject": "Nhập hàng từ nhà cung cấp ABC",
+  "warehouse_id": 1,
+  "supplier_name": "Công ty ABC",
+  "supplier_code": "NCC-001",
+  "reference_number": "PO-2026-001",
+  "notes": "Ghi chú nhập hàng",
+  "items": [
+    {
+      "variant_id": 10,
+      "quantity": 100,
+      "unit_price": 150000,
+      "batch_number": "BATCH-001",
+      "manufacturing_date": "2026-01-01",
+      "expiry_date": "2028-01-01",
+      "condition": "new",
+      "notes": "Hàng mới 100%"
+    }
+  ]
+}
+```
+
+**Validation:**
+- `code`: required|string
+- `subject`: required|string
+- `warehouse_id`: optional|exists:warehouses_v2,id
+- `items`: required|array|min:1
+- `items.*.variant_id`: required|integer|exists:variants,id
+- `items.*.quantity`: required|integer|min:1
+- `items.*.unit_price`: optional|numeric|min:0
+- `items.*.condition`: optional|in:new,used,damaged,refurbished
+
+**Logic xử lý:**
+- Tự động tăng `physical_stock` và cập nhật `available_stock`
+- Tính toán `average_cost` theo phương pháp bình quân gia quyền
+- Ghi log vào bảng `stock_movements` với type = 'import'
+- Tạo cảnh báo nếu cần
+
+**Phản hồi mẫu (201):**
+```json
+{
+  "success": true,
+  "message": "Nhập kho thành công",
+  "data": {
+    "id": 123,
+    "receipt_code": "NH-2026-001",
+    "receipt_type": "import",
+    "status": "completed",
+    "warehouse_id": 1,
+    "subject": "Nhập hàng từ nhà cung cấp ABC",
+    "total_items": 1,
+    "total_quantity": 100,
+    "total_value": 15000000,
+    "created_by": 1,
+    "created_at": "2026-01-21T10:00:00.000000Z"
+  }
+}
+```
+
+**Phản hồi lỗi (422):**
+```json
+{
+  "success": false,
+  "message": "Mã phiếu đã tồn tại hoặc dữ liệu không hợp lệ"
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 6. POST /api/v2/inventory/receipts/export
+
+**Mục tiêu:** Tạo phiếu xuất kho mới
+
+**Tham số đầu vào (Body - JSON):**
+```json
+{
+  "code": "XH-2026-001",
+  "subject": "Xuất hàng bán lẻ",
+  "warehouse_id": 1,
+  "customer_name": "Nguyễn Văn A",
+  "reference_type": "order",
+  "reference_id": 456,
+  "notes": "Ghi chú xuất hàng",
+  "items": [
+    {
+      "variant_id": 10,
+      "quantity": 5,
+      "unit_price": 200000,
+      "notes": "Xuất cho đơn hàng #456"
+    }
+  ]
+}
+```
+
+**Validation:** Tương tự import, thêm kiểm tra tồn kho
+
+**Logic xử lý:**
+- Kiểm tra `available_stock >= quantity` trước khi xuất
+- Tự động giảm `physical_stock` và cập nhật `available_stock`
+- Ghi log vào `stock_movements` với type = 'export' hoặc 'sale'
+- Trả lỗi 422 nếu không đủ tồn kho
+
+**Phản hồi mẫu (201):**
+```json
+{
+  "success": true,
+  "message": "Xuất kho thành công",
+  "data": {
+    "id": 124,
+    "receipt_code": "XH-2026-001",
+    "receipt_type": "export",
+    "status": "completed",
+    "warehouse_id": 1,
+    "subject": "Xuất hàng bán lẻ",
+    "total_items": 1,
+    "total_quantity": 5,
+    "total_value": 1000000,
+    "created_at": "2026-01-21T10:30:00.000000Z"
+  }
+}
+```
+
+**Phản hồi lỗi (422 - Không đủ tồn kho):**
+```json
+{
+  "success": false,
+  "message": "Không đủ tồn kho để xuất. Variant ID: 10, Yêu cầu: 5, Khả dụng: 3"
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 7. POST /api/v2/inventory/receipts/transfer
+
+**Mục tiêu:** Chuyển kho giữa các kho
+
+**Tham số đầu vào (Body - JSON):**
+```json
+{
+  "from_warehouse_id": 1,
+  "to_warehouse_id": 2,
+  "code": "CK-2026-001",
+  "subject": "Chuyển hàng từ Hà Nội sang TP.HCM",
+  "items": [
+    {
+      "variant_id": 10,
+      "quantity": 20
+    }
+  ]
+}
+```
+
+**Validation:**
+- `from_warehouse_id`: required|integer|exists:warehouses_v2,id
+- `to_warehouse_id`: required|integer|exists:warehouses_v2,id|different:from_warehouse_id
+- `items`: required|array|min:1
+
+**Logic xử lý:**
+- Giảm tồn kho từ `from_warehouse_id`
+- Tăng tồn kho vào `to_warehouse_id`
+- Ghi 2 log movements: 'transfer_out' và 'transfer_in'
+- Sử dụng DB transaction để đảm bảo tính toàn vẹn
+
+**Phản hồi mẫu (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 125,
+    "receipt_code": "CK-2026-001",
+    "receipt_type": "transfer",
+    "status": "completed",
+    "from_warehouse_id": 1,
+    "to_warehouse_id": 2,
+    "subject": "Chuyển hàng từ Hà Nội sang TP.HCM",
+    "total_items": 1,
+    "total_quantity": 20
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 8. POST /api/v2/inventory/receipts/adjust
+
+**Mục tiêu:** Điều chỉnh tồn kho (kiểm kê, hao hụt, thừa...)
+
+**Tham số đầu vào (Body - JSON):**
+```json
+{
+  "code": "DC-2026-001",
+  "subject": "Điều chỉnh tồn kho sau kiểm kê",
+  "warehouse_id": 1,
+  "reason": "Phát hiện hàng hư hỏng",
+  "items": [
+    {
+      "variant_id": 10,
+      "new_quantity": 95,
+      "reason": "Phát hiện 5 sản phẩm bị hư hỏng"
+    }
+  ]
+}
+```
+
+**Validation:**
+- `items.*.new_quantity`: required|integer|min:0
+
+**Logic xử lý:**
+- So sánh `new_quantity` với `physical_stock` hiện tại
+- Nếu tăng: ghi log 'adjustment_plus'
+- Nếu giảm: ghi log 'adjustment_minus'
+- Cập nhật `physical_stock` = `new_quantity`
+
+**Phản hồi mẫu (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 126,
+    "receipt_code": "DC-2026-001",
+    "receipt_type": "adjustment",
+    "status": "completed",
+    "warehouse_id": 1,
+    "subject": "Điều chỉnh tồn kho sau kiểm kê",
+    "adjustments": [
+      {
+        "variant_id": 10,
+        "old_quantity": 100,
+        "new_quantity": 95,
+        "difference": -5,
+        "reason": "Phát hiện 5 sản phẩm bị hư hỏng"
+      }
+    ]
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 9. GET /api/v2/inventory/receipts
+
+**Mục tiêu:** Lấy danh sách phiếu nhập/xuất/chuyển kho
+
+**Tham số đầu vào (Query Params):**
+- `type` (string, optional): Lọc theo loại (import|export|transfer|adjustment)
+- `status` (string, optional): Lọc theo trạng thái (draft|pending|completed|cancelled)
+- `keyword` (string, optional): Tìm theo mã phiếu hoặc subject
+- `per_page` (integer, optional): Số lượng mỗi trang, mặc định 20
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 123,
+      "receipt_code": "NH-2026-001",
+      "receipt_type": "import",
+      "status": "completed",
+      "subject": "Nhập hàng từ nhà cung cấp ABC",
+      "warehouse_id": 1,
+      "total_items": 3,
+      "total_quantity": 150,
+      "total_value": 20000000,
+      "creator": {
+        "id": 1,
+        "name": "Admin User"
+      },
+      "created_at": "2026-01-21T10:00:00.000000Z"
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "last_page": 10,
+    "total": 200
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 10. GET /api/v2/inventory/receipts/{id}
+
+**Mục tiêu:** Lấy chi tiết phiếu nhập/xuất/chuyển kho
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 123,
+    "receipt_code": "NH-2026-001",
+    "receipt_type": "import",
+    "status": "completed",
+    "subject": "Nhập hàng từ nhà cung cấp ABC",
+    "warehouse_id": 1,
+    "supplier_name": "Công ty ABC",
+    "supplier_code": "NCC-001",
+    "reference_number": "PO-2026-001",
+    "notes": "Ghi chú nhập hàng",
+    "total_items": 1,
+    "total_quantity": 100,
+    "total_value": 15000000,
+    "items": [
+      {
+        "id": 1,
+        "variant_id": 10,
+        "quantity": 100,
+        "unit_price": 150000,
+        "total_price": 15000000,
+        "stock_before": 50,
+        "stock_after": 150,
+        "batch_number": "BATCH-001",
+        "manufacturing_date": "2026-01-01",
+        "expiry_date": "2028-01-01",
+        "condition": "new",
+        "notes": "Hàng mới 100%",
+        "variant": {
+          "id": 10,
+          "sku": "SKU-001",
+          "option1_value": "500ml",
+          "product": {
+            "id": 5,
+            "name": "Sản phẩm A",
+            "image": "https://cdn.example.com/img.jpg"
+          }
+        }
+      }
+    ],
+    "creator": {
+      "id": 1,
+      "name": "Admin User"
+    },
+    "from_warehouse": null,
+    "to_warehouse": {
+      "id": 1,
+      "name": "Kho Hà Nội",
+      "code": "HN01"
+    },
+    "created_at": "2026-01-21T10:00:00.000000Z",
+    "updated_at": "2026-01-21T10:00:00.000000Z"
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 11. DELETE /api/v2/inventory/receipts/{id}
+
+**Mục tiêu:** Xóa phiếu (chỉ xóa được phiếu ở trạng thái draft hoặc pending)
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "message": "Đã xóa phiếu"
+}
+```
+
+**Phản hồi lỗi (422):**
+```json
+{
+  "success": false,
+  "message": "Chỉ có thể xóa phiếu ở trạng thái nháp hoặc chờ duyệt"
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### C. Warehouse Management (Quản lý Kho)
+
+#### 12. GET /api/v2/inventory/warehouses
+
+**Mục tiêu:** Lấy danh sách kho đang hoạt động
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "code": "HN01",
+      "name": "Kho Hà Nội",
+      "address": "123 Đường ABC, Hà Nội",
+      "phone": "0123456789",
+      "email": "kho.hn@example.com",
+      "manager_name": "Nguyễn Văn A",
+      "is_default": true,
+      "is_active": true,
+      "capacity": 10000,
+      "current_stock_value": 500000000,
+      "created_at": "2026-01-01T00:00:00.000000Z"
+    },
+    {
+      "id": 2,
+      "code": "HCM01",
+      "name": "Kho TP. Hồ Chí Minh",
+      "address": "456 Đường XYZ, TP.HCM",
+      "is_default": false,
+      "is_active": true
+    }
+  ]
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### D. Movement History & Reports (Lịch sử biến động & Báo cáo)
+
+#### 13. GET /api/v2/inventory/movements
+
+**Mục tiêu:** Lấy lịch sử biến động tồn kho của một variant
+
+**Tham số đầu vào (Query Params):**
+- `variant_id` (integer, required): ID variant
+- `warehouse_id` (integer, optional): Lọc theo kho
+- `limit` (integer, optional): Số lượng bản ghi, mặc định 50
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "warehouse_id": 1,
+      "variant_id": 10,
+      "movement_type": "import",
+      "quantity": 100,
+      "physical_before": 50,
+      "physical_after": 150,
+      "reserved_before": 10,
+      "reserved_after": 10,
+      "available_before": 40,
+      "available_after": 140,
+      "reference_type": "receipt",
+      "reference_id": 123,
+      "reference_code": "NH-2026-001",
+      "reason": "Nhập hàng từ nhà cung cấp ABC",
+      "unit_cost": 150000,
+      "total_cost": 15000000,
+      "created_by": 1,
+      "created_at": "2026-01-21T10:00:00.000000Z"
+    },
+    {
+      "id": 2,
+      "warehouse_id": 1,
+      "variant_id": 10,
+      "movement_type": "sale",
+      "quantity": -5,
+      "physical_before": 150,
+      "physical_after": 145,
+      "available_before": 140,
+      "available_after": 135,
+      "reference_type": "order",
+      "reference_id": 456,
+      "reference_code": "ORD-456",
+      "reason": "Xuất hàng cho đơn hàng #456",
+      "created_at": "2026-01-21T11:00:00.000000Z"
+    }
+  ]
+}
+```
+
+**Các loại movement_type:**
+- `import`: Nhập kho
+- `export`: Xuất kho
+- `sale`: Bán hàng
+- `sale_cancel`: Hủy đơn hàng (hoàn lại kho)
+- `return`: Trả hàng (nhập lại kho)
+- `transfer_out`: Chuyển kho đi
+- `transfer_in`: Chuyển kho đến
+- `adjustment_plus`: Điều chỉnh tăng
+- `adjustment_minus`: Điều chỉnh giảm
+- `reserve`: Giữ hàng
+- `release`: Thả hàng giữ
+- `flash_sale_hold`: Giữ cho Flash Sale
+- `flash_sale_release`: Thả Flash Sale
+- `deal_hold`: Giữ cho Deal
+- `deal_release`: Thả Deal
+- `damage`: Hư hỏng
+- `lost`: Thất thoát
+- `found`: Tìm thấy hàng thừa
+- `initial`: Khởi tạo ban đầu
+
+**Trạng thái:** Hoàn thành
+
+---
+
+#### 14. GET /api/v2/inventory/reports/valuation
+
+**Mục tiêu:** Báo cáo định giá tồn kho (tổng giá trị hàng tồn kho)
+
+**Tham số đầu vào (Query Params):**
+- `warehouse_id` (integer, optional): Lọc theo kho, không truyền sẽ lấy tất cả kho
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "total_value": 500000000,
+    "total_items": 150,
+    "total_quantity": 5000,
+    "by_warehouse": [
+      {
+        "warehouse_id": 1,
+        "warehouse_name": "Kho Hà Nội",
+        "total_value": 300000000,
+        "total_items": 100,
+        "total_quantity": 3000
+      },
+      {
+        "warehouse_id": 2,
+        "warehouse_name": "Kho TP.HCM",
+        "total_value": 200000000,
+        "total_items": 50,
+        "total_quantity": 2000
+      }
+    ],
+    "top_value_products": [
+      {
+        "variant_id": 10,
+        "product_name": "Sản phẩm A",
+        "sku": "SKU-001",
+        "quantity": 500,
+        "average_cost": 150000,
+        "total_value": 75000000
+      }
+    ],
+    "generated_at": "2026-01-21T12:00:00.000000Z"
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### E. Implementation Details
+
+**Files Created:**
+- `app/Services/Inventory/InventoryService.php` - Service chính
+- `app/Services/Inventory/Contracts/InventoryServiceInterface.php` - Interface
+- `app/Services/Inventory/DTOs/` - Thư mục chứa các DTO classes
+  - `StockDTO.php`
+  - `ImportStockDTO.php`
+  - `ExportStockDTO.php`
+  - `TransferStockDTO.php`
+  - `AdjustStockDTO.php`
+  - `ReserveStockDTO.php`
+- `app/Models/` - Eloquent Models
+  - `InventoryStock.php`
+  - `StockReceipt.php`
+  - `StockReceiptItem.php`
+  - `StockMovement.php`
+  - `StockReservation.php`
+  - `StockAlert.php`
+  - `WarehouseV2.php`
+- `app/Http/Controllers/Api/V2/InventoryController.php`
+- `routes/api_inventory.php`
+- `config/inventory.php` - Cấu hình module
+- `app/Providers/InventoryServiceProvider.php`
+
+**Database Tables:**
+- `warehouses_v2` - Danh sách kho
+- `inventory_stocks` - Tồn kho theo variant và kho
+- `stock_receipts` - Phiếu nhập/xuất/chuyển kho
+- `stock_receipt_items` - Chi tiết phiếu
+- `stock_movements` - Lịch sử biến động tồn kho
+- `stock_reservations` - Giữ hàng cho đơn hàng/Flash Sale/Deal
+- `stock_alerts` - Cảnh báo tồn kho
+
+**Key Features:**
+- ✅ Multi-warehouse support (hỗ trợ đa kho)
+- ✅ Physical stock vs Available stock tracking
+- ✅ Flash Sale & Deal stock holding
+- ✅ Detailed stock movement logging
+- ✅ Average cost calculation (AVCO method)
+- ✅ Low stock & out of stock alerts
+- ✅ Batch availability checking
+- ✅ Stock transfer between warehouses
+- ✅ Stock adjustment (inventory count)
+- ✅ Inventory valuation reports
+- ✅ Cache support for performance
+- ✅ Database transaction for data integrity
+
+**Differences from V1:**
+- V1 sử dụng bảng `warehouse` và `product_warehouse` (cũ)
+- V2 sử dụng kiến trúc mới với 7 bảng riêng biệt
+- V2 hỗ trợ đa kho, V1 chỉ có 1 kho duy nhất
+- V2 có theo dõi chi tiết biến động tồn kho (stock movements)
+- V2 có hệ thống giữ hàng cho Flash Sale/Deal
+- V2 có cảnh báo tồn kho tự động
+- V2 có báo cáo định giá tồn kho
+
+**Migration từ V1 sang V2:**
+- Sử dụng command: `php artisan inventory:migrate-legacy-data`
+- Dữ liệu cũ từ bảng `warehouse` và `product_warehouse` sẽ được migrate sang các bảng V2
+- Sau khi migrate, nên kiểm tra và xác nhận dữ liệu trước khi xóa module cũ
+
+---
+
+**最后更新:** 2026-01-21
 **维护者:** AI Assistant

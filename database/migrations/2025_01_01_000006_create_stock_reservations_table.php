@@ -57,7 +57,7 @@ return new class extends Migration
                 ->references('id')
                 ->on('warehouses_v2')
                 ->onDelete('cascade');
-            
+
             // Indexes
             $table->index(['warehouse_id', 'variant_id'], 'idx_res_wh_variant');
             $table->index('status', 'idx_res_status');

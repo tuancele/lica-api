@@ -47,17 +47,14 @@
                             <td>
                                {{$value->option1_value ?? 'Mặc định'}}
                             </td>
-                            <td>
-                                {{number_format(countPrice($value->id,'import'))}}
-                            </td>
-                            <td>
-                                {{number_format(countPrice($value->id,'export'))}}
-                            </td>
-                            <td>
-                                @php    $total1 = countPrice($value->id,'export');
-                                    $total2 = countPrice($value->id,'import');@endphp
-                                {{number_format($total1-$total2)}}
-                            </td>
+                            @php
+                                $importTotal = (float) ($importTotals[$value->id] ?? 0);
+                                $exportTotal = (float) ($exportTotals[$value->id] ?? 0);
+                                $profit = $exportTotal - $importTotal;
+                            @endphp
+                            <td>{{ number_format($importTotal) }}</td>
+                            <td>{{ number_format($exportTotal) }}</td>
+                            <td>{{ number_format($profit) }}</td>
                         </tr>
                         @endforeach
                         @endif
