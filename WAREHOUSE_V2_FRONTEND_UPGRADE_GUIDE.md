@@ -225,6 +225,15 @@ Khi tao/sua Flash Sale, he thong se dong bo so luong (remaining = number - buy) 
 
 Muc tieu: cap nhat `inventory_stocks.flash_sale_hold` de Phy/Avail/Sell hien thi dung.
 
+## Deal -> Warehouse V2 hold sync (Module Deal)
+
+Module Deal (UI cu: `app/Modules/Deal/Controllers/DealController.php`) can dong bo hold vao `inventory_stocks.deal_hold` de Warehouse/FE hien thi dung.
+
+- On create/update: allocate hold theo remaining (qty - buy) cho cac dong `deal_sales` (SaleDeal) va theo `deal.limited` cho cac dong `product_deals` (ProductDeal).
+- On delete/update: release hold theo remaining (qty - buy) va theo `deal.limited` (best-effort, co log).
+
+Log key: `[DEAL_HOLD_SYNC]`
+
 Ghi chu FE: them `data-warehouse-id="1"` (hoac kho mac dinh) vao `<section class="content">` cua Flash Sale/Deal de JS goi dung kho khi lay ton.
 
 ---

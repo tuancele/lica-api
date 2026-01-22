@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Modules\Deal\Models\Deal;
 use App\Modules\Product\Models\Product;
+use App\Modules\Product\Models\Variant;
 use App\Modules\Deal\Models\ProductDeal;
 use App\Modules\Deal\Models\SaleDeal;
 use App\Modules\Brand\Models\Brand;
@@ -13,6 +14,8 @@ use App\Services\Promotion\ProductStockValidatorInterface;
 use App\Services\Inventory\InventoryServiceInterface;
 use Validator;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Session;
 class DealController extends Controller
 {
@@ -27,6 +30,95 @@ class DealController extends Controller
         $this->model = $model;
         $this->productStockValidator = $productStockValidator;
         $this->inventoryService = $inventoryService;
+    }
+
+    private function resolveVariantId(int $productId, ?int $variantId = null): int
+    {
+        if ($variantId !== null && $variantId > 0) {
+            return (int) $variantId;
+        }
+
+        $fallbackVariantId = (int) Variant::query()->where('product_id', $productId)->value('id');
+        if ($fallbackVariantId <= 0) {
+            throw new \Exception("Variant not found for product_id: {$productId}");
+        }
+        return $fallbackVariantId;
+    }
+
+    private function releaseDealHoldsForDeal(int $dealId, int $limitedQty): void
+    {
+        $oldSaleDeals = SaleDeal::query()->where('deal_id', $dealId)->get();
+        foreach ($oldSaleDeals as $sd) {
+            $variantId = $this->resolveVariantId((int) $sd->product_id, $sd->variant_id ? (int) $sd->variant_id : null);
+            $qty = (int) ($sd->qty ?? 0);
+            $buy = (int) ($sd->buy ?? 0);
+            $remaining = max(0, $qty - $buy);
+            if ($remaining <= 0) {
+                continue;
+            }
+            $res = $this->inventoryService->releaseStockFromPromotion($variantId, $remaining, 'deal');
+            Log::info('[DEAL_HOLD_SYNC] release sale_deal hold', [
+                'deal_id' => $dealId,
+                'sale_deal_id' => $sd->id,
+                'variant_id' => $variantId,
+                'remaining' => $remaining,
+                'result' => $res,
+            ]);
+        }
+
+        $oldProductDeals = ProductDeal::query()->where('deal_id', $dealId)->get();
+        foreach ($oldProductDeals as $pd) {
+            $variantId = $this->resolveVariantId((int) $pd->product_id, $pd->variant_id ? (int) $pd->variant_id : null);
+            if ($limitedQty <= 0) {
+                continue;
+            }
+            $res = $this->inventoryService->releaseStockFromPromotion($variantId, $limitedQty, 'deal');
+            Log::info('[DEAL_HOLD_SYNC] release main_product hold', [
+                'deal_id' => $dealId,
+                'product_deal_id' => $pd->id,
+                'variant_id' => $variantId,
+                'qty' => $limitedQty,
+                'result' => $res,
+            ]);
+        }
+    }
+
+    private function allocateDealHoldsForDeal(int $dealId, int $limitedQty): void
+    {
+        $saleDeals = SaleDeal::query()->where('deal_id', $dealId)->get();
+        foreach ($saleDeals as $sd) {
+            $variantId = $this->resolveVariantId((int) $sd->product_id, $sd->variant_id ? (int) $sd->variant_id : null);
+            $qty = (int) ($sd->qty ?? 0);
+            $buy = (int) ($sd->buy ?? 0);
+            $remaining = max(0, $qty - $buy);
+            if ($remaining <= 0) {
+                continue;
+            }
+            $res = $this->inventoryService->allocateStockForPromotion($variantId, $remaining, 'deal');
+            Log::info('[DEAL_HOLD_SYNC] allocate sale_deal hold', [
+                'deal_id' => $dealId,
+                'sale_deal_id' => $sd->id,
+                'variant_id' => $variantId,
+                'remaining' => $remaining,
+                'result' => $res,
+            ]);
+        }
+
+        $productDeals = ProductDeal::query()->where('deal_id', $dealId)->get();
+        foreach ($productDeals as $pd) {
+            $variantId = $this->resolveVariantId((int) $pd->product_id, $pd->variant_id ? (int) $pd->variant_id : null);
+            if ($limitedQty <= 0) {
+                continue;
+            }
+            $res = $this->inventoryService->allocateStockForPromotion($variantId, $limitedQty, 'deal');
+            Log::info('[DEAL_HOLD_SYNC] allocate main_product hold', [
+                'deal_id' => $dealId,
+                'product_deal_id' => $pd->id,
+                'variant_id' => $variantId,
+                'qty' => $limitedQty,
+                'result' => $res,
+            ]);
+        }
     }
     public function index(Request $request)
     {
@@ -158,6 +250,9 @@ class DealController extends Controller
                 'errors' => $validator->errors()
             ]);
         }
+        $dealBefore = $this->model::find($request->id);
+        $oldLimited = (int) ($dealBefore->limited ?? 0);
+
         $up = $this->model::where('id',$request->id)->update(array(
             'name' => $request->name,
             'start' => strtotime($request->start),
@@ -167,6 +262,16 @@ class DealController extends Controller
             'user_id'=> Auth::id()
         ));
         if($up > 0){
+            try {
+                // Release old holds first (based on old config)
+                $this->releaseDealHoldsForDeal((int) $request->id, $oldLimited);
+            } catch (\Exception $e) {
+                Log::error('[DEAL_HOLD_SYNC] release failed on update', [
+                    'deal_id' => (int) $request->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             // Validation: Check conflicts before saving
             $productid = $request->productid;
             $pricesale =  $request->pricesale;
@@ -306,6 +411,18 @@ class DealController extends Controller
                     );
                 }
             }
+
+            try {
+                // Allocate holds for current config
+                $newLimited = (int) ($request->limited ?? 0);
+                $this->allocateDealHoldsForDeal((int) $request->id, $newLimited);
+            } catch (\Exception $e) {
+                Log::error('[DEAL_HOLD_SYNC] allocate failed on update', [
+                    'deal_id' => (int) $request->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Sửa thành công!',
@@ -482,6 +599,17 @@ class DealController extends Controller
                     );
                 }
             }
+
+            try {
+                $limited = (int) ($request->limited ?? 0);
+                $this->allocateDealHoldsForDeal((int) $id, $limited);
+            } catch (\Exception $e) {
+                Log::error('[DEAL_HOLD_SYNC] allocate failed on store', [
+                    'deal_id' => (int) $id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             Session::forget('ss_sale_product');
             Session::forget('ss_product_deal');
             return response()->json([
@@ -498,6 +626,17 @@ class DealController extends Controller
     }
     public function delete(Request $request)
     {
+        $deal = $this->model::find($request->id);
+        $limited = (int) ($deal->limited ?? 0);
+        try {
+            $this->releaseDealHoldsForDeal((int) $request->id, $limited);
+        } catch (\Exception $e) {
+            Log::error('[DEAL_HOLD_SYNC] release failed on delete', [
+                'deal_id' => (int) $request->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         $data = $this->model::findOrFail($request->id)->delete();
         ProductDeal::where('deal_id',$request->id)->delete();
         SaleDeal::where('deal_id',$request->id)->delete();
