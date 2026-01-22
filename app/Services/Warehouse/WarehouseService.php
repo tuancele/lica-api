@@ -857,6 +857,94 @@ class WarehouseService implements WarehouseServiceInterface
                 $flashSaleStock = (int) ($inventoryStock->flash_sale_hold ?? 0);
                 $dealStock = (int) ($inventoryStock->deal_hold ?? 0);
                 $availableStock = (int) ($inventoryStock->available_stock ?? 0);
+                
+                // Auto cleanup: Clear invalid promotion holds
+                $needsUpdate = false;
+                $now = time();
+                
+                // Check Flash Sale hold: Clear if no active Flash Sale or all sold
+                if ($flashSaleStock > 0) {
+                    $activeFlashSale = ProductSale::query()
+                        ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
+                        ->where('productsales.variant_id', $variantId)
+                        ->where('fs.status', '1')
+                        ->where('fs.start', '<=', $now)
+                        ->where('fs.end', '>=', $now)
+                        ->select('productsales.*')
+                        ->first();
+                    
+                    // Check if all sold (buy >= number) or no active Flash Sale
+                    $shouldClearFlashSale = !$activeFlashSale;
+                    if ($activeFlashSale) {
+                        $registered = (int) ($activeFlashSale->number ?? 0);
+                        $sold = (int) ($activeFlashSale->buy ?? 0);
+                        $shouldClearFlashSale = ($sold >= $registered);
+                    }
+                    
+                    if ($shouldClearFlashSale) {
+                        $inventoryStock->flash_sale_hold = 0;
+                        $flashSaleStock = 0;
+                        $needsUpdate = true;
+                        
+                        Log::info('WarehouseService: Auto-cleared invalid flash_sale_hold', [
+                            'variant_id' => $variantId,
+                            'variant_sku' => $variantSku,
+                            'old_flash_sale_hold' => $inventoryStock->getOriginal('flash_sale_hold'),
+                            'reason' => $activeFlashSale ? 'all_sold' : 'no_active_flash_sale',
+                        ]);
+                    }
+                }
+                
+                // Check Deal hold: Clear if no active Deal or all sold
+                if ($dealStock > 0) {
+                    $activeDeal = \App\Modules\Deal\Models\SaleDeal::query()
+                        ->join('deals as d', 'd.id', '=', 'deal_sales.deal_id')
+                        ->where(function ($q) use ($variantId) {
+                            $q->where('deal_sales.variant_id', $variantId)
+                                ->orWhere(function ($q2) use ($variantId) {
+                                    $variant = Variant::find($variantId);
+                                    if ($variant) {
+                                        $q2->whereNull('deal_sales.variant_id')
+                                            ->where('deal_sales.product_id', $variant->product_id);
+                                    }
+                                });
+                        })
+                        ->where('d.status', '1')
+                        ->where('d.start', '<=', $now)
+                        ->where('d.end', '>=', $now)
+                        ->where('deal_sales.status', '1')
+                        ->select('deal_sales.*')
+                        ->first();
+                    
+                    // Check if all sold (buy >= qty) or no active Deal
+                    $shouldClearDeal = !$activeDeal;
+                    if ($activeDeal) {
+                        $registered = (int) ($activeDeal->qty ?? 0);
+                        $sold = (int) ($activeDeal->buy ?? 0);
+                        $shouldClearDeal = ($sold >= $registered);
+                    }
+                    
+                    if ($shouldClearDeal) {
+                        $inventoryStock->deal_hold = 0;
+                        $dealStock = 0;
+                        $needsUpdate = true;
+                        
+                        Log::info('WarehouseService: Auto-cleared invalid deal_hold', [
+                            'variant_id' => $variantId,
+                            'variant_sku' => $variantSku,
+                            'old_deal_hold' => $inventoryStock->getOriginal('deal_hold'),
+                            'reason' => $activeDeal ? 'all_sold' : 'no_active_deal',
+                        ]);
+                    }
+                }
+                
+                // Save if cleanup was performed (Model boot() will ensure no negative values)
+                if ($needsUpdate) {
+                    $inventoryStock->save();
+                    // Refresh available_stock after save (generated column auto-calculates)
+                    $inventoryStock->refresh();
+                    $availableStock = (int) ($inventoryStock->available_stock ?? 0);
+                }
             } else {
                 // If not found, try SKU fallback
                 if (!empty($variantSku)) {
@@ -872,6 +960,76 @@ class WarehouseService implements WarehouseServiceInterface
                         $flashSaleStock = (int) ($inventoryStockBySku->flash_sale_hold ?? 0);
                         $dealStock = (int) ($inventoryStockBySku->deal_hold ?? 0);
                         $availableStock = (int) ($inventoryStockBySku->available_stock ?? 0);
+                        
+                        // Auto cleanup for SKU fallback (same logic as above)
+                        $needsUpdate = false;
+                        $now = time();
+                        
+                        // Check Flash Sale hold
+                        if ($flashSaleStock > 0) {
+                            $activeFlashSale = ProductSale::query()
+                                ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
+                                ->where('productsales.variant_id', $inventoryStockBySku->variant_id)
+                                ->where('fs.status', '1')
+                                ->where('fs.start', '<=', $now)
+                                ->where('fs.end', '>=', $now)
+                                ->select('productsales.*')
+                                ->first();
+                            
+                            $shouldClearFlashSale = !$activeFlashSale;
+                            if ($activeFlashSale) {
+                                $registered = (int) ($activeFlashSale->number ?? 0);
+                                $sold = (int) ($activeFlashSale->buy ?? 0);
+                                $shouldClearFlashSale = ($sold >= $registered);
+                            }
+                            
+                            if ($shouldClearFlashSale) {
+                                $inventoryStockBySku->flash_sale_hold = 0;
+                                $flashSaleStock = 0;
+                                $needsUpdate = true;
+                            }
+                        }
+                        
+                        // Check Deal hold
+                        if ($dealStock > 0) {
+                            $activeDeal = \App\Modules\Deal\Models\SaleDeal::query()
+                                ->join('deals as d', 'd.id', '=', 'deal_sales.deal_id')
+                                ->where(function ($q) use ($inventoryStockBySku) {
+                                    $q->where('deal_sales.variant_id', $inventoryStockBySku->variant_id)
+                                        ->orWhere(function ($q2) use ($inventoryStockBySku) {
+                                            $variant = Variant::find($inventoryStockBySku->variant_id);
+                                            if ($variant) {
+                                                $q2->whereNull('deal_sales.variant_id')
+                                                    ->where('deal_sales.product_id', $variant->product_id);
+                                            }
+                                        });
+                                })
+                                ->where('d.status', '1')
+                                ->where('d.start', '<=', $now)
+                                ->where('d.end', '>=', $now)
+                                ->where('deal_sales.status', '1')
+                                ->select('deal_sales.*')
+                                ->first();
+                            
+                            $shouldClearDeal = !$activeDeal;
+                            if ($activeDeal) {
+                                $registered = (int) ($activeDeal->qty ?? 0);
+                                $sold = (int) ($activeDeal->buy ?? 0);
+                                $shouldClearDeal = ($sold >= $registered);
+                            }
+                            
+                            if ($shouldClearDeal) {
+                                $inventoryStockBySku->deal_hold = 0;
+                                $dealStock = 0;
+                                $needsUpdate = true;
+                            }
+                        }
+                        
+                        if ($needsUpdate) {
+                            $inventoryStockBySku->save();
+                            $inventoryStockBySku->refresh();
+                            $availableStock = (int) ($inventoryStockBySku->available_stock ?? 0);
+                        }
                     }
                 }
             }
@@ -1433,25 +1591,20 @@ class WarehouseService implements WarehouseServiceInterface
                     }
                 }
 
-                // Case 1: Normal Product - Just deduct physical_stock
+                // Unified stock deduction logic: Always deduct physical_stock
+                // For Flash Sale/Deal: Also deduct from flash_sale_hold/deal_hold
                 // Note: available_stock is a generated column, will be auto-calculated by MySQL
-                if (!$isFlashSale && !$isDeal) {
-                    $inventoryStock->decrement('physical_stock', $quantity);
-                    $inventoryStock->update(['last_movement_at' => now()]);
-
-                    Log::info('WarehouseService: processOrderStock - Normal product stock deducted', [
-                        'order_id' => $orderId,
-                        'variant_id' => $variantId,
-                        'quantity' => $quantity,
-                        'physical_stock_after' => $inventoryStock->fresh()->physical_stock,
-                    ]);
-                }
-                // Case 2: Flash Sale Product - Deduct physical_stock + increment ProductSale.buy
-                // Note: available_stock is a generated column, will be auto-calculated by MySQL
-                elseif ($isFlashSale && $activeFlashSale) {
-                    $inventoryStock->decrement('physical_stock', $quantity);
-                    $inventoryStock->update(['last_movement_at' => now()]);
-
+                
+                // Step 1: Deduct physical_stock (always)
+                $inventoryStock->decrement('physical_stock', $quantity);
+                
+                // Step 2: Deduct from promotion holds if applicable
+                if ($isFlashSale && $activeFlashSale) {
+                    // Flash Sale: Deduct from flash_sale_hold (lifetime tracking)
+                    $currentFlashSaleHold = (int) ($inventoryStock->flash_sale_hold ?? 0);
+                    $newFlashSaleHold = max(0, $currentFlashSaleHold - $quantity);
+                    $inventoryStock->flash_sale_hold = $newFlashSaleHold;
+                    
                     // Increment ProductSale.buy for real-time tracking
                     $activeFlashSale->increment('buy', $quantity);
 
@@ -1460,18 +1613,18 @@ class WarehouseService implements WarehouseServiceInterface
                         'variant_id' => $variantId,
                         'quantity' => $quantity,
                         'product_sale_id' => $productSaleId,
-                        'physical_stock_after' => $inventoryStock->fresh()->physical_stock,
+                        'physical_stock_after' => $inventoryStock->physical_stock - $quantity,
+                        'flash_sale_hold_before' => $currentFlashSaleHold,
+                        'flash_sale_hold_after' => $newFlashSaleHold,
                         'flash_sale_buy_before' => $activeFlashSale->buy - $quantity,
                         'flash_sale_buy_after' => $activeFlashSale->fresh()->buy,
                     ]);
-                }
-                // Case 3: Deal Product - Deduct physical_stock + increment SaleDeal.buy (if not already done)
-                // Note: SaleDeal.buy is already incremented in CartController, but we ensure it here for consistency
-                // Note: available_stock is a generated column, will be auto-calculated by MySQL
-                elseif ($isDeal && $saleDeal) {
-                    $inventoryStock->decrement('physical_stock', $quantity);
-                    $inventoryStock->update(['last_movement_at' => now()]);
-
+                } elseif ($isDeal && $saleDeal) {
+                    // Deal: Deduct from deal_hold (lifetime tracking)
+                    $currentDealHold = (int) ($inventoryStock->deal_hold ?? 0);
+                    $newDealHold = max(0, $currentDealHold - $quantity);
+                    $inventoryStock->deal_hold = $newDealHold;
+                    
                     // Ensure SaleDeal.buy is incremented (may already be done in CartController, but ensure consistency)
                     $buyBefore = $saleDeal->buy;
                     $saleDeal->increment('buy', $quantity);
@@ -1481,11 +1634,25 @@ class WarehouseService implements WarehouseServiceInterface
                         'variant_id' => $variantId,
                         'quantity' => $quantity,
                         'sale_deal_id' => $saleDealId,
-                        'physical_stock_after' => $inventoryStock->fresh()->physical_stock,
+                        'physical_stock_after' => $inventoryStock->physical_stock - $quantity,
+                        'deal_hold_before' => $currentDealHold,
+                        'deal_hold_after' => $newDealHold,
                         'deal_buy_before' => $buyBefore,
                         'deal_buy_after' => $saleDeal->fresh()->buy,
                     ]);
+                } else {
+                    // Normal product: Only deduct physical_stock
+                    Log::info('WarehouseService: processOrderStock - Normal product stock deducted', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variantId,
+                        'quantity' => $quantity,
+                        'physical_stock_after' => $inventoryStock->physical_stock - $quantity,
+                    ]);
                 }
+                
+                // Step 3: Update last_movement_at and save
+                $inventoryStock->last_movement_at = now();
+                $inventoryStock->save();
 
                 $processedItems[] = [
                     'variant_id' => $variantId,
@@ -1560,80 +1727,148 @@ class WarehouseService implements WarehouseServiceInterface
                 }
 
                 // Determine product type from OrderDetail
+                // IMPORTANT: Use productsale_id/dealsale_id from OrderDetail to determine type
+                // This ensures we correctly identify Flash Sale/Deal orders even if promotion has ended
                 $isFlashSale = false;
                 $isDeal = false;
                 $productSaleId = null;
                 $saleDealId = null;
-                $activeFlashSale = null;
+                $productSale = null;
                 $saleDeal = null;
+                $isCampaignActive = false;
 
-                // Check if Flash Sale (use productsale_id from OrderDetail if available)
+                // Check if Flash Sale (use productsale_id from OrderDetail - this is the source of truth)
                 if ($productsaleId) {
-                    $activeFlashSale = ProductSale::find($productsaleId);
-                    if ($activeFlashSale) {
+                    $productSale = ProductSale::find($productsaleId);
+                    if ($productSale) {
                         $isFlashSale = true;
                         $productSaleId = $productsaleId;
-                    }
-                } else {
-                    // Fallback: Query active Flash Sale by variant_id
-                    $activeFlashSale = ProductSale::query()
-                        ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
-                        ->where('productsales.variant_id', $variantId)
-                        ->where('fs.status', '1')
-                        ->where('fs.start', '<=', $now)
-                        ->where('fs.end', '>=', $now)
-                        ->first();
-
-                    if ($activeFlashSale) {
-                        $isFlashSale = true;
-                        $productSaleId = $activeFlashSale->id;
+                        
+                        // Check if Flash Sale campaign is still active
+                        // Only rollback hold if campaign is still active (chưa kết thúc)
+                        $flashSale = $productSale->flashsale ?? null;
+                        $isCampaignActive = $flashSale && 
+                            $flashSale->status == '1' && 
+                            $flashSale->start <= $now && 
+                            $flashSale->end >= $now;
                     }
                 }
 
-                // Check if Deal (use dealsale_id from OrderDetail)
+                // Check if Deal (use dealsale_id from OrderDetail - this is the source of truth)
                 if ($dealsaleId) {
                     $saleDeal = \App\Modules\Deal\Models\SaleDeal::find($dealsaleId);
                     if ($saleDeal) {
+                        $isDeal = true;
+                        $saleDealId = $dealsaleId;
+                        
+                        // Check if Deal campaign is still active
+                        // Only rollback hold if campaign is still active (chưa kết thúc)
                         $deal = $saleDeal->deal ?? null;
-                        if ($deal && $deal->status == '1' && $deal->start <= $now && $deal->end >= $now) {
-                            $isDeal = true;
-                            $saleDealId = $dealsaleId;
-                        }
+                        $isCampaignActive = $deal && 
+                            $deal->status == '1' && 
+                            $deal->start <= $now && 
+                            $deal->end >= $now;
                     }
                 }
 
-                // Rollback: Add back physical_stock
+                // Unified rollback logic: Add back physical_stock AND promotion holds
+                // CRITICAL: Only rollback hold if campaign is still active (chưa kết thúc)
+                // This ensures suất mua được trả lại cho chương trình nếu chương trình chưa kết thúc
                 // Note: available_stock is a generated column, will be auto-calculated by MySQL
+                
+                // Step 1: Add back physical_stock (always)
                 $inventoryStock->increment('physical_stock', $quantity);
-                $inventoryStock->update(['last_movement_at' => now()]);
-
-                // Rollback Flash Sale: Decrement ProductSale.buy
-                if ($isFlashSale && $activeFlashSale) {
-                    $buyBefore = $activeFlashSale->buy;
-                    $activeFlashSale->decrement('buy', $quantity);
-                    Log::info('WarehouseService: rollbackOrderStock - Flash Sale buy decremented', [
+                
+                // Step 2: Add back promotion holds ONLY if campaign is still active
+                if ($isFlashSale && $productSale && $isCampaignActive) {
+                    // Flash Sale: Add back to flash_sale_hold (only if campaign chưa kết thúc)
+                    $currentFlashSaleHold = (int) ($inventoryStock->flash_sale_hold ?? 0);
+                    $newFlashSaleHold = $currentFlashSaleHold + $quantity;
+                    $inventoryStock->flash_sale_hold = $newFlashSaleHold;
+                    
+                    // Decrement ProductSale.buy (always, to restore accurate sales count)
+                    $buyBefore = $productSale->buy;
+                    $productSale->decrement('buy', $quantity);
+                    
+                    Log::info('WarehouseService: rollbackOrderStock - Flash Sale stock rolled back (campaign active)', [
                         'order_id' => $orderId,
                         'variant_id' => $variantId,
                         'quantity' => $quantity,
                         'product_sale_id' => $productSaleId,
+                        'campaign_active' => true,
+                        'physical_stock_after' => $inventoryStock->physical_stock + $quantity,
+                        'flash_sale_hold_before' => $currentFlashSaleHold,
+                        'flash_sale_hold_after' => $newFlashSaleHold,
                         'flash_sale_buy_before' => $buyBefore,
-                        'flash_sale_buy_after' => $activeFlashSale->fresh()->buy,
+                        'flash_sale_buy_after' => $productSale->fresh()->buy,
                     ]);
-                }
-
-                // Rollback Deal: Decrement SaleDeal.buy
-                if ($isDeal && $saleDeal) {
+                } elseif ($isFlashSale && $productSale && !$isCampaignActive) {
+                    // Flash Sale ended: Only rollback buy count, NOT hold (campaign đã kết thúc)
+                    $buyBefore = $productSale->buy;
+                    $productSale->decrement('buy', $quantity);
+                    
+                    Log::info('WarehouseService: rollbackOrderStock - Flash Sale buy rolled back (campaign ended, hold not restored)', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variantId,
+                        'quantity' => $quantity,
+                        'product_sale_id' => $productSaleId,
+                        'campaign_active' => false,
+                        'physical_stock_after' => $inventoryStock->physical_stock + $quantity,
+                        'flash_sale_buy_before' => $buyBefore,
+                        'flash_sale_buy_after' => $productSale->fresh()->buy,
+                        'note' => 'Hold not restored because campaign has ended',
+                    ]);
+                } elseif ($isDeal && $saleDeal && $isCampaignActive) {
+                    // Deal: Add back to deal_hold (only if campaign chưa kết thúc)
+                    $currentDealHold = (int) ($inventoryStock->deal_hold ?? 0);
+                    $newDealHold = $currentDealHold + $quantity;
+                    $inventoryStock->deal_hold = $newDealHold;
+                    
+                    // Decrement SaleDeal.buy (always, to restore accurate sales count)
                     $buyBefore = $saleDeal->buy;
                     $saleDeal->decrement('buy', $quantity);
-                    Log::info('WarehouseService: rollbackOrderStock - Deal buy decremented', [
+                    
+                    Log::info('WarehouseService: rollbackOrderStock - Deal stock rolled back (campaign active)', [
                         'order_id' => $orderId,
                         'variant_id' => $variantId,
                         'quantity' => $quantity,
                         'sale_deal_id' => $saleDealId,
+                        'campaign_active' => true,
+                        'physical_stock_after' => $inventoryStock->physical_stock + $quantity,
+                        'deal_hold_before' => $currentDealHold,
+                        'deal_hold_after' => $newDealHold,
                         'deal_buy_before' => $buyBefore,
                         'deal_buy_after' => $saleDeal->fresh()->buy,
                     ]);
+                } elseif ($isDeal && $saleDeal && !$isCampaignActive) {
+                    // Deal ended: Only rollback buy count, NOT hold (campaign đã kết thúc)
+                    $buyBefore = $saleDeal->buy;
+                    $saleDeal->decrement('buy', $quantity);
+                    
+                    Log::info('WarehouseService: rollbackOrderStock - Deal buy rolled back (campaign ended, hold not restored)', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variantId,
+                        'quantity' => $quantity,
+                        'sale_deal_id' => $saleDealId,
+                        'campaign_active' => false,
+                        'physical_stock_after' => $inventoryStock->physical_stock + $quantity,
+                        'deal_buy_before' => $buyBefore,
+                        'deal_buy_after' => $saleDeal->fresh()->buy,
+                        'note' => 'Hold not restored because campaign has ended',
+                    ]);
+                } else {
+                    // Normal product: Only add back physical_stock
+                    Log::info('WarehouseService: rollbackOrderStock - Normal product stock rolled back', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variantId,
+                        'quantity' => $quantity,
+                        'physical_stock_after' => $inventoryStock->physical_stock + $quantity,
+                    ]);
                 }
+                
+                // Step 3: Update last_movement_at and save
+                $inventoryStock->last_movement_at = now();
+                $inventoryStock->save();
 
                 Log::info('WarehouseService: rollbackOrderStock - Stock rolled back', [
                     'order_id' => $orderId,

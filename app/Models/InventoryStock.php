@@ -48,6 +48,39 @@ class InventoryStock extends Model
         'sellable_stock',
     ];
 
+    /**
+     * Boot the model
+     * Ensure flash_sale_hold and deal_hold never go negative
+     * Note: available_stock is a generated column, calculated as: GREATEST(0, physical_stock - reserved_stock)
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Before saving, ensure flash_sale_hold and deal_hold are never negative
+        static::saving(function ($inventoryStock) {
+            // Ensure flash_sale_hold is never negative
+            if ($inventoryStock->flash_sale_hold < 0) {
+                $inventoryStock->flash_sale_hold = 0;
+            }
+
+            // Ensure deal_hold is never negative
+            if ($inventoryStock->deal_hold < 0) {
+                $inventoryStock->deal_hold = 0;
+            }
+
+            // Ensure reserved_stock is never negative
+            if ($inventoryStock->reserved_stock < 0) {
+                $inventoryStock->reserved_stock = 0;
+            }
+
+            // Ensure physical_stock is never negative (unless warehouse allows it)
+            if ($inventoryStock->physical_stock < 0 && !($inventoryStock->warehouse && $inventoryStock->warehouse->allow_negative_stock)) {
+                $inventoryStock->physical_stock = 0;
+            }
+        });
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Relationships
