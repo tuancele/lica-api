@@ -229,7 +229,298 @@ Ghi chu FE: them `data-warehouse-id="1"` (hoac kho mac dinh) vao `<section class
 
 ---
 
+## Logic Xử Lý Kho Hàng Tập Trung (WarehouseService V2)
+
+### Tổng quan
+
+Toàn bộ logic xử lý kho hàng đã được tập trung hóa tại `WarehouseService` với nguồn dữ liệu duy nhất là bảng `inventory_stocks`. Hệ thống không còn sử dụng `product_warehouse` để tính toán tồn kho.
+
+### 1. Nguồn Dữ Liệu Kho (Single Source of Truth)
+
+**File:** `app/Services/Warehouse/WarehouseService.php`
+
+- ✅ **Bảng chính:** `inventory_stocks` (warehouse_id = 1)
+- ✅ **Các cột quan trọng:**
+  - `physical_stock`: Tồn kho vật lý thực tế
+  - `reserved_stock`: Tồn kho đang giữ cho đơn hàng
+  - `available_stock`: Tồn kho khả dụng (GENERATED COLUMN = `GREATEST(0, physical_stock - reserved_stock)`)
+  - `flash_sale_hold`: Số lượng giữ cho Flash Sale (lifetime tracking)
+  - `deal_hold`: Số lượng giữ cho Deal (lifetime tracking)
+
+**Lưu ý quan trọng:**
+- `available_stock` là GENERATED COLUMN, không thể UPDATE trực tiếp
+- MySQL tự động tính lại khi `physical_stock` hoặc `reserved_stock` thay đổi
+- Không được gọi `increment('available_stock')` hoặc `decrement('available_stock')`
+
+### 2. Lấy Tồn Kho (`getVariantStock`)
+
+**Method:** `WarehouseService::getVariantStock(int $variantId): array`
+
+**Logic:**
+1. Query `inventory_stocks` theo `variant_id` và `warehouse_id = 1`
+2. **Auto-cleanup:** Tự động xóa `flash_sale_hold` hoặc `deal_hold` nếu:
+   - Không còn Flash Sale/Deal đang active
+   - Flash Sale/Deal đã bán hết (buy >= number)
+3. Trả về array với các giá trị:
+   ```php
+   [
+       'physical_stock' => (int),
+       'flash_sale_stock' => (int),  // flash_sale_hold
+       'deal_stock' => (int),        // deal_hold
+       'available_stock' => (int),   // available_stock (generated)
+   ]
+   ```
+
+**Ví dụ:**
+```php
+$warehouseService = app(\App\Services\Warehouse\WarehouseServiceInterface::class);
+$stock = $warehouseService->getVariantStock($variantId);
+// Returns: ['physical_stock' => 100, 'flash_sale_stock' => 20, 'deal_stock' => 10, 'available_stock' => 70]
+```
+
+### 3. Trừ Kho Khi Đặt Hàng (`processOrderStock`)
+
+**Method:** `WarehouseService::processOrderStock(int $orderId): bool`
+
+**File tích hợp:** `app/Themes/Website/Controllers/CartController.php`
+
+**Luồng xử lý:**
+1. Được gọi trong `CartController::postCheckout()` sau khi tạo Order và OrderDetail
+2. Nằm trong DB transaction để đảm bảo atomicity
+3. Xử lý từng `OrderDetail`:
+
+**Logic trừ kho:**
+- **Tất cả sản phẩm:**
+  - Trừ `physical_stock` (luôn luôn)
+  
+- **Sản phẩm Flash Sale:**
+  - Trừ `flash_sale_hold` (lifetime tracking)
+  - Tăng `ProductSale.buy` (real-time tracking)
+  - Sử dụng `productsale_id` từ `OrderDetail` để xác định
+  
+- **Sản phẩm Deal:**
+  - Trừ `deal_hold` (lifetime tracking)
+  - Tăng `SaleDeal.buy` (real-time tracking)
+  - Sử dụng `dealsale_id` từ `OrderDetail` để xác định
+
+**Ví dụ code trong CartController:**
+```php
+// Trong DB::transaction()
+foreach ($processedItems as $processed) {
+    // ... Tìm active ProductSale/SaleDeal ...
+    
+    OrderDetail::insert([
+        // ... other fields ...
+        'dealsale_id' => $dealsale_id,
+        'productsale_id' => $productsale_id, // Lưu để rollback sau này
+    ]);
+}
+
+// Gọi trừ kho tập trung
+$this->warehouseService->processOrderStock($order_id);
+```
+
+**Lưu ý:**
+- Sử dụng `lockForUpdate()` để tránh race condition
+- Kiểm tra `available_stock >= quantity` trước khi trừ
+- Log chi tiết `before` và `after` values cho debugging
+
+### 4. Hoàn Kho Khi Hủy Đơn (`rollbackOrderStock`)
+
+**Method:** `WarehouseService::rollbackOrderStock(int $orderId): bool`
+
+**File tích hợp:** `app/Modules/Order/Controllers/OrderController.php`
+
+**Luồng xử lý:**
+1. Được gọi khi Order status chuyển sang trạng thái hủy (status = 2 hoặc 4)
+2. Xử lý từng `OrderDetail`:
+
+**Logic hoàn kho:**
+- **Tất cả sản phẩm:**
+  - Cộng lại `physical_stock` (luôn luôn)
+  
+- **Sản phẩm Flash Sale:**
+  - **Nếu campaign còn active:** Cộng lại `flash_sale_hold` (trả lại suất mua cho chương trình)
+  - **Nếu campaign đã kết thúc:** KHÔNG cộng lại `flash_sale_hold` (chương trình đã kết thúc)
+  - **Luôn luôn:** Giảm `ProductSale.buy` (để báo cáo chính xác)
+  
+- **Sản phẩm Deal:**
+  - **Nếu campaign còn active:** Cộng lại `deal_hold` (trả lại suất mua cho chương trình)
+  - **Nếu campaign đã kết thúc:** KHÔNG cộng lại `deal_hold` (chương trình đã kết thúc)
+  - **Luôn luôn:** Giảm `SaleDeal.buy` (để báo cáo chính xác)
+
+**Ví dụ code trong OrderController:**
+```php
+if (in_array((int) $req->status, $cancelStatuses, true)) {
+    try {
+        $warehouseService = app(\App\Services\Warehouse\WarehouseServiceInterface::class);
+        $warehouseService->rollbackOrderStock($order->id);
+        // ... createImportReceiptFromOrder($order);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        // ... error handling ...
+    }
+}
+```
+
+**Lưu ý quan trọng:**
+- Chỉ restore `hold` nếu campaign còn active (đảm bảo suất mua được trả lại cho chương trình)
+- Luôn decrement `buy` để báo cáo chính xác, kể cả khi campaign đã kết thúc
+- Sử dụng `productsale_id`/`dealsale_id` từ `OrderDetail` làm source of truth (không query lại)
+
+### 5. Lưu Trữ Promotion ID trong OrderDetail
+
+**File:** `app/Modules/Order/Models/OrderDetail.php`
+
+**Các trường mới:**
+- `productsale_id`: ID của `ProductSale` record (nullable)
+- `dealsale_id`: ID của `SaleDeal` record (nullable)
+- `deal_id`: ID của `Deal` record (nullable)
+- `is_flash_sale`: Flag đánh dấu sản phẩm Flash Sale (nullable)
+- `is_deal`: Flag đánh dấu sản phẩm Deal (nullable)
+
+**Migration:** `database/migrations/2026_01_22_101751_add_productsale_id_to_orderdetail_table.php`
+
+**Mục đích:**
+- Lưu trữ thông tin promotion tại thời điểm đặt hàng
+- Cho phép rollback chính xác ngay cả khi promotion đã kết thúc
+- Hỗ trợ báo cáo và audit trail
+
+### 6. Logic Hiển Thị Tồn Kho (Stock Display Priority)
+
+**File:** `app/Modules/Product/Controllers/ProductController.php`
+
+**Priority logic:**
+1. **Flash Sale:** Nếu có Flash Sale active → Hiển thị `flash_sale_stock`
+2. **Deal:** Nếu có Deal active → Hiển thị `deal_stock`
+3. **Available:** Nếu không có promotion → Hiển thị `available_stock`
+
+**Công thức tính:**
+```php
+$stockDisplay = 0;
+if ($flashSaleStock > 0) {
+    $stockDisplay = $flashSaleStock; // Priority 1: Flash Sale
+} elseif ($dealStock > 0) {
+    $stockDisplay = $dealStock;      // Priority 2: Deal
+} else {
+    $stockDisplay = $availableStock; // Priority 3: Available
+}
+```
+
+**Lưu ý:**
+- `physical_stock` là giá trị khởi nguyên để tính toán, KHÔNG BAO GIỜ là giá trị hiển thị
+- Chỉ hiển thị `physical_stock` trong Admin Warehouse interface
+
+### 7. Auto-Cleanup Logic
+
+**Trong `getVariantStock()`:**
+
+Tự động xóa `flash_sale_hold` hoặc `deal_hold` nếu:
+- Không còn Flash Sale/Deal active (status != '1' hoặc ngoài thời gian start-end)
+- Flash Sale/Deal đã bán hết (buy >= number)
+
+**Mục đích:**
+- Đảm bảo hiển thị chính xác tồn kho
+- Tránh hiển thị hold cho promotion đã kết thúc
+- Tự động dọn dẹp dữ liệu không hợp lệ
+
+### 8. Database Schema
+
+**Bảng `inventory_stocks`:**
+```sql
+CREATE TABLE `inventory_stocks` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `warehouse_id` bigint unsigned NOT NULL,
+  `variant_id` int unsigned NOT NULL,
+  `physical_stock` int NOT NULL DEFAULT '0',
+  `reserved_stock` int NOT NULL DEFAULT '0',
+  `available_stock` int GENERATED ALWAYS AS (GREATEST(0, physical_stock - reserved_stock)) STORED,
+  `flash_sale_hold` int NOT NULL DEFAULT '0',
+  `deal_hold` int NOT NULL DEFAULT '0',
+  -- ... other columns ...
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `inventory_stocks_warehouse_variant_unique` (`warehouse_id`,`variant_id`),
+  KEY `idx_inventory_stocks_variant` (`variant_id`),
+  KEY `idx_inventory_stocks_warehouse` (`warehouse_id`)
+);
+```
+
+**Bảng `orderdetail`:**
+```sql
+ALTER TABLE `orderdetail` 
+ADD COLUMN `productsale_id` int unsigned NULL AFTER `dealsale_id`,
+ADD INDEX `idx_orderdetail_productsale` (`productsale_id`);
+```
+
+### 9. Logging và Debugging
+
+**Tất cả operations đều được log:**
+- `processOrderStock`: Log `before` và `after` values cho mỗi item
+- `rollbackOrderStock`: Log `before` và `after` values, campaign status
+- `getVariantStock`: Log auto-cleanup actions
+
+**Log location:** `storage/logs/laravel.log`
+
+**Search patterns:**
+- `WarehouseService: processOrderStock`
+- `WarehouseService: rollbackOrderStock`
+- `WarehouseService: Auto-cleared invalid`
+
+### 10. Testing Checklist
+
+**Đặt hàng:**
+- [ ] Đặt hàng sản phẩm thường → Kiểm tra `physical_stock` giảm
+- [ ] Đặt hàng Flash Sale → Kiểm tra `physical_stock` và `flash_sale_hold` giảm, `ProductSale.buy` tăng
+- [ ] Đặt hàng Deal → Kiểm tra `physical_stock` và `deal_hold` giảm, `SaleDeal.buy` tăng
+- [ ] Kiểm tra `OrderDetail.productsale_id` và `OrderDetail.dealsale_id` được lưu đúng
+
+**Hủy đơn:**
+- [ ] Hủy đơn Flash Sale (campaign còn active) → Kiểm tra `physical_stock` và `flash_sale_hold` tăng, `ProductSale.buy` giảm
+- [ ] Hủy đơn Flash Sale (campaign đã kết thúc) → Kiểm tra chỉ `physical_stock` tăng, `flash_sale_hold` KHÔNG tăng, `ProductSale.buy` giảm
+- [ ] Hủy đơn Deal (tương tự Flash Sale)
+
+**Hiển thị:**
+- [ ] Sản phẩm có Flash Sale → Hiển thị `flash_sale_stock`
+- [ ] Sản phẩm có Deal (không có Flash Sale) → Hiển thị `deal_stock`
+- [ ] Sản phẩm thường → Hiển thị `available_stock`
+
+**Auto-cleanup:**
+- [ ] Xóa Flash Sale → Kiểm tra `flash_sale_hold` tự động về 0
+- [ ] Flash Sale bán hết → Kiểm tra `flash_sale_hold` tự động về 0
+
+### 11. Commands và Utilities
+
+**Reset Stock History:**
+```bash
+# Dry-run (xem trước)
+php artisan stock:reset-history --dry-run
+
+# Thực thi (có xác nhận)
+php artisan stock:reset-history
+
+# Thực thi (bỏ qua xác nhận)
+php artisan stock:reset-history --confirm
+```
+
+**Sync Inventory Stocks:**
+```bash
+# Đồng bộ tạo inventory_stocks cho variants còn thiếu
+php artisan inventory:sync-stocks --force
+```
+
+### 12. Best Practices
+
+1. **Luôn sử dụng `WarehouseService`** thay vì query trực tiếp `inventory_stocks`
+2. **Không UPDATE `available_stock`** trực tiếp (là GENERATED COLUMN)
+3. **Luôn sử dụng DB transaction** khi tạo Order và gọi `processOrderStock`
+4. **Lưu `productsale_id`/`dealsale_id`** trong `OrderDetail` để rollback chính xác
+5. **Kiểm tra campaign active status** trước khi restore hold trong rollback
+6. **Sử dụng `lockForUpdate()`** khi cần thread-safety
+
+---
+
 **Ngày nâng cấp:** 2026-01-21  
+**Ngày cập nhật logic kho:** 2026-01-22  
 **Người thực hiện:** AI Assistant  
 **Trạng thái:** ✅ Hoàn thành
 
