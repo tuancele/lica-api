@@ -944,6 +944,7 @@ class CartController extends Controller
                             $size_id = null;
                             $weight = 0;
                             $dealsale_id = $variant['dealsale_id'] ?? null;
+                            $isDealItem = (isset($variant['is_deal']) && (int) $variant['is_deal'] === 1);
                             
                             if (is_object($item)) {
                                 $variant_id = $item->id ?? null;
@@ -958,8 +959,10 @@ class CartController extends Controller
                             }
 
                             // Find ProductSale ID for Flash Sale tracking
+                            // IMPORTANT: If this is a Deal item, DO NOT attach productsale_id.
+                            // Reason: product can be in both Deal and Flash Sale, but order must follow Deal program.
                             $productsale_id = null;
-                            if ($variant_id) {
+                            if ($variant_id && !$isDealItem) {
                                 $now = time();
                                 $activeProductSale = ProductSale::query()
                                     ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
@@ -982,7 +985,7 @@ class CartController extends Controller
                             // Deal quota accounting:
                             // IMPORTANT: Do NOT decrement qty and increment buy at the same time.
                             // Remaining is computed as (qty - buy), so we only increment buy here.
-                            if (isset($variant['is_deal']) && (int) $variant['is_deal'] === 1) {
+                            if ($isDealItem) {
                                 if (!$dealsale_id) {
                                     throw new \Exception('Thiếu dealsale_id cho sản phẩm Deal Sốc');
                                 }

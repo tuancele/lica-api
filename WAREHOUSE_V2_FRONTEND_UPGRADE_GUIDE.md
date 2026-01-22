@@ -330,6 +330,7 @@ $this->warehouseService->processOrderStock($order_id);
 ```
 
 **Lưu ý:**
+- **Promotion priority (critical):** If an order item belongs to Deal (has `dealsale_id`), the stock deduction MUST follow Deal (deduct `deal_hold`) even if the same variant is also in an active Flash Sale.
 - Sử dụng `lockForUpdate()` để tránh race condition
 - Kiểm tra `available_stock >= quantity` trước khi trừ
 - Log chi tiết `before` và `after` values cho debugging

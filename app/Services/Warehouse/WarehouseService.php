@@ -1545,7 +1545,7 @@ class WarehouseService implements WarehouseServiceInterface
                     throw new \Exception("Tồn kho không đủ cho variant_id: {$variantId}. Yêu cầu: {$quantity}, Có sẵn: {$availableStock}");
                 }
 
-                // Determine product type: Flash Sale, Deal, or Normal
+                // Determine product type: Deal, Flash Sale, or Normal
                 $isFlashSale = false;
                 $isDeal = false;
                 $productSaleId = null;
@@ -1553,33 +1553,7 @@ class WarehouseService implements WarehouseServiceInterface
                 $activeFlashSale = null;
                 $saleDeal = null;
 
-                // Check if Flash Sale (use productsale_id from OrderDetail if available, otherwise query)
-                if ($productsaleId) {
-                    $activeFlashSale = ProductSale::find($productsaleId);
-                    if ($activeFlashSale) {
-                        $flashSale = $activeFlashSale->flashsale ?? null;
-                        if ($flashSale && $flashSale->status == '1' && $flashSale->start <= $now && $flashSale->end >= $now) {
-                            $isFlashSale = true;
-                            $productSaleId = $productsaleId;
-                        }
-                    }
-                } else {
-                    // Fallback: Query active Flash Sale by variant_id
-                    $activeFlashSale = ProductSale::query()
-                        ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
-                        ->where('productsales.variant_id', $variantId)
-                        ->where('fs.status', '1')
-                        ->where('fs.start', '<=', $now)
-                        ->where('fs.end', '>=', $now)
-                        ->first();
-
-                    if ($activeFlashSale) {
-                        $isFlashSale = true;
-                        $productSaleId = $activeFlashSale->id;
-                    }
-                }
-
-                // Check if Deal (use dealsale_id from OrderDetail)
+                // Check if Deal first (source of truth: dealsale_id from OrderDetail)
                 if ($dealsaleId) {
                     $saleDeal = \App\Modules\Deal\Models\SaleDeal::find($dealsaleId);
                     if ($saleDeal) {
@@ -1587,6 +1561,36 @@ class WarehouseService implements WarehouseServiceInterface
                         if ($deal && $deal->status == '1' && $deal->start <= $now && $deal->end >= $now) {
                             $isDeal = true;
                             $saleDealId = $dealsaleId;
+                        }
+                    }
+                }
+
+                // Check if Flash Sale only when NOT a Deal item.
+                // Reason: product can be in both Deal and Flash Sale, but Deal order must deduct Deal hold.
+                if (!$isDeal) {
+                    // Check if Flash Sale (use productsale_id from OrderDetail if available, otherwise query)
+                    if ($productsaleId) {
+                        $activeFlashSale = ProductSale::find($productsaleId);
+                        if ($activeFlashSale) {
+                            $flashSale = $activeFlashSale->flashsale ?? null;
+                            if ($flashSale && $flashSale->status == '1' && $flashSale->start <= $now && $flashSale->end >= $now) {
+                                $isFlashSale = true;
+                                $productSaleId = $productsaleId;
+                            }
+                        }
+                    } else {
+                        // Fallback: Query active Flash Sale by variant_id
+                        $activeFlashSale = ProductSale::query()
+                            ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
+                            ->where('productsales.variant_id', $variantId)
+                            ->where('fs.status', '1')
+                            ->where('fs.start', '<=', $now)
+                            ->where('fs.end', '>=', $now)
+                            ->first();
+
+                        if ($activeFlashSale) {
+                            $isFlashSale = true;
+                            $productSaleId = $activeFlashSale->id;
                         }
                     }
                 }
@@ -1599,27 +1603,7 @@ class WarehouseService implements WarehouseServiceInterface
                 $inventoryStock->decrement('physical_stock', $quantity);
                 
                 // Step 2: Deduct from promotion holds if applicable
-                if ($isFlashSale && $activeFlashSale) {
-                    // Flash Sale: Deduct from flash_sale_hold (lifetime tracking)
-                    $currentFlashSaleHold = (int) ($inventoryStock->flash_sale_hold ?? 0);
-                    $newFlashSaleHold = max(0, $currentFlashSaleHold - $quantity);
-                    $inventoryStock->flash_sale_hold = $newFlashSaleHold;
-                    
-                    // Increment ProductSale.buy for real-time tracking
-                    $activeFlashSale->increment('buy', $quantity);
-
-                    Log::info('WarehouseService: processOrderStock - Flash Sale product stock deducted', [
-                        'order_id' => $orderId,
-                        'variant_id' => $variantId,
-                        'quantity' => $quantity,
-                        'product_sale_id' => $productSaleId,
-                        'physical_stock_after' => $inventoryStock->physical_stock - $quantity,
-                        'flash_sale_hold_before' => $currentFlashSaleHold,
-                        'flash_sale_hold_after' => $newFlashSaleHold,
-                        'flash_sale_buy_before' => $activeFlashSale->buy - $quantity,
-                        'flash_sale_buy_after' => $activeFlashSale->fresh()->buy,
-                    ]);
-                } elseif ($isDeal && $saleDeal) {
+                if ($isDeal && $saleDeal) {
                     // Deal: Deduct from deal_hold (lifetime tracking)
                     $currentDealHold = (int) ($inventoryStock->deal_hold ?? 0);
                     $newDealHold = max(0, $currentDealHold - $quantity);
@@ -1634,11 +1618,36 @@ class WarehouseService implements WarehouseServiceInterface
                         'variant_id' => $variantId,
                         'quantity' => $quantity,
                         'sale_deal_id' => $saleDealId,
-                        'physical_stock_after' => $inventoryStock->physical_stock - $quantity,
+                        'promotion_priority' => 'deal',
+                        'productsale_id' => $productsaleId,
+                        'dealsale_id' => $dealsaleId,
                         'deal_hold_before' => $currentDealHold,
                         'deal_hold_after' => $newDealHold,
                         'deal_buy_before' => $buyBefore,
                         'deal_buy_after' => $saleDeal->fresh()->buy,
+                    ]);
+                } elseif ($isFlashSale && $activeFlashSale) {
+                    // Flash Sale: Deduct from flash_sale_hold (lifetime tracking)
+                    $currentFlashSaleHold = (int) ($inventoryStock->flash_sale_hold ?? 0);
+                    $newFlashSaleHold = max(0, $currentFlashSaleHold - $quantity);
+                    $inventoryStock->flash_sale_hold = $newFlashSaleHold;
+                    
+                    // Increment ProductSale.buy for real-time tracking
+                    $activeFlashSale->increment('buy', $quantity);
+
+                    Log::info('WarehouseService: processOrderStock - Flash Sale product stock deducted', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variantId,
+                        'quantity' => $quantity,
+                        'product_sale_id' => $productSaleId,
+                        'promotion_priority' => 'flash_sale',
+                        'productsale_id' => $productsaleId,
+                        'dealsale_id' => $dealsaleId,
+                        'physical_stock_after' => $inventoryStock->physical_stock - $quantity,
+                        'flash_sale_hold_before' => $currentFlashSaleHold,
+                        'flash_sale_hold_after' => $newFlashSaleHold,
+                        'flash_sale_buy_before' => $activeFlashSale->buy - $quantity,
+                        'flash_sale_buy_after' => $activeFlashSale->fresh()->buy,
                     ]);
                 } else {
                     // Normal product: Only deduct physical_stock
@@ -1646,6 +1655,9 @@ class WarehouseService implements WarehouseServiceInterface
                         'order_id' => $orderId,
                         'variant_id' => $variantId,
                         'quantity' => $quantity,
+                        'promotion_priority' => 'normal',
+                        'productsale_id' => $productsaleId,
+                        'dealsale_id' => $dealsaleId,
                         'physical_stock_after' => $inventoryStock->physical_stock - $quantity,
                     ]);
                 }
