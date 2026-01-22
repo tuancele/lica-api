@@ -4449,5 +4449,482 @@ Module Nhập/Xuất hàng V2 với giao diện form A4 chuẩn kế toán, hỗ
 
 ---
 
-**最后更新:** 2026-01-21
+---
+
+## Warehouse Accounting API (V2)
+
+### Overview
+API V2 cho module Warehouse Accounting, quản lý phiếu nhập/xuất kho với chuẩn kế toán 02-VT.
+
+**Base URL:** `/admin/api/v2/warehouse/accounting`
+
+---
+
+### 1. List Stock Receipts
+
+**Endpoint:** `GET /admin/api/v2/warehouse/accounting/receipts`
+
+**Mục tiêu:** Lấy danh sách phiếu nhập/xuất kho với phân trang và bộ lọc
+
+**Tham số Query:**
+- `type` (optional): `import` hoặc `export`
+- `status` (optional): `draft`, `pending`, `approved`, `completed`, `cancelled`
+- `date_from` (optional): Ngày bắt đầu (format: Y-m-d)
+- `date_to` (optional): Ngày kết thúc (format: Y-m-d)
+- `receipt_code` (optional): Mã phiếu
+- `partner_name` (optional): Tên đối tác
+- `search` (optional): Tìm kiếm theo mã phiếu hoặc tên đối tác
+- `per_page` (optional): Số lượng mỗi trang (default: 15)
+- `page` (optional): Số trang (default: 1)
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "receipt_code": "PN260123ABCD",
+      "type": "import",
+      "type_label": "Nhập kho",
+      "status": "completed",
+      "status_label": "Hoàn thành",
+      "total_value": 1000000,
+      "total_value_formatted": "1.000.000 đ",
+      "created_at": "2026-01-23 10:30:00",
+      "created_at_formatted": "23/01/2026 10:30",
+      "supplier_name": "Công ty ABC",
+      "supplier_phone": "0123456789",
+      "creator": {
+        "id": 1,
+        "name": "Admin"
+      }
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "last_page": 5,
+    "per_page": 15,
+    "total": 75
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 2. Get Single Receipt
+
+**Endpoint:** `GET /admin/api/v2/warehouse/accounting/receipts/{id}`
+
+**Mục tiêu:** Lấy thông tin chi tiết một phiếu
+
+**Tham số URL:**
+- `id` (required): ID của phiếu
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "receipt_code": "PN260123ABCD",
+    "type": "import",
+    "type_label": "Nhập kho",
+    "status": "completed",
+    "status_label": "Hoàn thành",
+    "supplier_name": "Công ty ABC",
+    "supplier_phone": "0123456789",
+    "supplier_address": "123 Đường ABC",
+    "supplier_tax_id": "0123456789",
+    "subject": "Nhập hàng tháng 1",
+    "vat_invoice": "VAT001",
+    "total_value": 1000000,
+    "total_value_formatted": "1.000.000 đ",
+    "created_at": "2026-01-23 10:30:00",
+    "created_at_formatted": "23/01/2026 10:30",
+    "completed_at": "2026-01-23 10:35:00",
+    "items": [
+      {
+        "id": 1,
+        "variant_id": 123,
+        "variant": {
+          "id": 123,
+          "sku": "SKU-001",
+          "product": {
+            "id": 45,
+            "name": "Sản phẩm A"
+          },
+          "option1_value": "Size M"
+        },
+        "quantity": 10,
+        "quantity_requested": 10,
+        "unit_price": 100000,
+        "total_price": 1000000,
+        "stock_before": 50,
+        "stock_after": 60
+      }
+    ],
+    "can_edit": false,
+    "can_void": true,
+    "public_url": "https://domain.com/receipt/PN260123ABCD"
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 3. Create Receipt
+
+**Endpoint:** `POST /admin/api/v2/warehouse/accounting/receipts`
+
+**Mục tiêu:** Tạo phiếu nhập/xuất kho mới
+
+**Tham số Body:**
+```json
+{
+  "type": "import",
+  "receipt_code": "PN260123ABCD",
+  "to_warehouse_id": 1,
+  "from_warehouse_id": null,
+  "supplier_name": "Công ty ABC",
+  "supplier_phone": "0123456789",
+  "supplier_address": "123 Đường ABC",
+  "supplier_tax_id": "0123456789",
+  "subject": "Nhập hàng tháng 1",
+  "vat_invoice": "VAT001",
+  "items": [
+    {
+      "variant_id": 123,
+      "quantity": 10,
+      "quantity_requested": 10,
+      "unit_price": 100000,
+      "total_price": 1000000,
+      "batch_number": "BATCH001",
+      "serial_number": null,
+      "condition": "new"
+    }
+  ]
+}
+```
+
+**Validation Rules:**
+- `type`: required, in:import,export
+- `receipt_code`: nullable, unique:stock_receipts,receipt_code
+- `items`: required, array, min:1
+- `items.*.variant_id`: required, exists:variants,id
+- `items.*.quantity`: required, numeric, min:0.01
+- `items.*.unit_price`: required, numeric, min:0
+
+**Phản hồi mẫu (201):**
+```json
+{
+  "success": true,
+  "message": "Tạo phiếu thành công",
+  "data": {
+    "id": 1,
+    "receipt_code": "PN260123ABCD",
+    "type": "import",
+    "status": "draft",
+    "total_value": 1000000
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 4. Update Receipt
+
+**Endpoint:** `PUT /admin/api/v2/warehouse/accounting/receipts/{id}`
+
+**Mục tiêu:** Cập nhật phiếu (chỉ khi status = draft hoặc pending)
+
+**Tham số URL:**
+- `id` (required): ID của phiếu
+
+**Tham số Body:** Tương tự Create Receipt (tất cả optional)
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "message": "Cập nhật phiếu thành công",
+  "data": { ... }
+}
+```
+
+**Phản hồi lỗi (403):**
+```json
+{
+  "success": false,
+  "message": "Phiếu đã hoàn thành, không thể chỉnh sửa"
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 5. Complete Receipt
+
+**Endpoint:** `POST /admin/api/v2/warehouse/accounting/receipts/{id}/complete`
+
+**Mục tiêu:** Hoàn thành phiếu và cập nhật tồn kho
+
+**Tham số URL:**
+- `id` (required): ID của phiếu
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "message": "Hoàn thành phiếu thành công",
+  "data": {
+    "id": 1,
+    "status": "completed",
+    "completed_at": "2026-01-23 10:35:00"
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 6. Void Receipt
+
+**Endpoint:** `POST /admin/api/v2/warehouse/accounting/receipts/{id}/void`
+
+**Mục tiêu:** Hủy phiếu đã hoàn thành và hoàn kho
+
+**Tham số URL:**
+- `id` (required): ID của phiếu
+
+**Tham số Body:**
+```json
+{
+  "reason": "Hủy do lỗi nhập liệu"
+}
+```
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "message": "Hủy phiếu thành công",
+  "data": {
+    "id": 1,
+    "status": "cancelled",
+    "cancelled_at": "2026-01-23 11:00:00"
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 7. Get Statistics
+
+**Endpoint:** `GET /admin/api/v2/warehouse/accounting/statistics`
+
+**Mục tiêu:** Lấy thống kê phiếu nhập/xuất
+
+**Tham số Query:**
+- `type` (optional): `import` hoặc `export`
+- `date_from` (optional): Ngày bắt đầu (format: Y-m-d)
+- `date_to` (optional): Ngày kết thúc (format: Y-m-d)
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "total_receipts": 150,
+    "total_value": 50000000,
+    "import_count": 80,
+    "export_count": 70
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+## Order Auto Export Receipt Integration
+
+### Overview
+Tính năng tự động tạo phiếu xuất kho khi đơn hàng được tạo và tự động cập nhật/hủy phiếu khi đơn hàng thay đổi trạng thái.
+
+**Service:** `App\Services\Warehouse\OrderStockReceiptService`
+
+---
+
+### Logic Tự Động
+
+#### 1. Tạo Đơn Hàng (Order Creation)
+
+**Khi nào:** Khi đơn hàng được tạo với `status = '0'` (chờ xác nhận)
+
+**Hành động:**
+- Tự động tạo phiếu xuất kho (`type = 'export'`)
+- Phiếu xuất kho được tạo với `status = 'completed'` (hoàn thành)
+- Gán `subject = 'Đơn hàng {order_id}'`
+- Gán `reference_type = 'order'`, `reference_id = {order_id}`, `reference_code = {order_code}`
+- Lấy thông tin sản phẩm từ `OrderDetail` và tạo các dòng phiếu tương ứng
+- Tự động cập nhật tồn kho (trừ kho)
+
+**Vị trí tích hợp:**
+- `app/Services/Cart/CartService.php` - Method `checkout()`
+
+**Code Example:**
+```php
+// Auto create export receipt for order (status = '0' means chờ xác nhận -> receipt status = completed)
+$orderStockReceiptService = app(\App\Services\Warehouse\OrderStockReceiptService::class);
+$orderStockReceiptService->createExportReceiptFromOrder($order, \App\Models\StockReceipt::STATUS_COMPLETED);
+```
+
+---
+
+#### 2. Cập Nhật Trạng Thái Đơn Hàng (Order Status Update)
+
+**Khi nào:** Khi đơn hàng thay đổi trạng thái
+
+**Logic:**
+
+**a) Đơn hàng chuyển sang "Chờ xác nhận" (status = '0'):**
+- Nếu chưa có phiếu xuất kho: Tạo mới với `status = 'completed'`
+- Nếu đã có phiếu nhưng chưa completed: Hoàn thành phiếu (`status = 'completed'`)
+
+**b) Đơn hàng chuyển sang "Đã hủy" (status = '2' hoặc '4'):**
+- Tự động hủy phiếu xuất kho (gọi `voidReceipt()`)
+- Xóa phiếu xuất kho (soft delete)
+- Tự động hoàn kho (cộng lại số lượng đã trừ)
+
+**Vị trí tích hợp:**
+- `app/Modules/Order/Controllers/OrderController.php` - Method `postUpdate()`
+
+**Code Example:**
+```php
+// Auto create/update export receipt based on order status
+$orderStockReceiptService = app(\App\Services\Warehouse\OrderStockReceiptService::class);
+$orderStockReceiptService->updateExportReceiptFromOrderStatus($order, (string)$oldStatus, (string)$newStatus);
+```
+
+---
+
+### Service Methods
+
+#### `createExportReceiptFromOrder(Order $order, string $status = 'completed'): ?StockReceipt`
+
+Tạo phiếu xuất kho từ đơn hàng.
+
+**Parameters:**
+- `$order`: Order model instance
+- `$status`: Receipt status (default: 'completed')
+
+**Returns:**
+- `StockReceipt` instance hoặc `null` nếu lỗi
+
+**Logic:**
+- Kiểm tra xem đã có phiếu cho đơn hàng này chưa (theo `reference_type = 'order'` và `reference_id`)
+- Nếu đã có, trả về phiếu hiện tại
+- Lấy danh sách `OrderDetail` và tạo các dòng phiếu
+- Tự động tính tổng giá trị
+- Nếu `status = 'completed'`, tự động hoàn thành phiếu và cập nhật tồn kho
+
+---
+
+#### `cancelExportReceiptFromOrder(Order $order, bool $delete = false): bool`
+
+Hủy hoặc xóa phiếu xuất kho khi đơn hàng bị hủy.
+
+**Parameters:**
+- `$order`: Order model instance
+- `$delete`: Nếu `true`, xóa phiếu; nếu `false`, chỉ đánh dấu cancelled
+
+**Returns:**
+- `bool`: `true` nếu thành công, `false` nếu lỗi
+
+**Logic:**
+- Tìm phiếu xuất kho theo `reference_type = 'order'` và `reference_id`
+- Gọi `voidReceipt()` để hoàn kho (reverse stock)
+- Nếu `$delete = true`, xóa phiếu (soft delete)
+- Nếu `$delete = false`, chỉ đánh dấu `status = 'cancelled'`
+
+---
+
+#### `updateExportReceiptFromOrderStatus(Order $order, string $oldStatus, string $newStatus): bool`
+
+Cập nhật phiếu xuất kho dựa trên thay đổi trạng thái đơn hàng.
+
+**Parameters:**
+- `$order`: Order model instance
+- `$oldStatus`: Trạng thái cũ của đơn hàng
+- `$newStatus`: Trạng thái mới của đơn hàng
+
+**Returns:**
+- `bool`: `true` nếu thành công, `false` nếu lỗi
+
+**Logic:**
+- Nếu `$newStatus = '0'` và chưa có phiếu: Tạo mới với `status = 'completed'`
+- Nếu `$newStatus = '2'` hoặc `'4'`: Hủy và xóa phiếu
+- Nếu `$newStatus = '0'` và phiếu chưa completed: Hoàn thành phiếu
+
+---
+
+### Mapping Trạng Thái
+
+| Đơn Hàng Status | Ý Nghĩa | Phiếu Xuất Kho Status | Hành Động |
+|----------------|---------|----------------------|-----------|
+| `'0'` | Chờ xác nhận | `'completed'` | Tạo phiếu mới hoặc hoàn thành phiếu hiện có |
+| `'1'` | Đã xác nhận | `'completed'` | Giữ nguyên (phiếu đã completed) |
+| `'2'` | Đã hủy | `'cancelled'` hoặc xóa | Hủy phiếu và hoàn kho |
+| `'4'` | Đã hủy | `'cancelled'` hoặc xóa | Hủy phiếu và hoàn kho |
+
+---
+
+### Database Fields
+
+**stock_receipts table:**
+- `reference_type`: `'order'` (khi được tạo từ đơn hàng)
+- `reference_id`: ID của đơn hàng
+- `reference_code`: Mã đơn hàng (`order.code`)
+- `subject`: `'Đơn hàng {order_id}'`
+- `customer_name`: Tên khách hàng từ đơn hàng
+- `customer_id`: `order.member_id` (nếu có)
+
+---
+
+### Error Handling
+
+- Tất cả lỗi được log vào Laravel log
+- Lỗi không làm gián đoạn quá trình tạo/cập nhật đơn hàng
+- Nếu tạo phiếu thất bại, đơn hàng vẫn được tạo thành công (graceful degradation)
+
+---
+
+### Files Created/Modified
+
+**Created:**
+- `app/Services/Warehouse/OrderStockReceiptService.php` - Service xử lý logic tự động tạo/cập nhật phiếu
+
+**Modified:**
+- `app/Services/Cart/CartService.php` - Tích hợp tạo phiếu khi tạo đơn hàng
+- `app/Modules/Order/Controllers/OrderController.php` - Tích hợp cập nhật phiếu khi thay đổi trạng thái
+- `app/Providers/AppServiceProvider.php` - Đăng ký OrderStockReceiptService
+
+---
+
+**Trạng thái:** Hoàn thành
+
+---
+
+**最后更新:** 2026-01-23
 **维护者:** AI Assistant

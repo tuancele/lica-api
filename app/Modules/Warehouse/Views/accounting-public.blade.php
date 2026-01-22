@@ -89,7 +89,7 @@
                     </div>
                     <div class="form-field">
                         <label>Địa chỉ (bộ phận):</label>
-                        <div class="form-input" style="border: none; background: transparent;">-</div>
+                        <div class="form-input" style="border: none; background: transparent;">{{ $receipt->content ?? '-' }}</div>
                     </div>
                     <div class="form-field">
                         <label>Lý do {{ $receipt->type === 'import' ? 'nhập' : 'xuất' }} kho:</label>

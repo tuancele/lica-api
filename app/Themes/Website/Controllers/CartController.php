@@ -1102,6 +1102,50 @@ class CartController extends Controller
                 Session::forget('cart');
                 Session::forget('ss_counpon');
                 
+                // Auto create export receipt for order (status = '0' or 0 means chờ xác nhận -> receipt status = completed)
+                try {
+                    // Load order with relationships for address
+                    $order = Order::with(['province', 'district', 'ward'])->find($order_id);
+                    Log::info('[CHECKOUT_EXPORT_RECEIPT] Attempting to create export receipt', [
+                        'order_id' => $order_id,
+                        'order_code' => $code,
+                        'order_exists' => $order ? 'yes' : 'no',
+                        'order_status' => $order ? $order->status : 'N/A',
+                        'order_status_type' => $order ? gettype($order->status) : 'N/A',
+                    ]);
+                    
+                    if ($order && ($order->status === '0' || $order->status === 0)) {
+                        $orderStockReceiptService = app(\App\Services\Warehouse\OrderStockReceiptService::class);
+                        $receipt = $orderStockReceiptService->createExportReceiptFromOrder($order, \App\Models\StockReceipt::STATUS_COMPLETED);
+                        if ($receipt) {
+                            Log::info('[CHECKOUT_EXPORT_RECEIPT] Export receipt created successfully', [
+                                'order_id' => $order_id,
+                                'order_code' => $code,
+                                'receipt_id' => $receipt->id,
+                                'receipt_code' => $receipt->receipt_code,
+                            ]);
+                        } else {
+                            Log::warning('[CHECKOUT_EXPORT_RECEIPT] createExportReceiptFromOrder returned null', [
+                                'order_id' => $order_id,
+                                'order_code' => $code,
+                            ]);
+                        }
+                    } else {
+                        Log::info('[CHECKOUT_EXPORT_RECEIPT] Order status is not 0, skipping receipt creation', [
+                            'order_id' => $order_id,
+                            'order_status' => $order ? $order->status : 'N/A',
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    // Log error but don't fail order creation
+                    Log::error('[CHECKOUT_EXPORT_RECEIPT] Failed to auto-create export receipt for order', [
+                        'order_id' => $order_id,
+                        'order_code' => $code,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                }
+                
                 return response()->json([
                     'status' => 'success',
                     'url' => '/cart/dat-hang-thanh-cong?code=' . $code

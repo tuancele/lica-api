@@ -1455,6 +1455,21 @@ class CartService
         session()->save();
         Session::save(); // Force save session
         
+        // Auto create export receipt for order (status = '0' means chờ xác nhận -> receipt status = completed)
+        try {
+            $order = Order::find($orderId);
+            if ($order && $order->status === '0') {
+                $orderStockReceiptService = app(\App\Services\Warehouse\OrderStockReceiptService::class);
+                $orderStockReceiptService->createExportReceiptFromOrder($order, \App\Models\StockReceipt::STATUS_COMPLETED);
+            }
+        } catch (\Exception $e) {
+            // Log error but don't fail order creation
+            Log::error('Failed to auto-create export receipt for order', [
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+        
         return [
             'order_code' => (string)$code,
             'order_id' => $orderId,

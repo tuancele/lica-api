@@ -64,10 +64,19 @@ class StockReceiptService
                 'vat_invoice' => $data['vat_invoice'] ?? null,
                 'supplier_name' => $data['supplier_name'] ?? null,
                 'customer_name' => $data['customer_name'] ?? null,
+                'supplier_phone' => $data['supplier_phone'] ?? null,
+                'customer_phone' => $data['customer_phone'] ?? null,
+                'supplier_address' => $data['supplier_address'] ?? null,
+                'customer_address' => $data['customer_address'] ?? null,
+                'supplier_tax_id' => $data['supplier_tax_id'] ?? null,
+                'customer_tax_id' => $data['customer_tax_id'] ?? null,
                 'supplier_id' => $data['supplier_id'] ?? null,
                 'customer_id' => $data['customer_id'] ?? null,
                 'to_warehouse_id' => $data['to_warehouse_id'] ?? 1,
                 'from_warehouse_id' => $data['from_warehouse_id'] ?? null,
+                'reference_type' => $data['reference_type'] ?? null,
+                'reference_id' => $data['reference_id'] ?? null,
+                'reference_code' => $data['reference_code'] ?? null,
                 'created_by' => Auth::id(),
             ]);
 
@@ -83,20 +92,28 @@ class StockReceiptService
                 $stockInfo = $this->warehouseService->getVariantStock($variant->id);
                 $stockBefore = $stockInfo['physical_stock'] ?? 0;
 
+                // Calculate total_price if not provided
+                $totalPrice = $itemData['total_price'] ?? ($itemData['quantity'] * ($itemData['unit_price'] ?? 0));
+                
                 // Create item
                 $item = StockReceiptItem::create([
                     'receipt_id' => $receipt->id,
                     'variant_id' => $itemData['variant_id'],
                     'quantity' => $itemData['quantity'],
+                    'quantity_requested' => $itemData['quantity_requested'] ?? $itemData['quantity'],
                     'unit_price' => $itemData['unit_price'] ?? 0,
+                    'total_price' => $totalPrice,
                     'stock_before' => $stockBefore,
                     'stock_after' => null, // Will be updated when completed
+                    'batch_number' => $itemData['batch_number'] ?? null,
+                    'serial_number' => $itemData['serial_number'] ?? null,
+                    'condition' => $itemData['condition'] ?? 'new',
                     'notes' => $itemData['notes'] ?? null,
                 ]);
 
                 $totalItems++;
                 $totalQuantity += $itemData['quantity'];
-                $totalValue += ($itemData['quantity'] * ($itemData['unit_price'] ?? 0));
+                $totalValue += $totalPrice;
             }
 
             // Update receipt totals
@@ -200,6 +217,78 @@ class StockReceiptService
     }
 
     /**
+     * Update receipt
+     */
+    public function updateReceipt(int $id, array $data): StockReceipt
+    {
+        DB::beginTransaction();
+        
+        try {
+            $receipt = StockReceipt::with('items')->findOrFail($id);
+            
+            if (!$receipt->canEdit()) {
+                throw new \Exception('Phiếu đã hoàn thành, không thể chỉnh sửa');
+            }
+
+            // Update receipt fields
+            $receiptFields = [
+                'to_warehouse_id', 'from_warehouse_id',
+                'supplier_name', 'customer_name',
+                'supplier_phone', 'customer_phone',
+                'supplier_address', 'customer_address',
+                'supplier_tax_id', 'customer_tax_id',
+                'subject', 'vat_invoice',
+                'updated_by'
+            ];
+            
+            foreach ($receiptFields as $field) {
+                if (isset($data[$field])) {
+                    $receipt->$field = $data[$field];
+                }
+            }
+            
+            $receipt->save();
+            
+            // Update items if provided
+            if (isset($data['items']) && is_array($data['items'])) {
+                // Delete existing items
+                $receipt->items()->delete();
+                
+                // Create new items
+                foreach ($data['items'] as $itemData) {
+                    $variant = Variant::findOrFail($itemData['variant_id']);
+                    
+                    // Calculate total_price if not provided
+                    if (!isset($itemData['total_price'])) {
+                        $itemData['total_price'] = $itemData['quantity'] * $itemData['unit_price'];
+                    }
+                    
+                    // Get stock before (for audit)
+                    $stockInfo = $this->warehouseService->getVariantStock($variant->id);
+                    $itemData['stock_before'] = $stockInfo['physical_stock'] ?? 0;
+                    $itemData['stock_after'] = $itemData['stock_before']; // Will be updated when completed
+                    
+                    $receipt->items()->create($itemData);
+                }
+                
+                // Recalculate totals
+                $receipt->recalculateTotals();
+            }
+            
+            DB::commit();
+            return $receipt->fresh(['items.variant.product', 'creator', 'toWarehouse', 'fromWarehouse']);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Update receipt failed: ' . $e->getMessage(), [
+                'receipt_id' => $id,
+                'data' => $data,
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
      * Get receipt with items
      */
     public function getReceipt(int $id): StockReceipt
@@ -217,7 +306,7 @@ class StockReceiptService
     /**
      * List receipts with filters
      */
-    public function listReceipts(array $filters = [], int $perPage = 20)
+    public function listReceipts(array $filters = [], int $perPage = 20, int $page = 1)
     {
         $query = StockReceipt::with(['creator', 'items.variant.product']);
 
@@ -229,7 +318,29 @@ class StockReceiptService
             $query->where('status', $filters['status']);
         }
 
-        if (isset($filters['keyword']) && !empty($filters['keyword'])) {
+        if (isset($filters['receipt_code']) && !empty($filters['receipt_code'])) {
+            $query->where('receipt_code', 'like', "%{$filters['receipt_code']}%");
+        }
+
+        if (isset($filters['partner_name']) && !empty($filters['partner_name'])) {
+            $query->where(function($q) use ($filters) {
+                $q->where('supplier_name', 'like', "%{$filters['partner_name']}%")
+                  ->orWhere('customer_name', 'like', "%{$filters['partner_name']}%");
+            });
+        }
+
+        if (isset($filters['search']) && !empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function($q) use ($search) {
+                $q->where('receipt_code', 'like', "%{$search}%")
+                  ->orWhere('supplier_name', 'like', "%{$search}%")
+                  ->orWhere('customer_name', 'like', "%{$search}%")
+                  ->orWhere('subject', 'like', "%{$search}%");
+            });
+        }
+
+        // Support both 'keyword' (legacy) and 'search' (new)
+        if (isset($filters['keyword']) && !empty($filters['keyword']) && !isset($filters['search'])) {
             $keyword = $filters['keyword'];
             $query->where(function($q) use ($keyword) {
                 $q->where('receipt_code', 'like', "%{$keyword}%")
@@ -251,7 +362,7 @@ class StockReceiptService
         $sortOrder = $filters['sort_order'] ?? 'desc';
         $query->orderBy($sortBy, $sortOrder);
 
-        return $query->paginate($perPage);
+        return $query->paginate($perPage, ['*'], 'page', $page);
     }
 
     /**

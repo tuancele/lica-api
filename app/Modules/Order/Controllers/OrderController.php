@@ -170,6 +170,23 @@ class OrderController extends Controller
                 ]);
 
                 $order->refresh();
+                // Load relationships for address
+                $order->load(['province', 'district', 'ward']);
+
+                // Auto create/update export receipt based on order status
+                try {
+                    $orderStockReceiptService = app(\App\Services\Warehouse\OrderStockReceiptService::class);
+                    $orderStockReceiptService->updateExportReceiptFromOrderStatus($order, (string)$oldStatus, (string)$req->status);
+                } catch (\Exception $e) {
+                    Log::error('Failed to update export receipt for order status change', [
+                        'order_id' => $order->id,
+                        'order_code' => $order->code,
+                        'old_status' => $oldStatus,
+                        'new_status' => $req->status,
+                        'error' => $e->getMessage(),
+                    ]);
+                    // Don't rollback, just log the error
+                }
 
                 // Cancel-like statuses (config dependent): treat both 2 and 4 as "cancel/failed"
                 $cancelStatuses = [2, 4];

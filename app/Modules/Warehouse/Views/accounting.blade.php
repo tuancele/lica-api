@@ -89,7 +89,7 @@
                         <div class="form-field">
                             <label>Địa chỉ (bộ phận):</label>
                             <input type="text" name="recipient_address" id="recipient-address" class="form-input" 
-                                   placeholder="Địa chỉ">
+                                   value="{{ $receipt->content ?? '' }}" placeholder="Địa chỉ">
                         </div>
                         <div class="form-field">
                             <label>Lý do <span id="reason-label">{{ ($receipt->type ?? 'import') === 'import' ? 'nhập' : 'xuất' }}</span> kho:</label>
@@ -584,9 +584,12 @@ $('#warehouse-accounting-form').on('submit', function(e) {
         type: receiptType,
         receipt_code: $('#receipt-code').val(),
         subject: $('#reason').val(),
+        content: $('#recipient-address').val(), // Địa chỉ (bộ phận)
         vat_invoice: $('#vat-invoice').val(),
         supplier_name: receiptType === 'import' ? $('#recipient-name').val() : null,
         customer_name: receiptType === 'export' ? $('#recipient-name').val() : null,
+        customer_address: receiptType === 'export' ? $('#recipient-address').val() : null,
+        supplier_address: receiptType === 'import' ? $('#recipient-address').val() : null,
         status: 'draft',
         items: items
     };

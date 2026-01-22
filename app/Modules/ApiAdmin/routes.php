@@ -199,4 +199,20 @@ Route::group([
             Route::get('/summary', 'WarehouseController@getSummaryStatistics');
         });
     });
+
+    // Warehouse Accounting Routes (V2)
+    Route::prefix('v2/warehouse/accounting')->group(function () {
+        // Receipts Management
+        Route::prefix('receipts')->group(function () {
+            Route::get('/', 'WarehouseAccountingController@index');
+            Route::get('/{id}', 'WarehouseAccountingController@show');
+            Route::post('/', 'WarehouseAccountingController@store');
+            Route::put('/{id}', 'WarehouseAccountingController@update');
+            Route::post('/{id}/complete', 'WarehouseAccountingController@complete');
+            Route::post('/{id}/void', 'WarehouseAccountingController@void');
+        });
+        
+        // Statistics
+        Route::get('/statistics', 'WarehouseAccountingController@statistics');
+    });
 });

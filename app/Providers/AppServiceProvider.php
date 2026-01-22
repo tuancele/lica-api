@@ -48,6 +48,15 @@ class AppServiceProvider extends ServiceProvider
             }
         );
 
+        $this->app->singleton(
+            \App\Services\Warehouse\OrderStockReceiptService::class,
+            function ($app) {
+                return new \App\Services\Warehouse\OrderStockReceiptService(
+                    $app->make(\App\Services\Warehouse\StockReceiptService::class)
+                );
+            }
+        );
+
         $this->app->bind(
             \App\Services\Promotion\ProductStockValidatorInterface::class,
             \App\Services\Promotion\ProductStockValidator::class
