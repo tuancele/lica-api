@@ -612,6 +612,11 @@
                 .catch(function (error) {
                     if (error.response && error.response.status === 422) {
                         var data = error.response.data || {};
+                        // Log validation errors to console for debugging
+                        console.error("Validation errors:", data);
+                        if (data.errors) {
+                            console.error("Field errors:", data.errors);
+                        }
                         showToast(data.message || "Du lieu khong hop le", "error");
                         showValidationErrors(data.errors || {});
                         return;
@@ -641,6 +646,11 @@
             .then(function (res) {
                 if (res.status === 422) {
                     return res.json().then(function (data) {
+                        // Log validation errors to console for debugging
+                        console.error("Validation errors:", data);
+                        if (data.errors) {
+                            console.error("Field errors:", data.errors);
+                        }
                         showToast((data && data.message) || "Du lieu khong hop le", "error");
                         showValidationErrors((data && data.errors) || {});
                         throw new Error("Validation error");

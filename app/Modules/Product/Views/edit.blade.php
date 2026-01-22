@@ -239,7 +239,6 @@
                             <div class="form-item">
                                 <label class="form-label required">Kho hàng <small class="text-muted">(Tự động từ hệ thống kho)</small></label>
                                 <input type="number" name="stock_qty" id="single_stock_qty" class="shopee-input" value="{{ (int)($defaultVariant->stock ?? 0) }}" min="0" readonly style="background-color: #f5f5f5; cursor: not-allowed;">
-                                <input type="hidden" name="stock" value="1">
                                 <small class="text-muted" id="single_stock_loading" style="display:none;">Đang tải từ kho hàng...</small>
                                 <small class="text-info" style="display:none;" id="single_stock_loaded">✓ Đã cập nhật từ hệ thống kho</small>
                             </div>
@@ -812,7 +811,7 @@ $(document).ready(function() {
         // Load stock for each variant
         variantIds.forEach(function(variantId) {
             $.ajax({
-                url: '/admin/api/warehouse/variants/' + variantId + '/stock',
+                url: '/admin/api/v1/warehouse/variants/' + variantId + '/stock',
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
@@ -860,7 +859,7 @@ $(document).ready(function() {
         if (defaultVariantId) {
             $('#single_stock_loading').show();
             $.ajax({
-                url: '/admin/api/warehouse/variants/' + defaultVariantId + '/stock',
+                url: '/admin/api/v1/warehouse/variants/' + defaultVariantId + '/stock',
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',

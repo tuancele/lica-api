@@ -319,6 +319,10 @@ class ProductController extends Controller
             $data['variants'] = $variants;
             $data['first'] = $first;
             
+            // Calculate if product is out of stock based on Warehouse
+            // Use stock_display from first variant (already calculated with priority: Flash Sale > Deal > Available)
+            $data['isOutOfStock'] = ($first->stock_display ?? 0) <= 0;
+            
             // Log final stock_display before returning view
             \Log::info('ProductController: Final stock_display before view', [
                 'product_id' => $post->id,
@@ -340,18 +344,63 @@ class ProductController extends Controller
                 ]);
             }
             
+            // Get all categories from cat_id array (not just first one)
             $arrCate = json_decode($post->cat_id, true);
-            $catid = (is_array($arrCate) && !empty($arrCate)) ? $arrCate[0] : ($post->cat_id ?? "");
+            $catIds = (is_array($arrCate) && !empty($arrCate)) ? $arrCate : [];
+            
+            // Load all categories
+            $categories = [];
+            if (!empty($catIds)) {
+                $categories = Post::select('id', 'name', 'slug', 'cat_id')
+                    ->where('type', 'taxonomy')
+                    ->whereIn('id', $catIds)
+                    ->orderByRaw('FIELD(id, ' . implode(',', $catIds) . ')')
+                    ->get();
+            }
+            
+            // Get first category for backward compatibility
+            $catid = !empty($catIds) ? $catIds[0] : ($post->cat_id ?? "");
+            $data['category'] = !empty($categories) ? $categories->first() : Post::select('id', 'name', 'slug', 'cat_id')->where([['type', 'taxonomy'], ['id', $catid]])->first();
+            $data['categories'] = $categories; // All categories for breadcrumb
+            
+            // Attach category to product model for blade template
+            if ($data['category']) {
+                $post->category = $data['category'];
+            }
             
             $data['rates'] = Rate::where([['status', '1'], ['product_id', $post->id]])->orderBy('created_at', 'desc')->limit(5)->get();
-            $data['category'] = Post::select('id', 'name', 'slug', 'cat_id')->where([['type', 'taxonomy'], ['id', $catid]])->first();
-            $data['products'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
+            
+            // Get related products and attach warehouse stock info
+            $relatedProducts = Product::join('variants', 'variants.product_id', '=', 'posts.id')
+                ->select('posts.id', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id', 'variants.id as variant_id')
                 ->where([['status', '1'], ['type', 'product'], ['posts.id', '!=', $post->id]])
                 ->where('cat_id', 'like', '%"' . $catid . '"%')
                 ->groupBy('product_id')
                 ->limit(9)
-                ->orderBy('posts.created_at', 'desc')->get();
+                ->orderBy('posts.created_at', 'desc')
+                ->get();
+            
+            // Attach warehouse stock to related products
+            $warehouseService = app(WarehouseServiceInterface::class);
+            $relatedProducts = $relatedProducts->map(function($product) use ($warehouseService) {
+                try {
+                    $variantId = $product->variant_id ?? null;
+                    if ($variantId) {
+                        $stockInfo = $warehouseService->getVariantStock($variantId);
+                        $product->warehouse_stock = (int) ($stockInfo['available_stock'] ?? 0);
+                        $product->stock_display = (int) ($stockInfo['available_stock'] ?? 0); // Use available_stock for related products
+                    } else {
+                        $product->warehouse_stock = 0;
+                        $product->stock_display = 0;
+                    }
+                } catch (\Throwable $e) {
+                    $product->warehouse_stock = 0;
+                    $product->stock_display = 0;
+                }
+                return $product;
+            });
+            
+            $data['products'] = $relatedProducts;
             
             // Legacy color/size selector (only for old variant mode)
             $data['colors'] = Variant::select('color_id')->where('product_id', $post->id)->distinct()->get();

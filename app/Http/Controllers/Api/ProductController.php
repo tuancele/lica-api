@@ -899,15 +899,30 @@ class ProductController extends Controller
             // Get first variant
             $firstVariant = $product->variants->first();
             
-            // Get category
+            // Get categories (all categories, not just first one)
             $arrCate = json_decode($product->cat_id);
-            $catId = ($arrCate && !empty($arrCate)) ? $arrCate[0] : null;
-            $category = null;
-            if ($catId) {
-                $category = Product::select('id', 'name', 'slug', 'cat_id')
-                    ->where([['type', 'taxonomy'], ['id', $catId]])
-                    ->first();
+            $catIds = ($arrCate && is_array($arrCate) && !empty($arrCate)) ? $arrCate : [];
+            
+            // Get all categories
+            $categories = [];
+            if (!empty($catIds)) {
+                $categories = Product::select('id', 'name', 'slug', 'cat_id')
+                    ->where('type', 'taxonomy')
+                    ->whereIn('id', $catIds)
+                    ->orderByRaw('FIELD(id, ' . implode(',', $catIds) . ')')
+                    ->get()
+                    ->map(function($cat) {
+                        return [
+                            'id' => $cat->id,
+                            'name' => $cat->name,
+                            'slug' => $cat->slug,
+                        ];
+                    })->toArray();
             }
+            
+            // Get first category for backward compatibility (used in related products, etc.)
+            $catId = !empty($catIds) ? $catIds[0] : null;
+            $category = !empty($categories) ? $categories[0] : null; // Keep as array for consistent handling
             
             // Get rates
             $rates = \App\Modules\Rate\Models\Rate::where([['status', '1'], ['product_id', $product->id]])
@@ -1175,10 +1190,11 @@ class ProductController extends Controller
                         'name' => $product->origin->name,
                     ] : null,
                     'category' => $category ? [
-                        'id' => $category->id,
-                        'name' => $category->name,
-                        'slug' => $category->slug,
+                        'id' => $category['id'] ?? null,
+                        'name' => $category['name'] ?? null,
+                        'slug' => $category['slug'] ?? null,
                     ] : null,
+                    'categories' => $categories, // Return all categories array for breadcrumb
                     'first_variant' => $firstVariant ? (function() use ($firstVariant) {
                         $warehouseStock = 0;
                         try {

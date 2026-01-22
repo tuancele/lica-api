@@ -172,19 +172,24 @@ class CartController extends Controller
                     $q->whereIn('product_id', $main_product_ids)->where('status', '1');
                 })->where([['status', '1'], ['start', '<=', $now], ['end', '>=', $now]])->with('sales.product')->get();
                 
-                // Gắn cờ available cho sale products theo quota (qty-buy) và tồn kho thực (S_phy)
+                // Gắn cờ available cho sale products theo quota (qty-buy) và tồn kho Deal (deal_stock từ deal_hold)
                 $deals = $deals->map(function($deal) {
                     $deal->sales = $deal->sales->map(function($sale) {
                         $remaining = max(0, ((int)$sale->qty) - ((int)($sale->buy ?? 0)));
-                        $stock = 0;
+                        $dealStock = 0;
+                        $physicalStock = 0;
                         try {
                             $variantId = $sale->variant_id;
                             if ($variantId) {
                                 $stockInfo = app(WarehouseServiceInterface::class)->getVariantStock($variantId);
-                                $stock = (int)($stockInfo['current_stock'] ?? 0);
+                                // Use deal_stock (from deal_hold in inventory_stocks) for Deal availability check
+                                $dealStock = (int)($stockInfo['deal_stock'] ?? 0);
+                                $physicalStock = (int)($stockInfo['physical_stock'] ?? 0);
                             } else {
                                 // không có variant, dùng product->stock nếu có
-                                $stock = (int)($sale->product->stock ?? 0);
+                                $physicalStock = (int)($sale->product->stock ?? 0);
+                                // For non-variant products, assume deal_stock = physical_stock if deal exists
+                                $dealStock = $physicalStock;
                             }
                         } catch (\Throwable $e) {
                             Log::warning('[CartController] getVariantStock fail for deal suggestion', [
@@ -194,8 +199,10 @@ class CartController extends Controller
                             ]);
                         }
                         $sale->remaining_quota = $remaining;
-                        $sale->available = $remaining > 0 && $stock > 0;
-                        $sale->physical_stock = $stock;
+                        // Deal is available if: quota remaining > 0 AND deal_stock > 0 (from deal_hold)
+                        $sale->available = $remaining > 0 && $dealStock > 0;
+                        $sale->physical_stock = $physicalStock;
+                        $sale->deal_stock = $dealStock; // Store deal_stock for reference
                         return $sale;
                     });
                     return $deal;
@@ -592,8 +599,11 @@ class CartController extends Controller
 
         try {
             $stockInfo = $this->warehouseService->getVariantStock($variantId);
-            $phy = (int) ($stockInfo['current_stock'] ?? 0);
-            if ($phy <= 0) {
+            // Use deal_stock (from deal_hold in inventory_stocks) for Deal availability check
+            $dealStock = (int) ($stockInfo['deal_stock'] ?? 0);
+            $physicalStock = (int) ($stockInfo['physical_stock'] ?? 0);
+            // Deal is available if deal_stock > 0 (from deal_hold) AND physical_stock > 0
+            if ($dealStock <= 0 || $physicalStock <= 0) {
                 return [
                     'available' => false,
                     'message' => 'Quà tặng Deal Sốc đã hết, giá được chuyển về giá thường/khuyến mại.',

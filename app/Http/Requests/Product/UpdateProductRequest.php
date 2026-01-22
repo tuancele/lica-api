@@ -35,14 +35,20 @@ class UpdateProductRequest extends FormRequest
      */
     public function rules(): array
     {
-        $productId = $this->input('id');
+        // Get product ID from route parameter (URL) instead of request body
+        $productId = $this->route('id') ?? $this->input('id');
+        
+        // Ensure productId is not null for slug unique validation
+        if (!$productId) {
+            \Log::warning('UpdateProductRequest: productId is null', [
+                'route_params' => $this->route()->parameters(),
+                'input_id' => $this->input('id'),
+            ]);
+        }
         
         return [
-            'id' => [
-                'required',
-                'integer',
-                'exists:posts,id'
-            ],
+            // Note: 'id' is not required in body since it comes from URL route parameter
+            // Controller will merge it from route parameter
             'name' => [
                 'required',
                 'string',
@@ -76,16 +82,21 @@ class UpdateProductRequest extends FormRequest
                 'array'
             ],
             'imageOther.*' => [
-                'url',
+                'nullable',
+                'string',
                 'max:500'
+                // Note: Accept both relative paths (/uploads/...) and absolute URLs (http://...)
+                // Removed 'url' rule to allow relative paths
             ],
             'imageOtherRemoved' => [
                 'nullable',
                 'array'
             ],
             'imageOtherRemoved.*' => [
-                'url',
+                'nullable',
+                'string',
                 'max:500'
+                // Note: Accept both relative paths and absolute URLs
             ],
             'cat_id' => [
                 'nullable',
@@ -205,9 +216,28 @@ class UpdateProductRequest extends FormRequest
             'cat_id.*.exists' => 'Danh mục không tồn tại',
             'brand_id.exists' => 'Thương hiệu không tồn tại',
             'origin_id.exists' => 'Xuất xứ không tồn tại',
-            'imageOther.*.url' => 'URL hình ảnh không hợp lệ',
-            'imageOtherRemoved.*.url' => 'URL hình ảnh không hợp lệ',
+            'imageOther.*.max' => 'Đường dẫn hình ảnh không được vượt quá 500 ký tự',
+            'imageOtherRemoved.*.max' => 'Đường dẫn hình ảnh không được vượt quá 500 ký tự',
         ];
+    }
+
+    /**
+     * Handle a failed validation attempt.
+     * 
+     * @param \Illuminate\Contracts\Validation\Validator $validator
+     * @return void
+     * @throws \Illuminate\Validation\ValidationException
+     */
+    protected function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
+    {
+        // Log validation errors for debugging
+        \Log::warning('Product update validation failed', [
+            'errors' => $validator->errors()->toArray(),
+            'input' => $this->all(),
+            'route_id' => $this->route('id'),
+        ]);
+        
+        parent::failedValidation($validator);
     }
 
     /**

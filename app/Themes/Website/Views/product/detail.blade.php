@@ -549,7 +549,7 @@
                         @if($detail->is_new)
                         <div class="is-new mb-2">Mới</div>
                         @endif
-                        @if($detail->stock == 0)
+                        @if(isset($isOutOfStock) && $isOutOfStock)
                         <div class="is-stock mb-2">Hết hàng</div>
                         @endif
                     </div>
@@ -558,8 +558,8 @@
             <div class="col-12 col-md-6">
                 <!-- Product Detail Info - Loaded via API -->
                 <div id="product-detail-info" data-product-slug="{{$detail->slug ?? ''}}" data-product-id="{{$detail->id ?? ''}}">
-                    <!-- Skeleton Placeholder -->
-                    <div class="product-detail-skeleton">
+                    <!-- Skeleton Placeholder (only show if no data available) -->
+                    <div class="product-detail-skeleton" style="{{isset($detail) && $detail ? 'display: none;' : 'display: block;'}}">
                         <div class="breadcrumb">
                             <ol>
                                 <li><a href="/">Trang chủ</a></li>
@@ -571,11 +571,33 @@
                         <div style="height: 24px; background: #f0f0f0; border-radius: 4px; margin: 10px 0; width: 200px;"></div>
                         <div style="height: 40px; background: #f0f0f0; border-radius: 4px; margin: 20px 0; width: 60%;"></div>
                     </div>
-                    <!-- Content will be loaded here -->
+                    <!-- Content will be loaded here (for API-loaded content) -->
                     <div class="product-detail-content" style="display: none;"></div>
                 </div>
-                <!-- Blade Template Fallback (hidden when API loads successfully) -->
-                <div class="product-detail-blade-fallback">
+                <!-- Blade Template Fallback (show when data is available from server) -->
+                <div class="product-detail-blade-fallback" style="{{isset($detail) && $detail ? 'display: block;' : 'display: none;'}}">
+                    <!-- Breadcrumb -->
+                    <div class="breadcrumb">
+                        <ol>
+                            <li><a href="/">Trang chủ</a></li>
+                            @if(isset($categories) && $categories && $categories->count() > 0)
+                                @foreach($categories as $cat)
+                                <li><a href="/{{$cat->slug}}">{{$cat->name}}</a></li>
+                                @endforeach
+                            @elseif(isset($detail->category) && $detail->category)
+                            <li><a href="/{{$detail->category->slug}}">{{$detail->category->name}}</a></li>
+                            @endif
+                        </ol>
+                    </div>
+                    <!-- Brand and Product Name -->
+                    @if(isset($detail->brand) && $detail->brand)
+                    @if(isset($detail->brand->slug) && $detail->brand->slug)
+                    <a href="/thuong-hieu/{{$detail->brand->slug}}" class="brand-name fs-14 fw-600 mb-2" style="color: #666; text-decoration: none;">{{$detail->brand->name ?? ''}}</a>
+                    @else
+                    <div class="brand-name fs-14 fw-600 mb-2" style="color: #666;">{{$detail->brand->name ?? ''}}</div>
+                    @endif
+                    @endif
+                    <h1 class="title-product fs-24 fw-bold mb-3">{{$detail->name ?? ''}}</h1>
                 @php
                     // Bảo vệ trong trường hợp $t_rates null hoặc không được truyền
                     $rateCollection = isset($t_rates) && $t_rates ? $t_rates : collect();
@@ -623,20 +645,12 @@
                     // Shopee-style: mọi sản phẩm có biến thể đều dùng block phân loại mới
                     $hasAnyVariant = isset($variants) && $variants->count() > 0;
                     $isShopeeVariant = $hasAnyVariant;
-                    // Use stock_display (with priority: Flash Sale > Deal > Available) instead of raw stock
-                    $currentVariantStock = (int)($first->stock_display ?? $first->warehouse_stock ?? ($first->stock ?? 0));
+                    // Use stock_display (with priority: Flash Sale > Deal > Available) from Warehouse only
+                    // NO fallback to old $first->stock field - Warehouse is the single source of truth
+                    $currentVariantStock = (int)($first->stock_display ?? $first->warehouse_stock ?? 0);
                     // Server-side calculated stock_display for locking
-                    $serverStockDisplay = (int)($first->stock_display ?? $first->warehouse_stock ?? ($first->stock ?? 0));
+                    $serverStockDisplay = (int)($first->stock_display ?? $first->warehouse_stock ?? 0);
                 @endphp
-                <!-- Stock Container: Locked from Server -->
-                <div id="stock-container" style="margin-top: 10px; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; font-size: 13px; color: #666;">
-                    <span class="stock-label"><strong>Tồn kho:</strong></span>
-                    <span id="variant-stock-value" 
-                          data-is-locked="true" 
-                          data-server-stock="{{ $serverStockDisplay }}"
-                          style="font-weight: 600; color: #333; margin-left: 5px;">{{ $serverStockDisplay > 0 ? number_format($serverStockDisplay, 0, ',', '.') : 'Hết hàng' }}</span>
-                    <span class="stock-unit" style="margin-left: 3px;">{{ $serverStockDisplay > 0 ? 'sản phẩm' : '' }}</span>
-                </div>
                 <div class="price-detail">
                     <!-- VARIANT_DEBUG_A11: isShopeeVariant={{ $isShopeeVariant ? '1' : '0' }}, variants_count={{ isset($variants) ? $variants->count() : 0 }} -->
                     @if($isShopeeVariant)
@@ -803,8 +817,9 @@
                             // 计算变体的最终价格（按优先级：闪购 -> 促销 -> 原价）
                             $variantPriceInfo = getVariantFinalPrice($v->id, $detail->id);
                             
-                            // Calculate stock_display with priority: Flash Sale > Deal > Available
-                            $stockDisplay = (int) ($v->stock_display ?? $v->warehouse_stock ?? ($v->stock ?? 0));
+                            // Calculate stock_display with priority: Flash Sale > Deal > Available from Warehouse only
+                            // NO fallback to old $v->stock field - Warehouse is the single source of truth
+                            $stockDisplay = (int) ($v->stock_display ?? $v->warehouse_stock ?? 0);
                             $isOutOfStock = $stockDisplay <= 0;
                             
                             // Store stock source info for JS
@@ -832,6 +847,15 @@
                 </div>
                 @endif
                 <input type="hidden" name="variant_id"  value="{{$first->id}}">
+                <!-- Stock Container: Locked from Server - Moved below variant selector -->
+                <div id="stock-container" style="margin-top: 10px; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; font-size: 13px; color: #666;">
+                    <span class="stock-label"><strong>Tồn kho:</strong></span>
+                    <span id="variant-stock-value" 
+                          data-is-locked="true" 
+                          data-server-stock="{{ $serverStockDisplay }}"
+                          style="font-weight: 600; color: #333; margin-left: 5px;">{{ $serverStockDisplay > 0 ? number_format($serverStockDisplay, 0, ',', '.') : 'Hết hàng' }}</span>
+                    <span class="stock-unit" style="margin-left: 3px;">{{ $serverStockDisplay > 0 ? 'sản phẩm' : '' }}</span>
+                </div>
                 <div class="group-cart product-action align-center mt-3 space-between">
                     <div class="quantity align-center quantity-selector">
                         <button class="btn_minus entry" type="button" @if($currentVariantStock <= 0) disabled @endif>
@@ -1350,7 +1374,7 @@
                                 <div class="group-wishlist-{{$product->id}}">
                                     {!!wishList($product->id)!!}
                                 </div>
-                                @if($product->stock == 0)
+                                @if(isset($product->stock_display) && $product->stock_display <= 0)
                                 <div class="out-stock">Hết hàng</div>
                                 @endif
                             </div>
@@ -2333,8 +2357,6 @@
         opacity: 0.5;
         cursor: not-allowed;
         pointer-events: none;
-        background: #f5f5f5;
-        border-color: #ddd;
         position: relative;
     }
     .box-variant.box-option1 .list-variant .item-variant.out-of-stock::after{
@@ -3255,16 +3277,34 @@
             });
             
             // Build breadcrumb - ALWAYS show at least "Trang chủ"
+            // Note: Do NOT include product name in breadcrumb (removed per requirement)
+            // Read categories from API: product.categories (array) or product.category (single)
             let breadcrumbHtml = '<div class="breadcrumb"><ol><li><a href="/">Trang chủ</a></li>';
-            if (product.category && product.category.slug) {
+            
+            // Use categories array if available, otherwise fallback to single category
+            if (product.categories && Array.isArray(product.categories) && product.categories.length > 0) {
+                // Show all categories in breadcrumb
+                product.categories.forEach(function(cat) {
+                    if (cat && cat.slug && cat.name) {
+                        breadcrumbHtml += `<li><a href="/${cat.slug}">${escapeHtml(cat.name)}</a></li>`;
+                    }
+                });
+            } else if (product.category && product.category.slug && product.category.name) {
+                // Fallback to single category
                 breadcrumbHtml += `<li><a href="/${product.category.slug}">${escapeHtml(product.category.name)}</a></li>`;
             }
             breadcrumbHtml += '</ol></div>';
             
             // Build brand - ALWAYS show if brand exists
+            // Read brand from API: product.brand.name
             let brandHtml = '';
-            if (product.brand && product.brand.slug && product.brand.name) {
-                brandHtml = `<a href="/thuong-hieu/${product.brand.slug}" class="text-uppercase pointer brand-name">${escapeHtml(product.brand.name)}</a>`;
+            if (product.brand && product.brand.name) {
+                // Use brand name directly from API, make it a link if slug exists
+                if (product.brand.slug) {
+                    brandHtml = `<a href="/thuong-hieu/${product.brand.slug}" class="fs-14 fw-600 mb-2 brand-name" style="color: #666;">${escapeHtml(product.brand.name)}</a>`;
+                } else {
+                    brandHtml = `<div class="brand-name fs-14 fw-600 mb-2" style="color: #666;">${escapeHtml(product.brand.name)}</div>`;
+                }
             }
             
             // Build title - ALWAYS show product name

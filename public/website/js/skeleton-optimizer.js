@@ -418,6 +418,24 @@
     }
 
     /**
+     * Hide product detail skeleton when content is ready
+     */
+    function hideProductDetailSkeleton() {
+        const skeleton = document.querySelector('.product-detail-skeleton');
+        const fallback = document.querySelector('.product-detail-blade-fallback');
+        const content = document.querySelector('.product-detail-content');
+        
+        // If fallback or content is visible, hide skeleton
+        if (skeleton) {
+            if ((fallback && fallback.style.display !== 'none' && fallback.offsetParent !== null) ||
+                (content && content.style.display !== 'none' && content.offsetParent !== null)) {
+                skeleton.style.display = 'none';
+                console.log('[Skeleton Optimizer] Product detail skeleton hidden - content is ready');
+            }
+        }
+    }
+
+    /**
      * 主初始化函数
      */
     function init() {
@@ -437,6 +455,26 @@
         
         // 立即处理首屏可见的 skeleton
         initSmartSkeleton();
+        
+        // Hide product detail skeleton if content is ready
+        hideProductDetailSkeleton();
+        
+        // Watch for content changes
+        if (window.MutationObserver) {
+            const observer = new MutationObserver(function() {
+                hideProductDetailSkeleton();
+            });
+            
+            const productDetailContainer = document.querySelector('#product-detail-info');
+            if (productDetailContainer) {
+                observer.observe(productDetailContainer, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['style', 'class']
+                });
+            }
+        }
     }
 
     // DOM 加载完成后初始化

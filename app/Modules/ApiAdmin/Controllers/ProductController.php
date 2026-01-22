@@ -202,6 +202,13 @@ class ProductController extends Controller
             $data = $request->validated();
             $data['id'] = $id;
             
+            // Log for debugging
+            Log::debug('Product update request', [
+                'product_id' => $id,
+                'data_keys' => array_keys($data),
+                'has_variants' => $data['has_variants'] ?? null,
+            ]);
+            
             // Update product using service
             $product = $this->productService->updateProduct($id, $data);
             

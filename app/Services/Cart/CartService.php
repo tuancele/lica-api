@@ -710,13 +710,45 @@ class CartService
             throw new \Exception('Sản phẩm không tồn tại');
         }
         
-        // Validate stock - legacy "999" sentinel removed, fallback to 0
+        // Validate stock from Warehouse (single source of truth)
         $product = $variant->product;
-        $variantStock = isset($variant->stock) && $variant->stock !== null 
-            ? (int)$variant->stock 
-            : 0;
+        $variantStock = 0;
+        $dealStock = 0;
+        $physicalStock = 0;
         
-        if ($variantStock === 0) {
+        try {
+            $stockInfo = $this->warehouseService->getVariantStock($variantId);
+            $physicalStock = (int)($stockInfo['physical_stock'] ?? 0);
+            $dealStock = (int)($stockInfo['deal_stock'] ?? 0);
+            
+            // For Deal items: use deal_stock (from deal_hold in inventory_stocks)
+            // For normal items: use available_stock (physical - reserved - flash_sale - deal)
+            if ($isDeal) {
+                $variantStock = $dealStock; // Use deal_stock for Deal items
+            } else {
+                $variantStock = (int)($stockInfo['available_stock'] ?? 0);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[CartService] getVariantStock failed in addItem', [
+                'variant_id' => $variantId,
+                'is_deal' => $isDeal,
+                'error' => $e->getMessage(),
+            ]);
+            // Fallback to 0 if warehouse check fails
+            $variantStock = 0;
+        }
+        
+        // Check stock availability
+        if ($variantStock <= 0) {
+            if ($isDeal) {
+                throw new \Exception('Quà tặng Deal Sốc đã hết, giá được chuyển về giá thường/khuyến mại.');
+            } else {
+                throw new \Exception('Phân loại đã hết hàng');
+            }
+        }
+        
+        // Also check physical_stock > 0 to ensure there's actual inventory
+        if ($physicalStock <= 0) {
             throw new \Exception('Phân loại đã hết hàng');
         }
         

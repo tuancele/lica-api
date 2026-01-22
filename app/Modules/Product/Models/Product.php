@@ -9,6 +9,7 @@ use App\Modules\FlashSale\Models\FlashSale;
 use App\Modules\Marketing\Models\MarketingCampaignProduct;
 use App\Modules\Marketing\Models\MarketingCampaign;
 use Carbon\Carbon;
+use App\Services\Warehouse\WarehouseServiceInterface;
 
 class Product extends Model
 {
@@ -151,5 +152,54 @@ class Product extends Model
             'type' => 'normal',
             'label' => ''
         ];
+    }
+
+    /**
+     * Check if product is out of stock based on Warehouse stock
+     * Uses WarehouseService to get actual stock from inventory_stocks
+     * 
+     * @return bool
+     */
+    public function getIsAvailableAttribute(): bool
+    {
+        try {
+            $warehouseService = app(WarehouseServiceInterface::class);
+            
+            // Get default variant
+            $defaultVariant = $this->variant($this->id);
+            if (!$defaultVariant) {
+                return false;
+            }
+            
+            // Get stock from Warehouse
+            $stockInfo = $warehouseService->getVariantStock($defaultVariant->id);
+            
+            // Check available_stock (priority: Flash Sale > Deal > Available)
+            $availableStock = (int) ($stockInfo['available_stock'] ?? 0);
+            
+            // Also check flash_sale_stock and deal_stock if active
+            $flashSaleStock = (int) ($stockInfo['flash_sale_stock'] ?? 0);
+            $dealStock = (int) ($stockInfo['deal_stock'] ?? 0);
+            
+            // Product is available if any stock > 0
+            return ($availableStock > 0 || $flashSaleStock > 0 || $dealStock > 0);
+        } catch (\Throwable $e) {
+            // If error, consider as out of stock for safety
+            \Log::error('Product::getIsAvailableAttribute error', [
+                'product_id' => $this->id,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Check if product is out of stock (alias for getIsAvailableAttribute)
+     * 
+     * @return bool
+     */
+    public function isOutOfStock(): bool
+    {
+        return !$this->is_available;
     }
 }
