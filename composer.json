@@ -20,6 +20,7 @@
         "milon/barcode": "^10.0",
         "phpmailer/phpmailer": "^6.4",
         "phpoffice/phpspreadsheet": "^1.12",
+        "simplesoftwareio/simple-qrcode": "^4.2",
         "unisharp/laravel-filemanager": "^2.12"
     },
     "require-dev": {

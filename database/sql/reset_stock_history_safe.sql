@@ -47,3 +47,4 @@ FROM inventory_stocks;
 -- COMMIT;
 -- ROLLBACK;
 
+

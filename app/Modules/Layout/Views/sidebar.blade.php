@@ -81,6 +81,16 @@
         <li @if(Session::get('sidebar_sub_active')=='campaign') class="active" @endif><a href="{{route('marketing.campaign.index')}}"><i class="fa fa-circle-o"></i> Chương trình khuyến mại</a></li>
     </ul>
   </li>
+  <li class="treeview @if(Session::get('sidebar_active')=='warehouse') active @endif">
+    <a href="#">
+        <i class="fa fa-cubes"></i> <span>Kho hàng</span>
+        <i class="fa fa-angle-left pull-right"></i>
+    </a>
+    <ul class="treeview-menu">
+        <li @if(Session::get('sidebar_sub_active')=='accounting') class="active" @endif><a href="{{route('warehouse.accounting')}}"><i class="fa fa-circle-o"></i> Nhập/Xuất hàng</a></li>
+        <li @if(Session::get('sidebar_sub_active')=='list') class="active" @endif><a href="{{route('warehouse')}}"><i class="fa fa-circle-o"></i> Tồn kho</a></li>
+    </ul>
+  </li>
   @can('setting')
   <li class="header">Hệ thống</li>
   @can('user')

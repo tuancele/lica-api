@@ -41,3 +41,4 @@ SET FOREIGN_KEY_CHECKS = 1;
 --     SUM(deal_hold) as total_deal_hold
 -- FROM inventory_stocks;
 
+

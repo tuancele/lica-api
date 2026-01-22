@@ -34,6 +34,7 @@
     @endphp
     <meta name="api-token" content="{{ $apiUser->api_token ?? '' }}">
     <script src="/public/admin/plugins/jQuery/jQuery-2.1.4.min.js"></script>
+    @stack('styles')
   </head>
   <body class="skin-blue sidebar-mini">
     <div class="wrapper">
@@ -233,10 +234,16 @@
               </a>
             </li>
             <li class="treeview @if(Session::get('sidebar_active')=='warehouse') active @endif">
-              <a href="{{route('warehouse')}}">
+              <a href="#">
               <i class="fa fa-cubes" aria-hidden="true"></i>
-                <span>Kho hàng (V2)</span>
+                <span>Kho hàng</span>
+                <i class="fa fa-angle-left pull-right"></i>
               </a>
+              <ul class="treeview-menu">
+                <li @if(Session::get('sidebar_sub_active')=='accounting') class="active" @endif><a href="{{route('warehouse.accounting')}}"><i class="fa fa-circle-o"></i> Quản lý phiếu</a></li>
+                <li @if(Session::get('sidebar_sub_active')=='accounting-create') class="active" @endif><a href="{{route('warehouse.accounting.create')}}"><i class="fa fa-circle-o"></i> Tạo phiếu mới</a></li>
+                <li @if(Session::get('sidebar_sub_active')=='warehouse') class="active" @endif><a href="{{route('warehouse')}}"><i class="fa fa-circle-o"></i> Tồn kho</a></li>
+              </ul>
             </li>
             <li class="treeview @if(Session::get('sidebar_active')=='delivery') active @endif">
               <a href="#">
@@ -513,5 +520,6 @@
       }
       
     </style>
+    @stack('scripts')
   </body>
 </html>

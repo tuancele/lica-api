@@ -5,6 +5,14 @@ Route::group(['middleware' => 'web'], function () {
 			Route::get('/', 'WarehouseController@index')->name('warehouse');
 			Route::get('quantity', 'WarehouseController@quantity')->name('quantity');
 			Route::get('revenue', 'WarehouseController@revenue')->name('revenue');
+		Route::get('accounting', 'WarehouseAccountingController@index')->name('warehouse.accounting');
+		Route::get('accounting/list', 'WarehouseAccountingController@list')->name('warehouse.accounting.list');
+		Route::get('accounting/create', 'WarehouseAccountingController@create')->name('warehouse.accounting.create');
+		Route::get('accounting/qrcode/{receiptCode}', 'WarehouseAccountingController@qrCode')->name('warehouse.accounting.qrcode');
+		Route::post('accounting', 'WarehouseAccountingController@store');
+		Route::post('accounting/{id}/complete', 'WarehouseAccountingController@complete');
+		Route::post('accounting/{id}/void', 'WarehouseAccountingController@void')->name('warehouse.accounting.void');
+		Route::get('accounting/{id}/print', 'WarehouseAccountingController@print')->name('warehouse.accounting.print');
 		});
 		// Legacy export/import goods routes: redirect to new Warehouse V2 UI.
 		Route::get('export-goods/{any?}', function () {

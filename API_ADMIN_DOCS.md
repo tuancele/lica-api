@@ -4295,5 +4295,159 @@ Module Quản lý Kho hàng V2 được xây dựng hoàn toàn mới với ki�
 
 ---
 
+---
+
+## Warehouse Accounting V2 (Nhập/Xuất hàng - Giao diện A4)
+
+### Overview
+Module Nhập/Xuất hàng V2 với giao diện form A4 chuẩn kế toán, hỗ trợ tạo phiếu nhập/xuất hàng trực tiếp từ giao diện web.
+
+**Base URL:** `/admin/warehouse/accounting`
+
+**Authentication:** Required (web middleware + auth)
+
+---
+
+### 1. GET /admin/warehouse/accounting
+
+**Mục tiêu:** Hiển thị form tạo phiếu nhập/xuất hàng (A4 format)
+
+**Query Params:**
+- `id` (integer, optional): ID phiếu để chỉnh sửa
+
+**Features:**
+- Form A4 chuẩn kế toán
+- Tự động sinh mã phiếu: `[PN/PX] + [yymmdd] + [4 ký tự hash]`
+- Search sản phẩm bằng Select2 Ajax inline
+- Tự động load variants sau khi chọn sản phẩm
+- Tự động tính thành tiền = Số lượng * Đơn giá
+- QR Code tự động sinh dựa trên mã phiếu
+- Layout in ấn chuẩn A4
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 2. POST /admin/warehouse/accounting
+
+**Mục tiêu:** Lưu phiếu nhập/xuất hàng
+
+**Body (JSON):**
+```json
+{
+  "type": "import",
+  "receipt_code": "PN250121ABCD",
+  "subject": "Nhập hàng từ nhà cung cấp ABC",
+  "content": "Ghi chú",
+  "vat_invoice": "VAT-2026-001",
+  "supplier_name": "Công ty ABC",
+  "customer_name": "Khách hàng XYZ",
+  "status": "draft",
+  "items": [
+    {
+      "variant_id": 10,
+      "quantity": 20,
+      "unit_price": 100000,
+      "notes": ""
+    }
+  ]
+}
+```
+
+**Validation:**
+- `type`: required, in:import,export
+- `receipt_code`: optional, unique:stock_receipts,receipt_code
+- `subject`: required, string, max:255
+- `items`: required, array, min:1
+- `items.*.variant_id`: required, exists:variants,id
+- `items.*.quantity`: required, integer, min:1
+- `items.*.unit_price`: required, numeric, min:0
+
+**Logic xử lý:**
+- Tạo bản ghi `stock_receipts` với status = draft
+- Tạo các bản ghi `stock_receipt_items`
+- Tính tổng: total_items, total_quantity, total_value
+- Nếu status = completed, tự động cập nhật tồn kho
+
+**Phản hồi mẫu (201):**
+```json
+{
+  "success": true,
+  "message": "Lưu phiếu thành công",
+  "data": {
+    "id": 123,
+    "receipt_code": "PN250121ABCD",
+    "view_url": "/admin/warehouse/accounting?id=123"
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 3. POST /admin/warehouse/accounting/{id}/complete
+
+**Mục tiêu:** Hoàn thành phiếu (cập nhật tồn kho)
+
+**Logic xử lý:**
+- Chỉ có thể complete khi status = draft hoặc approved
+- Validate tồn kho (nếu là export)
+- Gọi `InventoryService::importStock()` hoặc `exportStock()`
+- Cập nhật `stock_before` và `stock_after` trong items
+- Chuyển status sang `completed`
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "message": "Hoàn thành phiếu thành công",
+  "data": {
+    "id": 123,
+    "status": "completed"
+  }
+}
+```
+
+**Phản hồi lỗi (422):**
+```json
+{
+  "success": false,
+  "message": "Không đủ tồn kho cho variant SKU-001. Yêu cầu: 5, Có sẵn: 3"
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### Implementation Details
+
+**Files Created:**
+- `app/Services/Warehouse/StockReceiptService.php` - Service xử lý business logic
+- `app/Modules/Warehouse/Controllers/WarehouseAccountingController.php` - Controller
+- `app/Modules/Warehouse/Views/accounting.blade.php` - View form A4
+- `public/admin/css/warehouse-accounting.css` - CSS riêng cho module
+
+**Files Updated:**
+- `app/Modules/Warehouse/routes.php` - Đăng ký routes
+- `app/Modules/Layout/Views/sidebar.blade.php` - Thêm menu "Nhập/Xuất hàng"
+- `app/Providers/AppServiceProvider.php` - Đăng ký StockReceiptService
+
+**Key Features:**
+- ✅ Form A4 chuẩn kế toán
+- ✅ Tự động sinh mã phiếu
+- ✅ Search sản phẩm inline với Select2 Ajax
+- ✅ Tự động load variants và giá
+- ✅ Tự động tính thành tiền
+- ✅ QR Code tự động
+- ✅ Layout in ấn chuẩn A4
+- ✅ Cập nhật tồn kho khi complete
+- ✅ CSS tách biệt, chỉ load khi cần
+
+**Trạng thái:** Hoàn thành
+
+---
+
 **最后更新:** 2026-01-21
 **维护者:** AI Assistant
