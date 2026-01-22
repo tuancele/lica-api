@@ -39,6 +39,23 @@ class DealController extends Controller
                 $query->where('name','like','%'.$request->get('keyword').'%');
             }
         })->latest()->paginate(20)->appends($request->query());
+        
+        // Calculate sales statistics for each deal
+        $data['list']->getCollection()->transform(function($deal) {
+            $stats = SaleDeal::where('deal_id', $deal->id)
+                ->selectRaw('SUM(qty) as total_qty, SUM(COALESCE(buy, 0)) as total_buy')
+                ->first();
+            
+            $deal->total_qty = (int) ($stats->total_qty ?? 0);
+            $deal->total_buy = (int) ($stats->total_buy ?? 0);
+            $deal->total_remaining = $deal->total_qty - $deal->total_buy;
+            $deal->sales_percentage = $deal->total_qty > 0 
+                ? round(($deal->total_buy / $deal->total_qty) * 100, 1) 
+                : 0;
+            
+            return $deal;
+        });
+        
         return view($this->view.'::index',$data);
     }
     public function create(){

@@ -43,11 +43,13 @@
                             <th width="15%">Tiêu đề</th>
                             <th width="10%">Bắt đầu</th>
                             <th width="10%">Kết thúc</th>
-                            <th width="10%">Sản phẩm chính</th>
-                            <th width="10%">Sản phẩm kèm</th>
-                            <th width="10%">Lượt mua</th>
-                            <th width="10%">Trạng thái</th>
-                            <th width="10%">Thao tác</th>
+                            <th width="8%">Sản phẩm chính</th>
+                            <th width="8%">Sản phẩm kèm</th>
+                            <th width="8%">Tổng hàng</th>
+                            <th width="8%">Đã bán</th>
+                            <th width="12%">Tỷ lệ</th>
+                            <th width="8%">Trạng thái</th>
+                            <th width="8%">Thao tác</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -61,9 +63,32 @@
                             <td>{{$value->name}}</td>
                             <td>{{date('H:i:s d/m/Y',$value->start)}}</td>
                             <td>{{date('H:i:s d/m/Y',$value->end)}}</td>
-                            <td>{{$value->products->count()}}</td>
-                            <td>{{$value->sales->count()}}</td>
-                            <td>{{$value->sales->sum('buy')}}/{{$value->sales->sum('qty')}}</td>
+                            <td style="text-align: center;"><strong>{{$value->products->count()}}</strong></td>
+                            <td style="text-align: center;"><strong>{{$value->sales->count()}}</strong></td>
+                            <td style="text-align: center;"><strong>{{number_format($value->total_qty ?? 0)}}</strong></td>
+                            <td style="text-align: center;">
+                                <strong class="text-success">{{number_format($value->total_buy ?? 0)}}</strong>
+                                @if(($value->total_remaining ?? 0) > 0)
+                                    <br><small class="text-muted">Còn: {{number_format($value->total_remaining)}}</small>
+                                @endif
+                            </td>
+                            <td>
+                                <div class="progress" style="margin-bottom: 5px;">
+                                    <div class="progress-bar 
+                                        @if(($value->sales_percentage ?? 0) >= 80) progress-bar-success
+                                        @elseif(($value->sales_percentage ?? 0) >= 50) progress-bar-warning
+                                        @else progress-bar-info
+                                        @endif" 
+                                        role="progressbar" 
+                                        aria-valuenow="{{$value->sales_percentage ?? 0}}" 
+                                        aria-valuemin="0" 
+                                        aria-valuemax="100" 
+                                        style="width: {{min(100, $value->sales_percentage ?? 0)}}%">
+                                        <span style="color: #333; font-weight: bold;">{{$value->sales_percentage ?? 0}}%</span>
+                                    </div>
+                                </div>
+                                <small class="text-muted">{{number_format($value->total_buy ?? 0)}}/{{number_format($value->total_qty ?? 0)}}</small>
+                            </td>
                             <td>
                                 <select class="select_status form-control" data-id="{{$value->id}}" data-url="{{route('deal.status')}}">
                                     <option value="1" @if($value->status == 1) selected="selected" @endif> Kích hoạt</option>

@@ -75,7 +75,11 @@
                                         <th>Item</th>
                                         <th style="width:120px;">Price</th>
                                         <th style="width:220px;">Sale</th>
-                                        <th style="width:120px;">Qty</th>
+                                        <th style="width:100px;">Qty</th>
+                                        <th style="width:90px; text-align:center;">Đăng ký</th>
+                                        <th style="width:90px; text-align:center;">Đã bán</th>
+                                        <th style="width:90px; text-align:center;">Còn lại</th>
+                                        <th style="width:120px; text-align:center;">Hiệu suất</th>
                                         <th style="width:90px; text-align:right;">Phy</th>
                                         <th style="width:90px; text-align:right;">Avail</th>
                                         <th style="width:90px; text-align:right;">Sell</th>
@@ -112,6 +116,10 @@
                                             if (!$variant || !$product) { continue; }
                                             $variantId = (int) $variant->id;
                                             $stock = $stockMap[$variantId] ?? ['physical_stock' => 0, 'available_stock' => 0, 'sellable_stock' => 0];
+                                            $registered = (int) ($ps->number ?? 0);
+                                            $sold = (int) ($ps->buy ?? 0);
+                                            $remaining = $registered - $sold;
+                                            $sales_percentage = $registered > 0 ? round(($sold / $registered) * 100, 1) : 0;
                                             $rows[] = [
                                                 'product_id' => (int) $product->id,
                                                 'variant_id' => $variantId,
@@ -121,7 +129,10 @@
                                                 'option' => (string) ($variant->option1_value ?? ''),
                                                 'price' => (float) ($variant->price ?? 0),
                                                 'sale_price' => (float) ($ps->price_sale ?? 0),
-                                                'qty' => (int) ($ps->number ?? 0),
+                                                'qty' => $registered,
+                                                'buy' => $sold,
+                                                'remaining' => $remaining,
+                                                'sales_percentage' => $sales_percentage,
                                                 'phy' => $stock['physical_stock'],
                                                 'avail' => $stock['available_stock'],
                                                 'sell' => $stock['sellable_stock'],
@@ -131,7 +142,7 @@
 
                                     @if(empty($rows))
                                         <tr class="js-empty-row">
-                                            <td colspan="9" class="text-center text-muted">No items</td>
+                                            <td colspan="13" class="text-center text-muted">No items</td>
                                         </tr>
                                     @else
                                         @foreach($rows as $r)
@@ -174,6 +185,34 @@
                                                            value="{{ (int) $r['qty'] }}"
                                                            min="1"
                                                            placeholder="Qty">
+                                                </td>
+                                                <td class="text-center">
+                                                    <strong>{{ number_format($r['qty'] ?? 0) }}</strong>
+                                                </td>
+                                                <td class="text-center">
+                                                    <strong class="text-success">{{ number_format($r['buy'] ?? 0) }}</strong>
+                                                </td>
+                                                <td class="text-center">
+                                                    <strong class="@if(($r['remaining'] ?? 0) > 0) text-info @else text-danger @endif">
+                                                        {{ number_format($r['remaining'] ?? 0) }}
+                                                    </strong>
+                                                </td>
+                                                <td>
+                                                    <div class="progress" style="margin-bottom: 0; height: 20px;">
+                                                        <div class="progress-bar 
+                                                            @if(($r['sales_percentage'] ?? 0) >= 80) progress-bar-success
+                                                            @elseif(($r['sales_percentage'] ?? 0) >= 50) progress-bar-warning
+                                                            @else progress-bar-info
+                                                            @endif" 
+                                                            role="progressbar" 
+                                                            aria-valuenow="{{$r['sales_percentage'] ?? 0}}" 
+                                                            aria-valuemin="0" 
+                                                            aria-valuemax="100" 
+                                                            style="width: {{min(100, $r['sales_percentage'] ?? 0)}}%">
+                                                            <span style="font-size: 11px; color: #333; font-weight: bold;">{{$r['sales_percentage'] ?? 0}}%</span>
+                                                        </div>
+                                                    </div>
+                                                    <small class="text-muted" style="font-size: 10px;">{{number_format($r['buy'] ?? 0)}}/{{number_format($r['qty'] ?? 0)}}</small>
                                                 </td>
                                                 <td class="text-right js-phy" data-phy="{{ $r['phy'] }}">{{ $r['phy'] }}</td>
                                                 <td class="text-right js-avail" data-avail="{{ $r['avail'] }}">{{ $r['avail'] }}</td>

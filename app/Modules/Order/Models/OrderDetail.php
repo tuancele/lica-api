@@ -22,6 +22,7 @@ class OrderDetail extends Model
         'subtotal',
         'deal_id',
         'dealsale_id',
+        'productsale_id',
     ];
     public function variant(){
     	return $this->belongsTo('App\Modules\Product\Models\Variant','variant_id','id');

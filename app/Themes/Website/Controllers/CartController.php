@@ -957,6 +957,28 @@ class CartController extends Controller
                                 $weight = $item['weight'] ?? 0;
                             }
 
+                            // Find ProductSale ID for Flash Sale tracking
+                            $productsale_id = null;
+                            if ($variant_id) {
+                                $now = time();
+                                $activeProductSale = ProductSale::query()
+                                    ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
+                                    ->where('productsales.variant_id', $variant_id)
+                                    ->where('fs.status', '1')
+                                    ->where('fs.start', '<=', $now)
+                                    ->where('fs.end', '>=', $now)
+                                    ->select('productsales.id')
+                                    ->first();
+                                
+                                if ($activeProductSale) {
+                                    $productsale_id = $activeProductSale->id;
+                                    Log::info('[CHECKOUT_FLASH_SALE] Found ProductSale ID for tracking', [
+                                        'variant_id' => $variant_id,
+                                        'productsale_id' => $productsale_id,
+                                    ]);
+                                }
+                            }
+
                             // Deal quota accounting:
                             // IMPORTANT: Do NOT decrement qty and increment buy at the same time.
                             // Remaining is computed as (qty - buy), so we only increment buy here.
@@ -1012,6 +1034,7 @@ class CartController extends Controller
                                 'weight' => $weight * ($variant['qty'] ?? 1),
                                 'subtotal' => ($variant['price'] ?? 0) * ($variant['qty'] ?? 1),
                                 'dealsale_id' => $dealsale_id,
+                                'productsale_id' => $productsale_id,
                                 'created_at' => date('Y-m-d H:i:s')
                             ]);
 

@@ -86,9 +86,13 @@
                                         <th width="40%">Sản phẩm</th>
                                         <th width="10%">Giá gốc</th>
                                         <th width="10%">Giá khuyến mại</th>
-                                        <th width="10%">Số lượng</th>
-                                        <th width="10%">Trạng thái</th>
-                                        <th width="10%">Thao tác</th>
+                                    <th width="8%">Số lượng</th>
+                                    <th width="8%">Đăng ký</th>
+                                    <th width="8%">Đã bán</th>
+                                    <th width="8%">Còn lại</th>
+                                    <th width="10%">Hiệu suất</th>
+                                    <th width="8%">Trạng thái</th>
+                                    <th width="8%">Thao tác</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -287,6 +291,41 @@
                                                 : "numbersale[{$product2->id}]";
                                         @endphp
                                         <input type="number" value="{{$saledeal->qty}}" name="{{$numbersaleName}}" class="form-control">
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <strong>{{number_format($saledeal->qty ?? 0)}}</strong>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <strong class="text-success">{{number_format($saledeal->buy ?? 0)}}</strong>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        @php
+                                            $remaining = ($saledeal->qty ?? 0) - ($saledeal->buy ?? 0);
+                                            $badgeClass = $remaining > 10 ? 'label-success' : ($remaining > 0 ? 'label-warning' : 'label-danger');
+                                        @endphp
+                                        <span class="label {{$badgeClass}}">{{number_format($remaining)}}</span>
+                                    </td>
+                                    <td>
+                                        @php
+                                            $registered = (int) ($saledeal->qty ?? 0);
+                                            $sold = (int) ($saledeal->buy ?? 0);
+                                            $sales_percentage = $registered > 0 ? round(($sold / $registered) * 100, 1) : 0;
+                                        @endphp
+                                        <div class="progress" style="margin-bottom: 0; height: 20px;">
+                                            <div class="progress-bar 
+                                                @if($sales_percentage >= 80) progress-bar-success
+                                                @elseif($sales_percentage >= 50) progress-bar-warning
+                                                @else progress-bar-info
+                                                @endif" 
+                                                role="progressbar" 
+                                                aria-valuenow="{{$sales_percentage}}" 
+                                                aria-valuemin="0" 
+                                                aria-valuemax="100" 
+                                                style="width: {{min(100, $sales_percentage)}}%">
+                                                <span style="font-size: 11px; color: #333; font-weight: bold;">{{$sales_percentage}}%</span>
+                                            </div>
+                                        </div>
+                                        <small class="text-muted" style="font-size: 10px;">{{number_format($sold)}}/{{number_format($registered)}}</small>
                                     </td>
                                     <td>@php 
                                         $total3 = countProductWarehouse($product2->id,'import');

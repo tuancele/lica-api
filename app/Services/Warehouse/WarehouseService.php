@@ -1349,6 +1349,7 @@ class WarehouseService implements WarehouseServiceInterface
                 $quantity = (int) ($detail->qty ?? 0);
                 $productId = (int) ($detail->product_id ?? 0);
                 $dealsaleId = $detail->dealsale_id ?? null;
+                $productsaleId = $detail->productsale_id ?? null;
 
                 if ($variantId <= 0 || $quantity <= 0) {
                     Log::warning('WarehouseService: processOrderStock - Invalid variant_id or quantity', [
@@ -1391,22 +1392,36 @@ class WarehouseService implements WarehouseServiceInterface
                 $isDeal = false;
                 $productSaleId = null;
                 $saleDealId = null;
+                $activeFlashSale = null;
+                $saleDeal = null;
 
-                // Check if Flash Sale (active ProductSale)
-                $activeFlashSale = ProductSale::query()
-                    ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
-                    ->where('productsales.variant_id', $variantId)
-                    ->where('fs.status', '1')
-                    ->where('fs.start', '<=', $now)
-                    ->where('fs.end', '>=', $now)
-                    ->first();
+                // Check if Flash Sale (use productsale_id from OrderDetail if available, otherwise query)
+                if ($productsaleId) {
+                    $activeFlashSale = ProductSale::find($productsaleId);
+                    if ($activeFlashSale) {
+                        $flashSale = $activeFlashSale->flashsale ?? null;
+                        if ($flashSale && $flashSale->status == '1' && $flashSale->start <= $now && $flashSale->end >= $now) {
+                            $isFlashSale = true;
+                            $productSaleId = $productsaleId;
+                        }
+                    }
+                } else {
+                    // Fallback: Query active Flash Sale by variant_id
+                    $activeFlashSale = ProductSale::query()
+                        ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
+                        ->where('productsales.variant_id', $variantId)
+                        ->where('fs.status', '1')
+                        ->where('fs.start', '<=', $now)
+                        ->where('fs.end', '>=', $now)
+                        ->first();
 
-                if ($activeFlashSale) {
-                    $isFlashSale = true;
-                    $productSaleId = $activeFlashSale->id;
+                    if ($activeFlashSale) {
+                        $isFlashSale = true;
+                        $productSaleId = $activeFlashSale->id;
+                    }
                 }
 
-                // Check if Deal (has dealsale_id in order detail)
+                // Check if Deal (use dealsale_id from OrderDetail)
                 if ($dealsaleId) {
                     $saleDeal = \App\Modules\Deal\Models\SaleDeal::find($dealsaleId);
                     if ($saleDeal) {
@@ -1433,11 +1448,11 @@ class WarehouseService implements WarehouseServiceInterface
                 }
                 // Case 2: Flash Sale Product - Deduct physical_stock + increment ProductSale.buy
                 // Note: available_stock is a generated column, will be auto-calculated by MySQL
-                elseif ($isFlashSale) {
+                elseif ($isFlashSale && $activeFlashSale) {
                     $inventoryStock->decrement('physical_stock', $quantity);
                     $inventoryStock->update(['last_movement_at' => now()]);
 
-                    // Increment ProductSale.buy
+                    // Increment ProductSale.buy for real-time tracking
                     $activeFlashSale->increment('buy', $quantity);
 
                     Log::info('WarehouseService: processOrderStock - Flash Sale product stock deducted', [
@@ -1446,15 +1461,20 @@ class WarehouseService implements WarehouseServiceInterface
                         'quantity' => $quantity,
                         'product_sale_id' => $productSaleId,
                         'physical_stock_after' => $inventoryStock->fresh()->physical_stock,
+                        'flash_sale_buy_before' => $activeFlashSale->buy - $quantity,
                         'flash_sale_buy_after' => $activeFlashSale->fresh()->buy,
                     ]);
                 }
-                // Case 3: Deal Product - Deduct physical_stock only
-                // Note: SaleDeal.buy is already incremented in CartController before calling this method
+                // Case 3: Deal Product - Deduct physical_stock + increment SaleDeal.buy (if not already done)
+                // Note: SaleDeal.buy is already incremented in CartController, but we ensure it here for consistency
                 // Note: available_stock is a generated column, will be auto-calculated by MySQL
-                elseif ($isDeal) {
+                elseif ($isDeal && $saleDeal) {
                     $inventoryStock->decrement('physical_stock', $quantity);
                     $inventoryStock->update(['last_movement_at' => now()]);
+
+                    // Ensure SaleDeal.buy is incremented (may already be done in CartController, but ensure consistency)
+                    $buyBefore = $saleDeal->buy;
+                    $saleDeal->increment('buy', $quantity);
 
                     Log::info('WarehouseService: processOrderStock - Deal product stock deducted', [
                         'order_id' => $orderId,
@@ -1462,7 +1482,8 @@ class WarehouseService implements WarehouseServiceInterface
                         'quantity' => $quantity,
                         'sale_deal_id' => $saleDealId,
                         'physical_stock_after' => $inventoryStock->fresh()->physical_stock,
-                        'note' => 'SaleDeal.buy already incremented in CartController',
+                        'deal_buy_before' => $buyBefore,
+                        'deal_buy_after' => $saleDeal->fresh()->buy,
                     ]);
                 }
 
@@ -1518,6 +1539,7 @@ class WarehouseService implements WarehouseServiceInterface
                 $variantId = (int) ($detail->variant_id ?? 0);
                 $quantity = (int) ($detail->qty ?? 0);
                 $dealsaleId = $detail->dealsale_id ?? null;
+                $productsaleId = $detail->productsale_id ?? null;
 
                 if ($variantId <= 0 || $quantity <= 0) {
                     continue;
@@ -1537,27 +1559,38 @@ class WarehouseService implements WarehouseServiceInterface
                     continue;
                 }
 
-                // Determine product type
+                // Determine product type from OrderDetail
                 $isFlashSale = false;
                 $isDeal = false;
                 $productSaleId = null;
                 $saleDealId = null;
+                $activeFlashSale = null;
+                $saleDeal = null;
 
-                // Check if Flash Sale (active ProductSale)
-                $activeFlashSale = ProductSale::query()
-                    ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
-                    ->where('productsales.variant_id', $variantId)
-                    ->where('fs.status', '1')
-                    ->where('fs.start', '<=', $now)
-                    ->where('fs.end', '>=', $now)
-                    ->first();
+                // Check if Flash Sale (use productsale_id from OrderDetail if available)
+                if ($productsaleId) {
+                    $activeFlashSale = ProductSale::find($productsaleId);
+                    if ($activeFlashSale) {
+                        $isFlashSale = true;
+                        $productSaleId = $productsaleId;
+                    }
+                } else {
+                    // Fallback: Query active Flash Sale by variant_id
+                    $activeFlashSale = ProductSale::query()
+                        ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
+                        ->where('productsales.variant_id', $variantId)
+                        ->where('fs.status', '1')
+                        ->where('fs.start', '<=', $now)
+                        ->where('fs.end', '>=', $now)
+                        ->first();
 
-                if ($activeFlashSale) {
-                    $isFlashSale = true;
-                    $productSaleId = $activeFlashSale->id;
+                    if ($activeFlashSale) {
+                        $isFlashSale = true;
+                        $productSaleId = $activeFlashSale->id;
+                    }
                 }
 
-                // Check if Deal
+                // Check if Deal (use dealsale_id from OrderDetail)
                 if ($dealsaleId) {
                     $saleDeal = \App\Modules\Deal\Models\SaleDeal::find($dealsaleId);
                     if ($saleDeal) {
@@ -1576,29 +1609,30 @@ class WarehouseService implements WarehouseServiceInterface
 
                 // Rollback Flash Sale: Decrement ProductSale.buy
                 if ($isFlashSale && $activeFlashSale) {
+                    $buyBefore = $activeFlashSale->buy;
                     $activeFlashSale->decrement('buy', $quantity);
                     Log::info('WarehouseService: rollbackOrderStock - Flash Sale buy decremented', [
                         'order_id' => $orderId,
                         'variant_id' => $variantId,
                         'quantity' => $quantity,
                         'product_sale_id' => $productSaleId,
+                        'flash_sale_buy_before' => $buyBefore,
                         'flash_sale_buy_after' => $activeFlashSale->fresh()->buy,
                     ]);
                 }
 
                 // Rollback Deal: Decrement SaleDeal.buy
-                if ($isDeal && $saleDealId) {
-                    $saleDeal = \App\Modules\Deal\Models\SaleDeal::find($saleDealId);
-                    if ($saleDeal) {
-                        $saleDeal->decrement('buy', $quantity);
-                        Log::info('WarehouseService: rollbackOrderStock - Deal buy decremented', [
-                            'order_id' => $orderId,
-                            'variant_id' => $variantId,
-                            'quantity' => $quantity,
-                            'sale_deal_id' => $saleDealId,
-                            'deal_buy_after' => $saleDeal->fresh()->buy,
-                        ]);
-                    }
+                if ($isDeal && $saleDeal) {
+                    $buyBefore = $saleDeal->buy;
+                    $saleDeal->decrement('buy', $quantity);
+                    Log::info('WarehouseService: rollbackOrderStock - Deal buy decremented', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variantId,
+                        'quantity' => $quantity,
+                        'sale_deal_id' => $saleDealId,
+                        'deal_buy_before' => $buyBefore,
+                        'deal_buy_after' => $saleDeal->fresh()->buy,
+                    ]);
                 }
 
                 Log::info('WarehouseService: rollbackOrderStock - Stock rolled back', [
