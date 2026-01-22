@@ -1319,4 +1319,316 @@ class WarehouseService implements WarehouseServiceInterface
             'export_total' => $reserved,
         ];
     }
+
+    /**
+     * Process stock deduction for an order
+     * Centralized stock management for Warehouse V2
+     * 
+     * @param int $orderId Order ID
+     * @return bool Success status
+     * @throws \Exception
+     */
+    public function processOrderStock(int $orderId): bool
+    {
+        try {
+            $order = \App\Modules\Order\Models\Order::findOrFail($orderId);
+            $orderDetails = \App\Modules\Order\Models\OrderDetail::where('order_id', $orderId)->get();
+
+            if ($orderDetails->isEmpty()) {
+                Log::warning('WarehouseService: processOrderStock - No order details found', [
+                    'order_id' => $orderId,
+                ]);
+                return false;
+            }
+
+            $now = time();
+            $processedItems = [];
+
+            foreach ($orderDetails as $detail) {
+                $variantId = (int) ($detail->variant_id ?? 0);
+                $quantity = (int) ($detail->qty ?? 0);
+                $productId = (int) ($detail->product_id ?? 0);
+                $dealsaleId = $detail->dealsale_id ?? null;
+
+                if ($variantId <= 0 || $quantity <= 0) {
+                    Log::warning('WarehouseService: processOrderStock - Invalid variant_id or quantity', [
+                        'order_id' => $orderId,
+                        'order_detail_id' => $detail->id,
+                        'variant_id' => $variantId,
+                        'quantity' => $quantity,
+                    ]);
+                    continue;
+                }
+
+                // Get inventory stock record
+                $inventoryStock = \App\Models\InventoryStock::where('variant_id', $variantId)
+                    ->where('warehouse_id', 1)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$inventoryStock) {
+                    Log::error('WarehouseService: processOrderStock - Inventory stock not found', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variantId,
+                    ]);
+                    throw new \Exception("Tồn kho không tìm thấy cho variant_id: {$variantId}");
+                }
+
+                // Check available stock
+                $availableStock = (int) ($inventoryStock->available_stock ?? 0);
+                if ($availableStock < $quantity) {
+                    Log::error('WarehouseService: processOrderStock - Insufficient stock', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variantId,
+                        'required' => $quantity,
+                        'available' => $availableStock,
+                    ]);
+                    throw new \Exception("Tồn kho không đủ cho variant_id: {$variantId}. Yêu cầu: {$quantity}, Có sẵn: {$availableStock}");
+                }
+
+                // Determine product type: Flash Sale, Deal, or Normal
+                $isFlashSale = false;
+                $isDeal = false;
+                $productSaleId = null;
+                $saleDealId = null;
+
+                // Check if Flash Sale (active ProductSale)
+                $activeFlashSale = ProductSale::query()
+                    ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
+                    ->where('productsales.variant_id', $variantId)
+                    ->where('fs.status', '1')
+                    ->where('fs.start', '<=', $now)
+                    ->where('fs.end', '>=', $now)
+                    ->first();
+
+                if ($activeFlashSale) {
+                    $isFlashSale = true;
+                    $productSaleId = $activeFlashSale->id;
+                }
+
+                // Check if Deal (has dealsale_id in order detail)
+                if ($dealsaleId) {
+                    $saleDeal = \App\Modules\Deal\Models\SaleDeal::find($dealsaleId);
+                    if ($saleDeal) {
+                        $deal = $saleDeal->deal ?? null;
+                        if ($deal && $deal->status == '1' && $deal->start <= $now && $deal->end >= $now) {
+                            $isDeal = true;
+                            $saleDealId = $dealsaleId;
+                        }
+                    }
+                }
+
+                // Case 1: Normal Product - Just deduct physical_stock
+                // Note: available_stock is a generated column, will be auto-calculated by MySQL
+                if (!$isFlashSale && !$isDeal) {
+                    $inventoryStock->decrement('physical_stock', $quantity);
+                    $inventoryStock->update(['last_movement_at' => now()]);
+
+                    Log::info('WarehouseService: processOrderStock - Normal product stock deducted', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variantId,
+                        'quantity' => $quantity,
+                        'physical_stock_after' => $inventoryStock->fresh()->physical_stock,
+                    ]);
+                }
+                // Case 2: Flash Sale Product - Deduct physical_stock + increment ProductSale.buy
+                // Note: available_stock is a generated column, will be auto-calculated by MySQL
+                elseif ($isFlashSale) {
+                    $inventoryStock->decrement('physical_stock', $quantity);
+                    $inventoryStock->update(['last_movement_at' => now()]);
+
+                    // Increment ProductSale.buy
+                    $activeFlashSale->increment('buy', $quantity);
+
+                    Log::info('WarehouseService: processOrderStock - Flash Sale product stock deducted', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variantId,
+                        'quantity' => $quantity,
+                        'product_sale_id' => $productSaleId,
+                        'physical_stock_after' => $inventoryStock->fresh()->physical_stock,
+                        'flash_sale_buy_after' => $activeFlashSale->fresh()->buy,
+                    ]);
+                }
+                // Case 3: Deal Product - Deduct physical_stock only
+                // Note: SaleDeal.buy is already incremented in CartController before calling this method
+                // Note: available_stock is a generated column, will be auto-calculated by MySQL
+                elseif ($isDeal) {
+                    $inventoryStock->decrement('physical_stock', $quantity);
+                    $inventoryStock->update(['last_movement_at' => now()]);
+
+                    Log::info('WarehouseService: processOrderStock - Deal product stock deducted', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variantId,
+                        'quantity' => $quantity,
+                        'sale_deal_id' => $saleDealId,
+                        'physical_stock_after' => $inventoryStock->fresh()->physical_stock,
+                        'note' => 'SaleDeal.buy already incremented in CartController',
+                    ]);
+                }
+
+                $processedItems[] = [
+                    'variant_id' => $variantId,
+                    'quantity' => $quantity,
+                    'type' => $isFlashSale ? 'flash_sale' : ($isDeal ? 'deal' : 'normal'),
+                ];
+            }
+
+            Log::info('WarehouseService: processOrderStock - Completed', [
+                'order_id' => $orderId,
+                'processed_items_count' => count($processedItems),
+                'processed_items' => $processedItems,
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            Log::error('WarehouseService: processOrderStock - Error', [
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Rollback stock for a cancelled order
+     * Reverse stock deduction when order is cancelled
+     * 
+     * @param int $orderId Order ID
+     * @return bool Success status
+     * @throws \Exception
+     */
+    public function rollbackOrderStock(int $orderId): bool
+    {
+        try {
+            $order = \App\Modules\Order\Models\Order::findOrFail($orderId);
+            $orderDetails = \App\Modules\Order\Models\OrderDetail::where('order_id', $orderId)->get();
+
+            if ($orderDetails->isEmpty()) {
+                Log::warning('WarehouseService: rollbackOrderStock - No order details found', [
+                    'order_id' => $orderId,
+                ]);
+                return false;
+            }
+
+            $now = time();
+            $rolledBackItems = [];
+
+            foreach ($orderDetails as $detail) {
+                $variantId = (int) ($detail->variant_id ?? 0);
+                $quantity = (int) ($detail->qty ?? 0);
+                $dealsaleId = $detail->dealsale_id ?? null;
+
+                if ($variantId <= 0 || $quantity <= 0) {
+                    continue;
+                }
+
+                // Get inventory stock record
+                $inventoryStock = \App\Models\InventoryStock::where('variant_id', $variantId)
+                    ->where('warehouse_id', 1)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$inventoryStock) {
+                    Log::warning('WarehouseService: rollbackOrderStock - Inventory stock not found', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variantId,
+                    ]);
+                    continue;
+                }
+
+                // Determine product type
+                $isFlashSale = false;
+                $isDeal = false;
+                $productSaleId = null;
+                $saleDealId = null;
+
+                // Check if Flash Sale (active ProductSale)
+                $activeFlashSale = ProductSale::query()
+                    ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
+                    ->where('productsales.variant_id', $variantId)
+                    ->where('fs.status', '1')
+                    ->where('fs.start', '<=', $now)
+                    ->where('fs.end', '>=', $now)
+                    ->first();
+
+                if ($activeFlashSale) {
+                    $isFlashSale = true;
+                    $productSaleId = $activeFlashSale->id;
+                }
+
+                // Check if Deal
+                if ($dealsaleId) {
+                    $saleDeal = \App\Modules\Deal\Models\SaleDeal::find($dealsaleId);
+                    if ($saleDeal) {
+                        $deal = $saleDeal->deal ?? null;
+                        if ($deal && $deal->status == '1' && $deal->start <= $now && $deal->end >= $now) {
+                            $isDeal = true;
+                            $saleDealId = $dealsaleId;
+                        }
+                    }
+                }
+
+                // Rollback: Add back physical_stock
+                // Note: available_stock is a generated column, will be auto-calculated by MySQL
+                $inventoryStock->increment('physical_stock', $quantity);
+                $inventoryStock->update(['last_movement_at' => now()]);
+
+                // Rollback Flash Sale: Decrement ProductSale.buy
+                if ($isFlashSale && $activeFlashSale) {
+                    $activeFlashSale->decrement('buy', $quantity);
+                    Log::info('WarehouseService: rollbackOrderStock - Flash Sale buy decremented', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variantId,
+                        'quantity' => $quantity,
+                        'product_sale_id' => $productSaleId,
+                        'flash_sale_buy_after' => $activeFlashSale->fresh()->buy,
+                    ]);
+                }
+
+                // Rollback Deal: Decrement SaleDeal.buy
+                if ($isDeal && $saleDealId) {
+                    $saleDeal = \App\Modules\Deal\Models\SaleDeal::find($saleDealId);
+                    if ($saleDeal) {
+                        $saleDeal->decrement('buy', $quantity);
+                        Log::info('WarehouseService: rollbackOrderStock - Deal buy decremented', [
+                            'order_id' => $orderId,
+                            'variant_id' => $variantId,
+                            'quantity' => $quantity,
+                            'sale_deal_id' => $saleDealId,
+                            'deal_buy_after' => $saleDeal->fresh()->buy,
+                        ]);
+                    }
+                }
+
+                Log::info('WarehouseService: rollbackOrderStock - Stock rolled back', [
+                    'order_id' => $orderId,
+                    'variant_id' => $variantId,
+                    'quantity' => $quantity,
+                    'physical_stock_after' => $inventoryStock->fresh()->physical_stock,
+                ]);
+
+                $rolledBackItems[] = [
+                    'variant_id' => $variantId,
+                    'quantity' => $quantity,
+                    'type' => $isFlashSale ? 'flash_sale' : ($isDeal ? 'deal' : 'normal'),
+                ];
+            }
+
+            Log::info('WarehouseService: rollbackOrderStock - Completed', [
+                'order_id' => $orderId,
+                'rolled_back_items_count' => count($rolledBackItems),
+                'rolled_back_items' => $rolledBackItems,
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            Log::error('WarehouseService: rollbackOrderStock - Error', [
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
+    }
 }

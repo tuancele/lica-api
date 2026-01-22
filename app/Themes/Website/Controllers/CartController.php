@@ -826,7 +826,7 @@ class CartController extends Controller
             $member = auth()->guard('member')->user();
             $code = time();
 
-            // Create Order
+            // Create Order (within existing DB transaction started at line 712)
             $order_id = Order::insertGetId([
                 'code' => $code,
                 'name' => $req->full_name,
@@ -1015,25 +1015,6 @@ class CartController extends Controller
                                 'created_at' => date('Y-m-d H:i:s')
                             ]);
 
-                            // Update FlashSale Stock & Physical Stock (S_phy - S_flash logic)
-                            if ($variant_id) {
-                                app(\App\Services\Inventory\InventoryServiceInterface::class)->deductStockForOrder(
-                                    (int)$variant_id, 
-                                    (int)($variant['qty'] ?? 1),
-                                    'order: ' . $code
-                                );
-                            }
-
-                            // Update legacy FlashSale table counter
-                            $date = strtotime(date('Y-m-d H:i:s'));
-                            $flash = FlashSale::where([['status', '1'], ['start', '<=', $date], ['end', '>=', $date]])->first();
-                            if ($flash) {
-                                $pro = ProductSale::where([['flashsale_id', $flash->id], ['product_id', $product_id]])->first();
-                                if ($pro) {
-                                    $pro->increment('buy', $variant['qty'] ?? 1);
-                                }
-                            }
-
                             // Facebook Tracking
                             if ($product && isset($product->slug)) {
                                 $dataf = [
@@ -1046,6 +1027,25 @@ class CartController extends Controller
                                 ];
                                 Facebook::track($dataf);
                             }
+                        }
+
+                        // Step 2: Centralized stock deduction via WarehouseService
+                        // This handles all stock deduction logic: Normal, Flash Sale, and Deal
+                        try {
+                            $this->warehouseService->processOrderStock($order_id);
+                            Log::info('[CHECKOUT_STOCK] Stock deducted successfully via WarehouseService', [
+                                'order_id' => $order_id,
+                                'order_code' => $code,
+                            ]);
+                        } catch (\Exception $stockException) {
+                            Log::error('[CHECKOUT_STOCK] Stock deduction failed', [
+                                'order_id' => $order_id,
+                                'order_code' => $code,
+                                'error' => $stockException->getMessage(),
+                            ]);
+                            // Rollback transaction if stock deduction fails
+                            DB::rollBack();
+                            throw $stockException;
                         }
 
                 // Send email notification (non-blocking - don't fail order if email fails)

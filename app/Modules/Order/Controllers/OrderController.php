@@ -178,28 +178,27 @@ class OrderController extends Controller
                 if (in_array((int) $req->status, $cancelStatuses, true)
                     && !in_array((int) $oldStatus, $cancelStatuses, true)) {
                     try {
-                        $this->rollbackDealQuota($order);
+                        // Centralized stock rollback via WarehouseService
+                        // This handles all stock rollback logic: Normal, Flash Sale, and Deal
+                        $warehouseService = app(\App\Services\Warehouse\WarehouseServiceInterface::class);
+                        $warehouseService->rollbackOrderStock($order->id);
                         
-                        // Hoàn kho thông minh (S_phy - S_flash logic)
-                        $orderDetails = OrderDetail::where('order_id', $order->id)->get();
-                        foreach ($orderDetails as $detail) {
-                            if ($detail->variant_id) {
-                                app(\App\Services\Inventory\InventoryServiceInterface::class)->releaseStockFromPromotion(
-                                    (int)$detail->variant_id,
-                                    (int)$detail->qty,
-                                    'flash_sale' // Mặc định xử lý theo luồng flash_sale (tự check active trong service)
-                                );
-                            }
-                        }
+                        Log::info('[Order_Cancel] Stock rolled back successfully via WarehouseService', [
+                            'order_id' => $order->id,
+                            'order_code' => $order->code,
+                        ]);
+
+                        // Rollback Deal quota (separate from stock rollback)
+                        $this->rollbackDealQuota($order);
 
                         // Tạo phiếu nhập lại kho (tương tự luồng hủy/hoàn)
                         $this->createImportReceiptFromOrder($order);
                     } catch (\Exception $e) {
                         DB::rollBack();
-                        Log::error("Rollback deal quota error for order {$order->code}: " . $e->getMessage());
+                        Log::error("Rollback stock error for order {$order->code}: " . $e->getMessage());
                         return response()->json([
                             'status' => 'error',
-                            'errors' => ['alert' => ['0' => 'Hoàn quỹ Deal thất bại: ' . $e->getMessage()]]
+                            'errors' => ['alert' => ['0' => 'Hoàn kho thất bại: ' . $e->getMessage()]]
                         ]);
                     }
                 }

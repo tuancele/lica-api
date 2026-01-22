@@ -182,4 +182,24 @@ interface WarehouseServiceInterface
      * @return bool
      */
     public function deductStock(int $variantId, int $quantity, string $reason = 'order'): bool;
+
+    /**
+     * Process stock deduction for an order
+     * Centralized stock management for Warehouse V2
+     * 
+     * @param int $orderId Order ID
+     * @return bool Success status
+     * @throws \Exception
+     */
+    public function processOrderStock(int $orderId): bool;
+
+    /**
+     * Rollback stock for a cancelled order
+     * Reverse stock deduction when order is cancelled
+     * 
+     * @param int $orderId Order ID
+     * @return bool Success status
+     * @throws \Exception
+     */
+    public function rollbackOrderStock(int $orderId): bool;
 }
