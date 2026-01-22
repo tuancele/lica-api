@@ -3,30 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>In phiếu {{ $receipt->receipt_code }}</title>
+    <title>Phiếu {{ $receipt->receipt_code }}</title>
     <link href="/public/admin/css/warehouse-accounting.css" rel="stylesheet" type="text/css">
     <style>
-        @media print {
-            body { margin: 0; padding: 0; }
-            .no-print { display: none !important; }
-            /* Hide select dropdown arrow when printing */
-            select {
-                background-image: none !important;
-                background: transparent !important;
-                padding-right: 3px !important;
-                appearance: none !important;
-                -webkit-appearance: none !important;
-                -moz-appearance: none !important;
-                -ms-appearance: none !important;
-            }
-            select::-ms-expand {
-                display: none !important;
-            }
+        body { 
+            padding: 20px; 
+            background-color: #f5f5f5;
         }
-        body { padding: 20px; }
+        .warehouse-accounting-container {
+            background: #fff;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .public-header {
+            text-align: center;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-bottom: 2px solid #dfdfdf;
+            margin-bottom: 20px;
+        }
+        .public-header h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #333;
+        }
+        .public-url {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+            word-break: break-all;
+        }
     </style>
 </head>
 <body>
+    <div class="public-header">
+        <h1>PHIẾU {{ $receipt->type === 'import' ? 'NHẬP' : 'XUẤT' }} KHO</h1>
+        <div class="public-url">{{ route('warehouse.receipt.public', ['receiptCode' => $receipt->receipt_code]) }}</div>
+    </div>
     <div class="warehouse-accounting-container">
         <!-- Form Header theo mẫu 02-VT -->
         <div class="receipt-form-header">
@@ -135,38 +147,46 @@
                     @foreach($receipt->items as $index => $item)
                     <tr>
                         <td class="col-stt">{{ $index + 1 }}</td>
-                        <td class="col-product">{{ $item->variant->product->name ?? '-' }}</td>
+                        <td class="col-product">
+                            {{ $item->variant->product->name ?? '-' }}
+                            @if($item->variant->option1_value)
+                                - {{ $item->variant->option1_value }}
+                            @endif
+                        </td>
                         <td class="col-code">{{ $item->variant->sku ?? '-' }}</td>
                         <td class="col-unit">Cái</td>
-                        <td class="col-quantity-request">{{ number_format($item->quantity, 0, ',', '.') }}</td>
-                        <td class="col-quantity-actual">{{ number_format($item->quantity, 0, ',', '.') }}</td>
-                        <td class="col-price">{{ number_format($item->unit_price, 0, ',', '.') }} đ</td>
-                        <td class="col-total">{{ number_format($item->total_price, 0, ',', '.') }} đ</td>
+                        <td class="col-quantity-request">{{ $item->quantity }}</td>
+                        <td class="col-quantity-actual">{{ $item->quantity }}</td>
+                        <td class="col-price">{{ number_format($item->unit_price, 0, ',', '.') }}</td>
+                        <td class="col-total total-cell">{{ number_format($item->total_price, 0, ',', '.') }} đ</td>
                     </tr>
                     @endforeach
                     <tr class="total-row-table">
-                        <td></td>
-                        <td><strong>Cộng</strong></td>
-                        <td>x</td>
-                        <td>x</td>
-                        <td>x</td>
-                        <td></td>
-                        <td></td>
-                        <td><strong>{{ number_format($receipt->total_value, 0, ',', '.') }} đ</strong></td>
+                        <td colspan="4" style="text-align: center;">Cộng</td>
+                        <td colspan="2" style="text-align: center;">x</td>
+                        <td style="text-align: center;">x</td>
+                        <td class="col-total" style="text-align: right;">{{ number_format($receipt->total_value ?? 0, 0, ',', '.') }} đ</td>
                     </tr>
                 </tbody>
             </table>
         </div>
 
-        <!-- Summary -->
+        <!-- Totals and Summary -->
         <div class="receipt-summary">
             <div class="summary-row">
-                <div class="summary-label">- Tổng số tiền (viết bằng chữ):</div>
-                <div class="summary-value">{{ $totalInWords ?? '' }}</div>
+                <div class="summary-label">Tổng số tiền (viết bằng chữ):</div>
+                <div class="summary-value">{{ $totalInWords }}</div>
             </div>
             <div class="summary-row">
-                <div class="summary-label">- Số chứng từ gốc kèm theo:</div>
+                <div class="summary-label">Số chứng từ gốc kèm theo:</div>
                 <div class="form-input" style="border: none; background: transparent; flex: 1;">{{ $receipt->vat_invoice ? 'VAT số ' . $receipt->vat_invoice : '-' }}</div>
+            </div>
+        </div>
+
+        <div class="receipt-totals">
+            <div class="total-row">
+                <div class="total-label">Tổng tiền:</div>
+                <div class="total-value">{{ number_format($receipt->total_value ?? 0, 0, ',', '.') }} đ</div>
             </div>
         </div>
 
@@ -198,6 +218,12 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Public URL Footer -->
+        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dfdfdf; font-size: 12px; color: #666;">
+            {{ route('warehouse.receipt.public', ['receiptCode' => $receipt->receipt_code]) }}
+        </div>
     </div>
 </body>
 </html>
+

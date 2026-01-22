@@ -8,6 +8,7 @@ use App\Models\StockReceipt;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use App\Helpers\NumberToText;
 
 /**
  * Warehouse Accounting Controller
@@ -51,6 +52,13 @@ class WarehouseAccountingController extends Controller
             }
         }
 
+        // Add number to text helper
+        if (isset($data['receipt']) && $data['receipt']) {
+            $data['totalInWords'] = NumberToText::convertCurrency($data['receipt']->total_value ?? 0);
+        } else {
+            $data['totalInWords'] = '';
+        }
+        
         return view('Warehouse::accounting', $data);
     }
 
@@ -110,7 +118,43 @@ class WarehouseAccountingController extends Controller
     public function print(int $id)
     {
         $receipt = $this->stockReceiptService->getReceipt($id);
-        return view('Warehouse::accounting-print', ['receipt' => $receipt]);
+        $totalInWords = NumberToText::convertCurrency($receipt->total_value ?? 0);
+        return view('Warehouse::accounting-print', [
+            'receipt' => $receipt,
+            'totalInWords' => $totalInWords
+        ]);
+    }
+
+    /**
+     * Convert number to Vietnamese text
+     */
+    public function numberToText(Request $request)
+    {
+        $number = (float)$request->get('number', 0);
+        $text = NumberToText::convertCurrency($number);
+        
+        return response()->json([
+            'success' => true,
+            'text' => $text,
+        ]);
+    }
+
+    /**
+     * Public view of receipt (no auth required)
+     */
+    public function publicView(string $receiptCode)
+    {
+        try {
+            $receipt = StockReceipt::where('receipt_code', $receiptCode)->firstOrFail();
+            $totalInWords = NumberToText::convertCurrency($receipt->total_value ?? 0);
+            
+            return view('Warehouse::accounting-public', [
+                'receipt' => $receipt,
+                'totalInWords' => $totalInWords
+            ]);
+        } catch (\Exception $e) {
+            abort(404, 'Phiếu không tồn tại');
+        }
     }
 
     /**
@@ -119,12 +163,15 @@ class WarehouseAccountingController extends Controller
     public function qrCode(string $receiptCode)
     {
         try {
+            // Generate QR code with public URL instead of just receipt code
+            $publicUrl = route('warehouse.receipt.public', ['receiptCode' => $receiptCode]);
+            
             // Use SVG format (doesn't require imagick extension)
             return response(
                 QrCode::format('svg')
                     ->size(120)
                     ->margin(1)
-                    ->generate($receiptCode),
+                    ->generate($publicUrl),
                 200,
                 ['Content-Type' => 'image/svg+xml']
             );

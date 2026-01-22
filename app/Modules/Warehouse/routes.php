@@ -1,5 +1,9 @@
 <?php
 Route::group(['middleware' => 'web'], function () {
+	// Public route to view receipt (no auth required)
+	Route::get('receipt/{receiptCode}', 'App\Modules\Warehouse\Controllers\WarehouseAccountingController@publicView')
+		->name('warehouse.receipt.public');
+	
 	Route::group(['prefix' => 'admin','middleware' => 'admin','namespace' => 'App\Modules\Warehouse\Controllers'],function() {
 		Route::group(['prefix' => 'warehouse'],function(){
 			Route::get('/', 'WarehouseController@index')->name('warehouse');
@@ -9,6 +13,7 @@ Route::group(['middleware' => 'web'], function () {
 		Route::get('accounting/list', 'WarehouseAccountingController@list')->name('warehouse.accounting.list');
 		Route::get('accounting/create', 'WarehouseAccountingController@create')->name('warehouse.accounting.create');
 		Route::get('accounting/qrcode/{receiptCode}', 'WarehouseAccountingController@qrCode')->name('warehouse.accounting.qrcode');
+		Route::post('accounting/number-to-text', 'WarehouseAccountingController@numberToText')->name('warehouse.accounting.number-to-text');
 		Route::post('accounting', 'WarehouseAccountingController@store');
 		Route::post('accounting/{id}/complete', 'WarehouseAccountingController@complete');
 		Route::post('accounting/{id}/void', 'WarehouseAccountingController@void')->name('warehouse.accounting.void');
