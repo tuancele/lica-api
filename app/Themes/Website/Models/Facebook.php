@@ -38,7 +38,8 @@ class Facebook
         try {
             // Initialize API
             $api = Api::init(null, null, $accessToken);
-            $api->setLogger(new CurlLogger());
+            // Do not attach CurlLogger to avoid fwrite() bad file descriptor issues in some environments
+            // $api->setLogger(new CurlLogger());
 
             // Prepare User Data
             $userData = new UserData();

@@ -3,224 +3,208 @@
 namespace App\Services\FlashSale;
 
 use App\Modules\FlashSale\Models\ProductSale;
-use App\Modules\FlashSale\Models\FlashSale;
+use App\Services\Inventory\Contracts\InventoryServiceInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Flash Sale Stock Service
  * 
- * Handles Flash Sale stock updates with race condition protection
- * Uses DB transactions and row-level locking to prevent overselling
+ * Handles stock allocation and release for Flash Sale campaigns
  */
 class FlashSaleStockService
 {
+    public function __construct(
+        private InventoryServiceInterface $inventoryService
+    ) {}
+
     /**
-     * Increment Flash Sale buy count with race condition protection
+     * Revert stock for a ProductSale
+     * Calculates remaining quantity (number - buy) and releases it back to warehouse
      * 
-     * This method uses DB transaction and lockForUpdate() to ensure
-     * that concurrent requests don't oversell Flash Sale products.
-     * 
-     * Logic:
-     * 1. Start transaction
-     * 2. Lock ProductSale row with lockForUpdate()
-     * 3. Check if buy < number (still available)
-     * 4. Increment buy by qty
-     * 5. Commit transaction
-     * 
-     * @param int $flashSaleId Flash Sale ID
-     * @param int $productId Product ID
-     * @param int|null $variantId Variant ID (null for product-level Flash Sale)
-     * @param int $qty Quantity to increment
-     * @return array Result with success status and remaining stock
-     * @throws \Exception If Flash Sale is out of stock or invalid
+     * @param int|ProductSale $productSale ProductSale ID or instance
+     * @return array ['success' => bool, 'message' => string, 'released' => int]
      */
-    public function incrementBuy(
-        int $flashSaleId,
-        int $productId,
-        ?int $variantId,
-        int $qty
-    ): array {
-        if ($qty <= 0) {
-            throw new \Exception('Số lượng phải lớn hơn 0');
+    public function revertStock($productSale): array
+    {
+        if (is_numeric($productSale)) {
+            $productSale = ProductSale::find($productSale);
         }
 
-        return DB::transaction(function () use ($flashSaleId, $productId, $variantId, $qty) {
-            // Build query with lockForUpdate() to prevent race conditions
-            $query = ProductSale::where('flashsale_id', $flashSaleId)
-                ->where('product_id', $productId);
-            
-            if ($variantId !== null) {
-                $query->where('variant_id', $variantId);
-            } else {
-                $query->whereNull('variant_id');
-            }
-            
-            // Lock the row for update (prevents concurrent modifications)
-            $productSale = $query->lockForUpdate()->first();
-            
-            if (!$productSale) {
-                throw new \Exception('Sản phẩm không có trong Flash Sale');
-            }
-            
-            // Check if Flash Sale is still active
-            $flashSale = FlashSale::find($flashSaleId);
-            if (!$flashSale || !$flashSale->is_active) {
-                throw new \Exception('Flash Sale không còn hoạt động');
-            }
-            
-            // Check current availability (CRITICAL: Must check after lock)
-            $currentBuy = (int) $productSale->buy;
-            $maxNumber = (int) $productSale->number;
-            $remaining = $maxNumber - $currentBuy;
-            
-            if ($currentBuy >= $maxNumber) {
-                throw new \Exception('Sản phẩm Flash Sale đã hết hàng');
-            }
-            
-            if ($qty > $remaining) {
-                throw new \Exception(
-                    "Số lượng yêu cầu ({$qty}) vượt quá số lượng còn lại ({$remaining})"
+        if (!$productSale || !($productSale instanceof ProductSale)) {
+            return ['success' => false, 'message' => 'ProductSale not found', 'released' => 0];
+        }
+
+        // Calculate remaining quantity (not sold yet)
+        $remaining = max(0, $productSale->number - $productSale->buy);
+        
+        if ($remaining <= 0) {
+            return ['success' => true, 'message' => 'No stock to revert (all sold)', 'released' => 0];
+        }
+
+        // Only revert if variant_id exists (V2 warehouse works with variants)
+        if (!$productSale->variant_id) {
+            Log::warning('[FlashSaleStockService] ProductSale has no variant_id, skipping revert', [
+                'product_sale_id' => $productSale->id,
+                'product_id' => $productSale->product_id
+            ]);
+            return ['success' => false, 'message' => 'ProductSale has no variant_id', 'released' => 0];
+        }
+
+        try {
+            return DB::transaction(function () use ($productSale, $remaining) {
+                // Release stock from flash_sale_hold back to available
+                $result = $this->inventoryService->releaseStockFromPromotion(
+                    $productSale->variant_id,
+                    $remaining,
+                    'flash_sale'
                 );
-            }
-            
-            // Increment buy count
-            $productSale->increment('buy', $qty);
-            
-            // Refresh to get updated values
-            $productSale->refresh();
-            
-            Log::info('Flash Sale stock incremented', [
-                'flash_sale_id' => $flashSaleId,
-                'product_id' => $productId,
-                'variant_id' => $variantId,
-                'qty' => $qty,
-                'buy_before' => $currentBuy,
-                'buy_after' => $productSale->buy,
-                'remaining' => $productSale->remaining,
+
+                if ($result['success']) {
+                    Log::info('[FlashSaleStockService] Stock reverted successfully', [
+                        'product_sale_id' => $productSale->id,
+                        'variant_id' => $productSale->variant_id,
+                        'released' => $remaining,
+                        'before' => $result['before'] ?? 0,
+                        'after' => $result['after'] ?? 0
+                    ]);
+                }
+
+                return [
+                    'success' => $result['success'],
+                    'message' => $result['success'] ? 'Stock reverted successfully' : ($result['message'] ?? 'Failed to revert stock'),
+                    'released' => $result['success'] ? $remaining : 0
+                ];
+            });
+        } catch (\Exception $e) {
+            Log::error('[FlashSaleStockService] Error reverting stock', [
+                'product_sale_id' => $productSale->id,
+                'variant_id' => $productSale->variant_id,
+                'remaining' => $remaining,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
-            
+
             return [
-                'success' => true,
-                'buy' => (int) $productSale->buy,
-                'remaining' => $productSale->remaining,
-                'message' => 'Cập nhật tồn kho Flash Sale thành công',
+                'success' => false,
+                'message' => 'Error reverting stock: ' . $e->getMessage(),
+                'released' => 0
             ];
-        });
+        }
     }
-    
+
     /**
-     * Decrement Flash Sale buy count (for order cancellation/refund)
+     * Revert stock for all ProductSales in a FlashSale campaign
      * 
-     * @param int $flashSaleId Flash Sale ID
-     * @param int $productId Product ID
-     * @param int|null $variantId Variant ID (null for product-level Flash Sale)
-     * @param int $qty Quantity to decrement
-     * @return array Result with success status
-     * @throws \Exception If invalid
+     * @param int|FlashSale $flashSale FlashSale ID or instance
+     * @return array ['success' => bool, 'message' => string, 'total_released' => int, 'items' => array]
      */
-    public function decrementBuy(
-        int $flashSaleId,
-        int $productId,
-        ?int $variantId,
-        int $qty
-    ): array {
-        if ($qty <= 0) {
-            throw new \Exception('Số lượng phải lớn hơn 0');
+    public function revertStockForCampaign($flashSale): array
+    {
+        if (is_numeric($flashSale)) {
+            $flashSale = \App\Modules\FlashSale\Models\FlashSale::with('products')->find($flashSale);
         }
 
-        return DB::transaction(function () use ($flashSaleId, $productId, $variantId, $qty) {
-            // Build query with lockForUpdate()
-            $query = ProductSale::where('flashsale_id', $flashSaleId)
-                ->where('product_id', $productId);
-            
-            if ($variantId !== null) {
-                $query->where('variant_id', $variantId);
-            } else {
-                $query->whereNull('variant_id');
-            }
-            
-            // Lock the row for update
-            $productSale = $query->lockForUpdate()->first();
-            
-            if (!$productSale) {
-                throw new \Exception('Sản phẩm không có trong Flash Sale');
-            }
-            
-            $currentBuy = (int) $productSale->buy;
-            
-            // Decrement buy count (ensure it doesn't go below 0)
-            $newBuy = max(0, $currentBuy - $qty);
-            $productSale->update(['buy' => $newBuy]);
-            
-            Log::info('Flash Sale stock decremented', [
-                'flash_sale_id' => $flashSaleId,
-                'product_id' => $productId,
-                'variant_id' => $variantId,
-                'qty' => $qty,
-                'buy_before' => $currentBuy,
-                'buy_after' => $newBuy,
-            ]);
-            
+        if (!$flashSale || !($flashSale instanceof \App\Modules\FlashSale\Models\FlashSale)) {
             return [
-                'success' => true,
-                'buy' => $newBuy,
-                'remaining' => $productSale->remaining,
-                'message' => 'Hoàn trả tồn kho Flash Sale thành công',
+                'success' => false,
+                'message' => 'FlashSale not found',
+                'total_released' => 0,
+                'items' => []
             ];
-        });
+        }
+
+        $totalReleased = 0;
+        $items = [];
+
+        foreach ($flashSale->products as $productSale) {
+            $result = $this->revertStock($productSale);
+            $items[] = [
+                'product_sale_id' => $productSale->id,
+                'variant_id' => $productSale->variant_id,
+                'result' => $result
+            ];
+            if ($result['success']) {
+                $totalReleased += $result['released'];
+            }
+        }
+
+        return [
+            'success' => true,
+            'message' => "Reverted stock for {$flashSale->products->count()} items",
+            'total_released' => $totalReleased,
+            'items' => $items
+        ];
     }
-    
+
     /**
-     * Check Flash Sale availability with lock
+     * Handle quantity change in ProductSale
+     * If quantity decreased, release the difference back to warehouse
      * 
-     * Useful for validating before adding to cart
-     * 
-     * @param int $flashSaleId Flash Sale ID
-     * @param int $productId Product ID
-     * @param int|null $variantId Variant ID (null for product-level Flash Sale)
-     * @param int $requestedQty Requested quantity
-     * @return array Availability info
+     * @param ProductSale $productSale
+     * @param int $oldQuantity Old quantity value
+     * @return array ['success' => bool, 'message' => string, 'released' => int]
      */
-    public function checkAvailability(
-        int $flashSaleId,
-        int $productId,
-        ?int $variantId,
-        int $requestedQty = 1
-    ): array {
-        return DB::transaction(function () use ($flashSaleId, $productId, $variantId, $requestedQty) {
-            $query = ProductSale::where('flashsale_id', $flashSaleId)
-                ->where('product_id', $productId);
-            
-            if ($variantId !== null) {
-                $query->where('variant_id', $variantId);
-            } else {
-                $query->whereNull('variant_id');
-            }
-            
-            // Lock for read consistency
-            $productSale = $query->lockForUpdate()->first();
-            
-            if (!$productSale) {
+    public function handleQuantityChange(ProductSale $productSale, int $oldQuantity): array
+    {
+        $newQuantity = $productSale->number;
+        $difference = $oldQuantity - $newQuantity;
+
+        // Only release if quantity decreased
+        if ($difference <= 0) {
+            return ['success' => true, 'message' => 'No stock to release (quantity increased or unchanged)', 'released' => 0];
+        }
+
+        // Calculate how much to release (considering already sold items)
+        // We can only release the difference, not more than what's held
+        $maxReleaseable = max(0, $oldQuantity - $productSale->buy);
+        $toRelease = min($difference, $maxReleaseable);
+
+        if ($toRelease <= 0) {
+            return ['success' => true, 'message' => 'No stock to release (all sold)', 'released' => 0];
+        }
+
+        if (!$productSale->variant_id) {
+            return ['success' => false, 'message' => 'ProductSale has no variant_id', 'released' => 0];
+        }
+
+        try {
+            return DB::transaction(function () use ($productSale, $toRelease) {
+                $result = $this->inventoryService->releaseStockFromPromotion(
+                    $productSale->variant_id,
+                    $toRelease,
+                    'flash_sale'
+                );
+
+                if ($result['success']) {
+                    Log::info('[FlashSaleStockService] Stock released due to quantity decrease', [
+                        'product_sale_id' => $productSale->id,
+                        'variant_id' => $productSale->variant_id,
+                        'old_quantity' => $oldQuantity,
+                        'new_quantity' => $productSale->number,
+                        'released' => $toRelease
+                    ]);
+                }
+
                 return [
-                    'available' => false,
-                    'remaining' => 0,
-                    'message' => 'Sản phẩm không có trong Flash Sale',
+                    'success' => $result['success'],
+                    'message' => $result['success'] ? 'Stock released successfully' : ($result['message'] ?? 'Failed to release stock'),
+                    'released' => $result['success'] ? $toRelease : 0
                 ];
-            }
-            
-            $remaining = $productSale->remaining;
-            $isAvailable = $remaining >= $requestedQty;
-            
+            });
+        } catch (\Exception $e) {
+            Log::error('[FlashSaleStockService] Error releasing stock on quantity change', [
+                'product_sale_id' => $productSale->id,
+                'variant_id' => $productSale->variant_id,
+                'to_release' => $toRelease,
+                'error' => $e->getMessage()
+            ]);
+
             return [
-                'available' => $isAvailable,
-                'remaining' => $remaining,
-                'buy' => (int) $productSale->buy,
-                'number' => (int) $productSale->number,
-                'message' => $isAvailable 
-                    ? "Còn {$remaining} sản phẩm" 
-                    : "Chỉ còn {$remaining} sản phẩm",
+                'success' => false,
+                'message' => 'Error releasing stock: ' . $e->getMessage(),
+                'released' => 0
             ];
-        });
+        }
     }
 }

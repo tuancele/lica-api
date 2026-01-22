@@ -557,7 +557,7 @@
             </div>
             <div class="col-12 col-md-6">
                 <!-- Product Detail Info - Loaded via API -->
-                <div id="product-detail-info" data-product-slug="{{$detail->slug ?? ''}}">
+                <div id="product-detail-info" data-product-slug="{{$detail->slug ?? ''}}" data-product-id="{{$detail->id ?? ''}}">
                     <!-- Skeleton Placeholder -->
                     <div class="product-detail-skeleton">
                         <div class="breadcrumb">
@@ -623,8 +623,20 @@
                     // Shopee-style: mọi sản phẩm có biến thể đều dùng block phân loại mới
                     $hasAnyVariant = isset($variants) && $variants->count() > 0;
                     $isShopeeVariant = $hasAnyVariant;
-                    $currentVariantStock = (int)($first->stock ?? 0);
+                    // Use stock_display (with priority: Flash Sale > Deal > Available) instead of raw stock
+                    $currentVariantStock = (int)($first->stock_display ?? $first->warehouse_stock ?? ($first->stock ?? 0));
+                    // Server-side calculated stock_display for locking
+                    $serverStockDisplay = (int)($first->stock_display ?? $first->warehouse_stock ?? ($first->stock ?? 0));
                 @endphp
+                <!-- Stock Container: Locked from Server -->
+                <div id="stock-container" style="margin-top: 10px; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; font-size: 13px; color: #666;">
+                    <span class="stock-label"><strong>Tồn kho:</strong></span>
+                    <span id="variant-stock-value" 
+                          data-is-locked="true" 
+                          data-server-stock="{{ $serverStockDisplay }}"
+                          style="font-weight: 600; color: #333; margin-left: 5px;">{{ $serverStockDisplay > 0 ? number_format($serverStockDisplay, 0, ',', '.') : 'Hết hàng' }}</span>
+                    <span class="stock-unit" style="margin-left: 3px;">{{ $serverStockDisplay > 0 ? 'sản phẩm' : '' }}</span>
+                </div>
                 <div class="price-detail">
                     <!-- VARIANT_DEBUG_A11: isShopeeVariant={{ $isShopeeVariant ? '1' : '0' }}, variants_count={{ isset($variants) ? $variants->count() : 0 }} -->
                     @if($isShopeeVariant)
@@ -791,9 +803,14 @@
                             // 计算变体的最终价格（按优先级：闪购 -> 促销 -> 原价）
                             $variantPriceInfo = getVariantFinalPrice($v->id, $detail->id);
                             
-                            // Calculate warehouse stock (prefer server-provided warehouse_stock)
-                            $warehouseStock = (int) ($v->warehouse_stock ?? ($v->stock ?? 0));
-                            $isOutOfStock = $warehouseStock <= 0;
+                            // Calculate stock_display with priority: Flash Sale > Deal > Available
+                            $stockDisplay = (int) ($v->stock_display ?? $v->warehouse_stock ?? ($v->stock ?? 0));
+                            $isOutOfStock = $stockDisplay <= 0;
+                            
+                            // Store stock source info for JS
+                            $stockSource = $v->stock_source ?? 'warehouse';
+                            $hasFlashSale = $v->has_flash_sale ?? false;
+                            $hasDeal = $v->has_deal ?? false;
                         @endphp
                         <div class="item-variant @if($k==0) active @endif @if($isOutOfStock) out-of-stock @endif"
                              data-variant-id="{{$v->id}}"
@@ -801,7 +818,10 @@
                              data-price="{{$variantPriceInfo['final_price']}}"
                              data-original-price="{{$variantPriceInfo['original_price']}}"
                              data-price-html="{{base64_encode($variantPriceInfo['html'])}}"
-                             data-stock="{{$warehouseStock}}"
+                             data-stock="{{$stockDisplay}}"
+                             data-stock-source="{{$stockSource}}"
+                             data-has-flash-sale="{{$hasFlashSale ? '1' : '0'}}"
+                             data-has-deal="{{$hasDeal ? '1' : '0'}}"
                              data-image="{{getImage($v->image ?: $detail->image)}}"
                              data-option1="{{ $optLabel }}"
                              @if($isOutOfStock) style="opacity: 0.5; cursor: not-allowed; pointer-events: none;" @endif>
@@ -814,25 +834,25 @@
                 <input type="hidden" name="variant_id"  value="{{$first->id}}">
                 <div class="group-cart product-action align-center mt-3 space-between">
                     <div class="quantity align-center quantity-selector">
-                        <button class="btn_minus entry" type="button" @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif>
+                        <button class="btn_minus entry" type="button" @if($currentVariantStock <= 0) disabled @endif>
                             <span role="img" class="icon"><svg width="14" height="2" viewBox="0 0 14 2" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 0C0.447715 0 0 0.447715 0 1C0 1.55228 0.447715 2 1 2L1 0ZM13 2C13.5523 2 14 1.55228 14 1C14 0.447715 13.5523 0 13 0V2ZM1 2L13 2V0L1 0L1 2Z" fill="black"></path></svg></span>
                         </button>
-                        <input @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif type="text" class="form-quatity quantity-input" value="1" min="1">
-                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="btn_plus entry" type="button">
+                        <input @if($currentVariantStock <= 0) disabled @endif type="text" class="form-quatity quantity-input" value="1" min="1">
+                        <button @if($currentVariantStock <= 0) disabled @endif class="btn_plus entry" type="button">
                             <span role="img" class="icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 6C0.447715 6 0 6.44772 0 7C0 7.55228 0.447715 8 1 8L1 6ZM13 8C13.5523 8 14 7.55228 14 7C14 6.44772 13.5523 6 13 6V8ZM1 8L13 8V6L1 6L1 8Z" fill="black"></path><path d="M6 13C6 13.5523 6.44772 14 7 14C7.55228 14 8 13.5523 8 13L6 13ZM8 1C8 0.447715 7.55228 -2.41411e-08 7 0C6.44771 2.41411e-08 6 0.447715 6 1L8 1ZM8 13L8 1L6 1L6 13L8 13Z" fill="black"></path></svg></span>
                         </button>
                     </div>
                     <div class="item-action">
-                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif type="button" class="addCartDetail">
+                        <button @if($currentVariantStock <= 0) disabled @endif type="button" class="addCartDetail">
                             <span role="img" class="icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.5H14.5L10.5 0.5C10.3 0.2 10 0 9.7 0C9.4 0 9.1 0.2 8.9 0.5L4.9 6.5H0.5C0.2 6.5 0 6.7 0 7C0 7.1 0 7.2 0.1 7.3L2.3 16.3C2.5 17 3.1 17.5 3.8 17.5H16.2C16.9 17.5 17.5 17 17.7 16.3L19.9 7.3L20 7C20 6.7 19.8 6.5 19.5 6.5H19ZM9.7 2.5L12.5 6.5H6.9L9.7 2.5ZM16.2 16.5H3.8L1.8 8.5H18.2L16.2 16.5ZM9.7 10.5C8.9 10.5 8.2 11.2 8.2 12C8.2 12.8 8.9 13.5 9.7 13.5C10.5 13.5 11.2 12.8 11.2 12C11.2 11.2 10.5 10.5 9.7 10.5Z" stroke="#ee4d2d" stroke-width="1.5" fill="none"/><path d="M9.7 8.5V15.5M6.2 12H13.2" stroke="#ee4d2d" stroke-width="1.5" stroke-linecap="round"/></svg></span>
-                            <span>Thêm Vào Giỏ Hàng</span>
+                            <span>@if($currentVariantStock <= 0) Hết hàng @else Thêm Vào Giỏ Hàng @endif</span>
                         </button>
                     </div>
                     <div class="item-action">
                         @if(isset($saledeals) && $saledeals->count() > 0)
-                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail btnBuyDealSốc" type="button">MUA DEAL SỐC</button>
+                        <button @if($currentVariantStock <= 0) disabled @endif class="buyNowDetail btnBuyDealSốc" type="button">@if($currentVariantStock <= 0) Hết hàng @else MUA DEAL SỐC @endif</button>
                         @else
-                        <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail" type="button">Mua ngay</button>
+                        <button @if($currentVariantStock <= 0) disabled @endif class="buyNowDetail" type="button">@if($currentVariantStock <= 0) Hết hàng @else Mua ngay @endif</button>
                         @endif
                     </div>
                 </div>
@@ -1510,16 +1530,16 @@
             </div>
             <div class="product-action align-center">
                 <div class="item-action">
-                    <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif type="button" class="addCartDetail">
+                    <button @if($currentVariantStock <= 0) disabled @endif type="button" class="addCartDetail">
                         <span role="img" class="icon"><svg width="22" height="19" viewBox="0 0 22 19" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 6.99953H16.21L11.83 0.439531C11.64 0.159531 11.32 0.0195312 11 0.0195312C10.68 0.0195312 10.36 0.159531 10.17 0.449531L5.79 6.99953H1C0.45 6.99953 0 7.44953 0 7.99953C0 8.08953 0.00999996 8.17953 0.04 8.26953L2.58 17.5395C2.81 18.3795 3.58 18.9995 4.5 18.9995H17.5C18.42 18.9995 19.19 18.3795 19.43 17.5395L21.97 8.26953L22 7.99953C22 7.44953 21.55 6.99953 21 6.99953ZM11 2.79953L13.8 6.99953H8.2L11 2.79953ZM17.5 16.9995L4.51 17.0095L2.31 8.99953H19.7L17.5 16.9995ZM11 10.9995C9.9 10.9995 9 11.8995 9 12.9995C9 14.0995 9.9 14.9995 11 14.9995C12.1 14.9995 13 14.0995 13 12.9995C13 11.8995 12.1 10.9995 11 10.9995Z" fill="white"></path></svg></span>
-                        <span>Thêm vào giỏ hàng</span>
+                        <span>@if($currentVariantStock <= 0) Hết hàng @else Thêm vào giỏ hàng @endif</span>
                     </button>
                 </div>
                 <div class="item-action">
                     @if(isset($saledeals) && $saledeals->count() > 0)
-                    <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail btnBuyDealSốc" type="button">MUA DEAL SỐC</button>
+                    <button @if($currentVariantStock <= 0) disabled @endif class="buyNowDetail btnBuyDealSốc" type="button">@if($currentVariantStock <= 0) Hết hàng @else MUA DEAL SỐC @endif</button>
                     @else
-                    <button @if(($isShopeeVariant && $currentVariantStock <= 0) || (!$isShopeeVariant && $detail->stock == 0)) disabled @endif class="buyNowDetail" type="button">Mua ngay</button>
+                    <button @if($currentVariantStock <= 0) disabled @endif class="buyNowDetail" type="button">@if($currentVariantStock <= 0) Hết hàng @else Mua ngay @endif</button>
                     @endif
                 </div>
             </div>
@@ -2900,6 +2920,8 @@
                             console.log('[API] Updated cart count from product detail API:', cartCount);
                         }
                         renderProductDetail(data.data);
+                        // Load warehouse stock after product detail is rendered
+                        loadWarehouseStock(data.data.id);
                     } else {
                         console.error('[API] Failed to load product detail:', data.message);
                         // Show Blade template fallback if API fails
@@ -2925,6 +2947,184 @@
                         skeleton.style.display = 'none';
                     }
                 });
+        }
+        
+        /**
+         * Load warehouse stock from Warehouse API V1
+         * Updates variant stock display with real-time available_stock
+         */
+        function loadWarehouseStock(productId) {
+            if (!productId) {
+                console.warn('[Warehouse API] Product ID not available, skipping stock update');
+                return;
+            }
+            
+            console.log('[Warehouse API] Loading stock for product:', productId);
+            
+            // Call Warehouse API V1 to get real-time stock
+            fetch(`/admin/api/v1/warehouse/inventory/by-product/${productId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success && data.data && Array.isArray(data.data)) {
+                        console.log('[Warehouse API] Stock data received:', data.data);
+                        updateVariantStocks(data.data);
+                    } else {
+                        console.warn('[Warehouse API] Invalid response format:', data);
+                    }
+                })
+                .catch(error => {
+                    console.error('[Warehouse API] Error loading stock:', error);
+                    // Don't show error to user, just log it
+                });
+        }
+        
+        /**
+         * Update variant stock display with warehouse data
+         */
+        function updateVariantStocks(stockData) {
+            // Create a map of variant_id -> stock info
+            const stockMap = {};
+            stockData.forEach(item => {
+                stockMap[item.variant_id] = {
+                    available_stock: item.available_stock || 0,
+                    physical_stock: item.physical_stock || 0,
+                    flash_sale_stock: item.flash_sale_stock || 0,
+                    deal_stock: item.deal_stock || 0
+                };
+            });
+            
+            // Update variant items in the DOM
+            const variantItems = document.querySelectorAll('#variant-option1-list .item-variant');
+            variantItems.forEach(item => {
+                const variantId = parseInt(item.getAttribute('data-variant-id'));
+                if (variantId && stockMap[variantId]) {
+                    const stockInfo = stockMap[variantId];
+                    // SAFE-GUARD: Only use valid numbers, fallback to 0 if null/undefined
+                    const availableStock = (stockInfo.available_stock !== null && stockInfo.available_stock !== undefined && !isNaN(stockInfo.available_stock)) 
+                        ? stockInfo.available_stock 
+                        : 0;
+                    
+                    // Update data-stock attribute
+                    item.setAttribute('data-stock', availableStock);
+                    
+                    // Update out-of-stock class
+                    if (availableStock <= 0) {
+                        item.classList.add('out-of-stock');
+                        item.style.opacity = '0.5';
+                        item.style.cursor = 'not-allowed';
+                        item.style.pointerEvents = 'none';
+                    } else {
+                        item.classList.remove('out-of-stock');
+                        item.style.opacity = '';
+                        item.style.cursor = '';
+                        item.style.pointerEvents = '';
+                    }
+                }
+            });
+            
+            // Update stock display if active variant exists
+            const activeVariant = document.querySelector('#variant-option1-list .item-variant.active');
+            if (activeVariant) {
+                const variantId = parseInt(activeVariant.getAttribute('data-variant-id'));
+                const stockDisplay = document.getElementById('variant-stock-value');
+                
+                // Check if stock is locked from server - NEVER override if locked
+                if (stockDisplay && stockDisplay.getAttribute('data-is-locked') === 'true') {
+                    // Use server-side stock value, do not override
+                    const serverStock = parseInt(stockDisplay.getAttribute('data-server-stock') || '0');
+                    // Always use server stock, even if 0 (to show "Hết hàng")
+                    stockDisplay.textContent = serverStock > 0 ? serverStock.toLocaleString('vi-VN') : 'Hết hàng';
+                    updateButtonStates(serverStock);
+                    return; // Exit early, do not update from API
+                }
+                
+                // Only update from API if not locked
+                // SAFE-GUARD: Never override server stock if API returns null/undefined/error
+                if (variantId && stockMap[variantId]) {
+                    const stockInfo = stockMap[variantId];
+                    // Only update if stockInfo.available_stock is a valid number (not null/undefined)
+                    if (stockDisplay && stockInfo.available_stock !== null && stockInfo.available_stock !== undefined && !isNaN(stockInfo.available_stock)) {
+                        stockDisplay.textContent = stockInfo.available_stock.toLocaleString('vi-VN');
+                        // Update button states
+                        updateButtonStates(stockInfo.available_stock);
+                    } else {
+                        // If API returns null/undefined, keep server-rendered value (do not override)
+                        const serverStock = parseInt(stockDisplay.getAttribute('data-server-stock') || '0');
+                        if (stockDisplay) {
+                            stockDisplay.textContent = serverStock > 0 ? serverStock.toLocaleString('vi-VN') : 'Hết hàng';
+                        }
+                        updateButtonStates(serverStock);
+                    }
+                } else {
+                    // If stockMap doesn't have data, keep server-rendered value
+                    const serverStock = parseInt(stockDisplay.getAttribute('data-server-stock') || '0');
+                    if (stockDisplay) {
+                        stockDisplay.textContent = serverStock > 0 ? serverStock.toLocaleString('vi-VN') : 'Hết hàng';
+                    }
+                    updateButtonStates(serverStock);
+                }
+            }
+            
+            // For single product (no variants), update from first stock entry
+            if (!document.getElementById('variant-option1-list') && stockData.length > 0) {
+                const firstStock = stockData[0];
+                updateButtonStates(firstStock.available_stock);
+            }
+        }
+        
+        /**
+         * Update button states based on stock availability
+         */
+        function updateButtonStates(availableStock) {
+            const buttons = document.querySelectorAll('.addCartDetail, .buyNowDetail, .btn_minus.entry, .btn_plus.entry');
+            const quantityInput = document.querySelector('.quantity-input');
+            const isOutOfStock = availableStock <= 0;
+            
+            if (isOutOfStock) {
+                buttons.forEach(btn => {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.5';
+                    btn.style.cursor = 'not-allowed';
+                    btn.style.pointerEvents = 'none';
+                    if (btn.classList.contains('addCartDetail')) {
+                        const span = btn.querySelector('span:last-child');
+                        if (span) span.textContent = 'Hết hàng';
+                    }
+                    if (btn.classList.contains('buyNowDetail')) {
+                        btn.textContent = 'Hết hàng';
+                    }
+                });
+                if (quantityInput) {
+                    quantityInput.disabled = true;
+                    quantityInput.style.opacity = '0.5';
+                    quantityInput.style.cursor = 'not-allowed';
+                }
+            } else {
+                buttons.forEach(btn => {
+                    btn.disabled = false;
+                    btn.style.opacity = '';
+                    btn.style.cursor = '';
+                    btn.style.pointerEvents = '';
+                    if (btn.classList.contains('addCartDetail')) {
+                        const span = btn.querySelector('span:last-child');
+                        if (span) span.textContent = 'Thêm Vào Giỏ Hàng';
+                    }
+                    if (btn.classList.contains('buyNowDetail')) {
+                        const isDeal = btn.classList.contains('btnBuyDealSốc');
+                        btn.textContent = isDeal ? 'MUA DEAL SỐC' : 'Mua ngay';
+                    }
+                });
+                if (quantityInput) {
+                    quantityInput.disabled = false;
+                    quantityInput.style.opacity = '';
+                    quantityInput.style.cursor = '';
+                }
+            }
         }
         
         // Wait for DOM to be ready
@@ -3159,8 +3359,15 @@
                         </div>
                         <div class="list-variant" id="variant-option1-list">
                             ${product.variants.map((v, index) => {
-                                const warehouseStock = v.warehouse_stock !== undefined ? v.warehouse_stock : v.stock;
-                                const isOutOfStock = warehouseStock <= 0 || (v.is_out_of_stock !== undefined ? v.is_out_of_stock : false);
+                                // Use stock_display (with priority: Flash Sale > Deal > Available) if available
+                                // Otherwise fallback to warehouse_stock or stock
+                                // Will be updated by loadWarehouseStock() with real-time available_stock
+                                const stockDisplay = v.stock_display !== undefined ? v.stock_display : 
+                                    (v.warehouse_stock !== undefined ? v.warehouse_stock : v.stock);
+                                const stockSource = v.stock_source || 'warehouse';
+                                const hasFlashSale = v.has_flash_sale === true;
+                                const hasDeal = v.has_deal === true;
+                                const isOutOfStock = stockDisplay <= 0 || (v.is_out_of_stock !== undefined ? v.is_out_of_stock : false);
                                 return `
                                 <div class="item-variant ${index === 0 ? 'active' : ''} ${isOutOfStock ? 'out-of-stock' : ''}"
                                      data-variant-id="${v.id}"
@@ -3168,7 +3375,10 @@
                                      data-price="${v.price_info.final_price}"
                                      data-original-price="${v.price_info.original_price}"
                                      data-price-html="${encodeUnicodeBase64(v.price_info.html || '')}"
-                                     data-stock="${warehouseStock}"
+                                     data-stock="${stockDisplay}"
+                                     data-stock-source="${stockSource}"
+                                     data-has-flash-sale="${hasFlashSale ? '1' : '0'}"
+                                     data-has-deal="${hasDeal ? '1' : '0'}"
                                      data-image="${v.image}"
                                      data-option1="${v.option_label}"
                                      ${isOutOfStock ? 'style="opacity: 0.5; cursor: not-allowed; pointer-events: none;"' : ''}>
@@ -3179,17 +3389,20 @@
                         </div>
                         <div class="variant-stock-info" id="variant-stock-display" style="margin-top: 10px; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; font-size: 13px; color: #666;">
                             <span class="stock-label"><strong>Tồn kho:</strong></span>
-                            <span class="stock-value" id="variant-stock-value" style="font-weight: 600; color: #333; margin-left: 5px;">${(product.variants[0]?.warehouse_stock !== undefined ? product.variants[0].warehouse_stock : (product.variants[0]?.stock || 0)).toLocaleString('vi-VN')}</span>
+                            <span class="stock-value" id="variant-stock-value" style="font-weight: 600; color: #333; margin-left: 5px;">${(() => {
+                                const stockVal = product.variants[0]?.stock_display ?? product.variants[0]?.warehouse_stock ?? 0;
+                                return stockVal > 0 ? stockVal.toLocaleString('vi-VN') : 'Hết hàng';
+                            })()}</span>
                             <span class="stock-unit" style="margin-left: 3px;">sản phẩm</span>
                         </div>
                     </div>
                 `;
             }
             
-            // Build action buttons - check warehouse_stock
+            // Build action buttons - check stock_display (with priority: Flash Sale > Deal > Available)
             const hasStock = product.has_variants 
-                ? (product.first_variant && (product.first_variant.warehouse_stock !== undefined ? product.first_variant.warehouse_stock : product.first_variant.stock) > 0 && !(product.first_variant.is_out_of_stock === true))
-                : ((product.warehouse_stock !== undefined ? product.warehouse_stock : product.stock) > 0 && !(product.is_out_of_stock === true));
+                ? (product.first_variant && (product.first_variant.stock_display !== undefined ? product.first_variant.stock_display : (product.first_variant.warehouse_stock !== undefined ? product.first_variant.warehouse_stock : product.first_variant.stock)) > 0 && !(product.first_variant.is_out_of_stock === true))
+                : ((product.stock_display !== undefined ? product.stock_display : (product.warehouse_stock !== undefined ? product.warehouse_stock : product.stock)) > 0 && !(product.is_out_of_stock === true));
             
             const actionHtml = `
                 <input type="hidden" name="variant_id" value="${product.first_variant ? product.first_variant.id : ''}">
@@ -3585,19 +3798,136 @@
                         skuDisplay.textContent = this.getAttribute('data-sku') || '';
                     }
                     
-                    // Update stock display
-                    const stock = parseInt(this.getAttribute('data-stock') || '0');
+                    // Update stock display (use data-stock which is updated by Warehouse API)
+                    // BUT: Respect server-side locked value if exists
                     const stockDisplay = document.getElementById('variant-stock-value');
                     if (stockDisplay) {
+                        // Check if stock is locked from server - NEVER override if locked
+                        if (stockDisplay.getAttribute('data-is-locked') === 'true') {
+                            // Use server-side stock value, do not override
+                            const serverStock = parseInt(stockDisplay.getAttribute('data-server-stock') || '0');
+                            // Always use server stock, even if 0 (to show "Hết hàng")
+                            stockDisplay.textContent = serverStock > 0 ? serverStock.toLocaleString('vi-VN') : 'Hết hàng';
+                                // Update button states with server stock
+                                const buttons = document.querySelectorAll('.addCartDetail, .buyNowDetail, .btn_minus.entry, .btn_plus.entry');
+                                const quantityInput = document.querySelector('.quantity-input');
+                                const isOutOfStock = serverStock <= 0;
+                                
+                                if (isOutOfStock) {
+                                    buttons.forEach(btn => {
+                                        btn.disabled = true;
+                                        btn.style.opacity = '0.5';
+                                        btn.style.cursor = 'not-allowed';
+                                        btn.style.pointerEvents = 'none';
+                                        if (btn.classList.contains('addCartDetail')) {
+                                            const span = btn.querySelector('span:last-child');
+                                            if (span) span.textContent = 'Hết hàng';
+                                        }
+                                        if (btn.classList.contains('buyNowDetail')) {
+                                            btn.textContent = 'Hết hàng';
+                                        }
+                                    });
+                                    if (quantityInput) {
+                                        quantityInput.disabled = true;
+                                        quantityInput.style.opacity = '0.5';
+                                        quantityInput.style.cursor = 'not-allowed';
+                                    }
+                                } else {
+                                    buttons.forEach(btn => {
+                                        btn.disabled = false;
+                                        btn.style.opacity = '';
+                                        btn.style.cursor = '';
+                                        btn.style.pointerEvents = '';
+                                        if (btn.classList.contains('addCartDetail')) {
+                                            const span = btn.querySelector('span:last-child');
+                                            if (span) span.textContent = 'Thêm Vào Giỏ Hàng';
+                                        }
+                                        if (btn.classList.contains('buyNowDetail')) {
+                                            btn.textContent = btn.classList.contains('btnBuyDealSốc') ? 'MUA DEAL SỐC' : 'Mua ngay';
+                                        }
+                                    });
+                                    if (quantityInput) {
+                                        quantityInput.disabled = false;
+                                        quantityInput.style.opacity = '';
+                                        quantityInput.style.cursor = '';
+                                    }
+                                }
+                                return; // Exit early, do not update from data-stock
+                            }
+                        }
+                        
+                        // If not locked, use data-stock from variant element
+                        const stock = parseInt(this.getAttribute('data-stock') || '0');
                         stockDisplay.textContent = stock.toLocaleString('vi-VN');
+                        
+                        // Update stock status
+                        const buttons = document.querySelectorAll('.addCartDetail, .buyNowDetail, .btn_minus.entry, .btn_plus.entry');
+                        const quantityInput = document.querySelector('.quantity-input');
+                        const isOutOfStock = stock <= 0;
+                        
+                        if (isOutOfStock) {
+                            buttons.forEach(btn => {
+                                btn.disabled = true;
+                                btn.style.opacity = '0.5';
+                                btn.style.cursor = 'not-allowed';
+                                btn.style.pointerEvents = 'none';
+                                // Update button text
+                                if (btn.classList.contains('addCartDetail')) {
+                                    const span = btn.querySelector('span:last-child');
+                                    if (span) span.textContent = 'Hết hàng';
+                                }
+                                if (btn.classList.contains('buyNowDetail')) {
+                                    btn.textContent = 'Hết hàng';
+                                }
+                            });
+                            if (quantityInput) {
+                                quantityInput.disabled = true;
+                                quantityInput.style.opacity = '0.5';
+                                quantityInput.style.cursor = 'not-allowed';
+                            }
+                        } else {
+                            buttons.forEach(btn => {
+                                btn.disabled = false;
+                                btn.style.opacity = '';
+                                btn.style.cursor = '';
+                                btn.style.pointerEvents = '';
+                                if (btn.classList.contains('addCartDetail')) {
+                                    const span = btn.querySelector('span:last-child');
+                                    if (span) span.textContent = 'Thêm Vào Giỏ Hàng';
+                                }
+                                if (btn.classList.contains('buyNowDetail')) {
+                                    btn.textContent = btn.classList.contains('btnBuyDealSốc') ? 'MUA DEAL SỐC' : 'Mua ngay';
+                                }
+                            });
+                            if (quantityInput) {
+                                quantityInput.disabled = false;
+                                quantityInput.style.opacity = '';
+                                quantityInput.style.cursor = '';
+                            }
+                        }
                     }
                     
-                    // Update stock status
-                    const buttons = document.querySelectorAll('.addCartDetail, .buyNowDetail, .btn_minus.entry, .btn_plus.entry');
-                    const quantityInput = document.querySelector('.quantity-input');
-                    const isOutOfStock = stock <= 0;
+                    // Update stock status (only if stock was not locked)
+                    const stockDisplayCheck = document.getElementById('variant-stock-value');
+                    const isStockLocked = stockDisplayCheck && stockDisplayCheck.getAttribute('data-is-locked') === 'true';
                     
-                    if (isOutOfStock) {
+                    if (!isStockLocked) {
+                        const buttons = document.querySelectorAll('.addCartDetail, .buyNowDetail, .btn_minus.entry, .btn_plus.entry');
+                        const quantityInput = document.querySelector('.quantity-input');
+                        const stockValue = parseInt(this.getAttribute('data-stock') || '0');
+                        const isOutOfStock = stockValue <= 0;
+                        
+                        // Only refresh from Warehouse API if stock is not locked
+                        const productDetailContainer = document.getElementById('product-detail-info');
+                        if (productDetailContainer) {
+                            const productId = productDetailContainer.getAttribute('data-product-id');
+                            if (productId) {
+                                // Refresh stock from Warehouse API when variant changes
+                                loadWarehouseStock(parseInt(productId));
+                            }
+                        }
+                        
+                        if (isOutOfStock) {
                         buttons.forEach(btn => {
                             btn.disabled = true;
                             btn.style.opacity = '0.5';

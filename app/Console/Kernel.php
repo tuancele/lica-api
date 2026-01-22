@@ -26,6 +26,12 @@ class Kernel extends ConsoleKernel
     {
         // $schedule->command('inspire')
         //          ->hourly();
+        
+        // Expire Flash Sales and release stock every hour
+        $schedule->command('flashsale:expire')
+                 ->hourly()
+                 ->withoutOverlapping()
+                 ->runInBackground();
     }
 
     /**

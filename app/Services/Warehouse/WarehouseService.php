@@ -812,7 +812,14 @@ class WarehouseService implements WarehouseServiceInterface
      */
     public function getVariantStock(int $variantId): array
     {
+        // Ensure variant id is integer
+        $variantId = (int) $variantId;
+
+        // Load variant
         $variant = Variant::findOrFail($variantId);
+
+        // Warehouse V2 only - no legacy fallback
+        // Will try SKU fallback if variant_id not found
 
         $activeFlashSaleQtySub = ProductSale::query()
             ->selectRaw('COALESCE(SUM(productsales.number),0)')
@@ -830,40 +837,69 @@ class WarehouseService implements WarehouseServiceInterface
         $availableStock = 0;
 
         if ($hasNewStockColumns) {
-            // Chỉ lấy bản ghi snapshot (physical_stock không null), bỏ qua các dòng export/import legacy
-            $latestWarehouseRow = ProductWarehouse::where('variant_id', $variantId)
-                ->whereNotNull('physical_stock')
-                ->latest('id')
+            // V2: Use physical_stock from inventory_stocks table (single source of truth)
+            // Warehouse interface uses InventoryService which queries inventory_stocks
+            // We need to use the same table for consistency
+            $variantSku = $variant->sku ?? '';
+
+            // Step 1: Query physical_stock from inventory_stocks by variant_id (main warehouse only)
+            $inventoryStock = \App\Models\InventoryStock::where('variant_id', $variantId)
+                ->where('warehouse_id', 1)
                 ->first();
 
-            $physicalStock = $latestWarehouseRow ? (int) ($latestWarehouseRow->physical_stock ?? 0) : (int) ($variant->stock ?? 0);
-            $flashSaleStock = (int) ProductSale::query()
-                ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
-                ->where('productsales.variant_id', $variantId)
-                ->where('fs.status', 1)
-                ->where('fs.start', '<=', time())
-                ->where('fs.end', '>=', time())
-                ->selectRaw('SUM(number - buy) as total')
-                ->value('total') ?? 0;
-            // Deal stock: realtime from active deals (qty - buy), matching variant_id or fallback product-level (variant_id IS NULL)
-            $dealStock = (int) SaleDeal::query()
-                ->join('deals as d', 'd.id', '=', 'deal_sales.deal_id')
-                ->where('d.status', '1')
-                ->where('d.start', '<=', time())
-                ->where('d.end', '>=', time())
-                ->where('deal_sales.status', '1')
-                ->where(function ($q) use ($variant) {
-                    $q->where(function ($q2) use ($variant) {
-                        $q2->whereNotNull('deal_sales.variant_id')
-                            ->where('deal_sales.variant_id', $variant->id);
-                    })->orWhere(function ($q3) use ($variant) {
-                        $q3->whereNull('deal_sales.variant_id')
-                            ->where('deal_sales.product_id', $variant->product_id);
-                    });
-                })
-                ->selectRaw('SUM(deal_sales.qty - COALESCE(deal_sales.buy,0)) as remaining')
-                ->value('remaining') ?? 0;
-            $availableStock = max(0, $physicalStock - $flashSaleStock - $dealStock);
+            $physicalStock = 0;
+            $flashSaleStock = 0;
+            $dealStock = 0;
+            $availableStock = 0;
+
+            if ($inventoryStock) {
+                $physicalStock = (int) ($inventoryStock->physical_stock ?? 0);
+                $flashSaleStock = (int) ($inventoryStock->flash_sale_hold ?? 0);
+                $dealStock = (int) ($inventoryStock->deal_hold ?? 0);
+                $availableStock = (int) ($inventoryStock->available_stock ?? 0);
+            } else {
+                // If not found, try SKU fallback
+                if (!empty($variantSku)) {
+                    $inventoryStockBySku = \App\Models\InventoryStock::query()
+                        ->join('variants', 'variants.id', '=', 'inventory_stocks.variant_id')
+                        ->where('variants.sku', $variantSku)
+                        ->where('inventory_stocks.warehouse_id', 1)
+                        ->select('inventory_stocks.*')
+                        ->first();
+
+                    if ($inventoryStockBySku) {
+                        $physicalStock = (int) ($inventoryStockBySku->physical_stock ?? 0);
+                        $flashSaleStock = (int) ($inventoryStockBySku->flash_sale_hold ?? 0);
+                        $dealStock = (int) ($inventoryStockBySku->deal_hold ?? 0);
+                        $availableStock = (int) ($inventoryStockBySku->available_stock ?? 0);
+                    }
+                }
+            }
+
+            Log::info('WarehouseService: Query physical_stock from inventory_stocks', [
+                'variant_id' => $variantId,
+                'variant_sku' => $variantSku,
+                'warehouse_id' => 1,
+                'physical_stock' => $physicalStock,
+                'flash_sale_hold' => $flashSaleStock,
+                'deal_hold' => $dealStock,
+                'available_stock' => $availableStock,
+                'row_found' => $inventoryStock !== null,
+            ]);
+
+            // W2 TRUTH: Log raw physical_stock value for verification
+            Log::info('W2 TRUTH: SKU=' . $variantSku . ' | Physical=' . $physicalStock, [
+                'variant_id' => $variantId,
+                'variant_sku' => $variantSku,
+                'physical_stock' => $physicalStock,
+                'flash_sale_hold' => $flashSaleStock,
+                'deal_hold' => $dealStock,
+                'available_stock' => $availableStock,
+            ]);
+
+            // Note: flashSaleStock and dealStock are already loaded from inventory_stocks above
+            // availableStock is also already calculated from inventory_stocks
+            // No need to query ProductSale/SaleDeal again
         } else {
             $stockSnapshot = $this->getStockSnapshot($variantId);
             $physicalStock = $stockSnapshot['physical'];

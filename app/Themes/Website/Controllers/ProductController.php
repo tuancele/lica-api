@@ -14,7 +14,10 @@ use App\Modules\Compare\Models\Compare;
 use App\Modules\Deal\Models\Deal;
 use App\Modules\Deal\Models\ProductDeal;
 use App\Modules\Deal\Models\SaleDeal;
+use App\Modules\FlashSale\Models\FlashSale;
+use App\Modules\FlashSale\Models\ProductSale;
 use App\Services\Warehouse\WarehouseServiceInterface;
+use App\Services\Inventory\Contracts\InventoryServiceInterface;
 use App\Modules\Dictionary\Models\IngredientPaulas;
 use App\Modules\Dictionary\Models\IngredientBenefit;
 use App\Modules\Dictionary\Models\IngredientRate;
@@ -40,14 +43,173 @@ class ProductController extends Controller
             $data['gallerys'] = json_decode($post->gallery);
             $variants = Variant::where('product_id', $post->id)->orderBy('position', 'asc')->orderBy('id', 'asc')->get();
 
-            // Attach warehouse_stock (available_stock) to variants for Blade fallback
-            $variants = $variants->map(function ($v) {
+            // Get warehouse service and inventory service
+            $warehouseService = app(WarehouseServiceInterface::class);
+            $inventoryService = app(InventoryServiceInterface::class);
+            $now = time();
+
+            // Attach warehouse stock and calculate stock_display with priority: Flash Sale > Deal > Available
+            $variants = $variants->map(function ($v) use ($warehouseService, $inventoryService, $now) {
                 try {
-                    $stockData = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($v->id);
-                    $v->warehouse_stock = (int) ($stockData['available_stock'] ?? $stockData['current_stock'] ?? 0);
+                    // Ensure variant_id is integer (not string) to avoid type mismatch
+                    $variantId = (int) $v->id;
+                    $variantSku = $v->sku ?? '';
+                    
+                    // Log for debugging
+                    \Log::info('ProductController: Checking Stock', [
+                        'variant_id' => $variantId,
+                        'variant_sku' => $variantSku,
+                        'product_id' => $v->product_id ?? null,
+                    ]);
+                    
+                    // Get base stock data from WarehouseService V2 only - no legacy fallback
+                    // WarehouseService will automatically try SKU fallback if variant_id not found
+                    $stockData = $warehouseService->getVariantStock($variantId);
+                    
+                    // Log result of WarehouseService query
+                    \Log::info('ProductController: WarehouseService result', [
+                        'variant_id' => $variantId,
+                        'variant_sku' => $variantSku,
+                        'physical_stock' => $stockData['physical_stock'] ?? 0,
+                        'available_stock' => $stockData['available_stock'] ?? 0,
+                        'flash_sale_stock' => $stockData['flash_sale_stock'] ?? 0,
+                        'deal_stock' => $stockData['deal_stock'] ?? 0,
+                    ]);
+                    
+                    // If still 0, log all product_warehouse entries for this product to debug
+                    if (($stockData['physical_stock'] ?? 0) == 0 && isset($v->product_id)) {
+                        $allWarehouseRows = \App\Modules\Warehouse\Models\ProductWarehouse::query()
+                            ->join('variants as v', 'v.id', '=', 'product_warehouse.variant_id')
+                            ->where('v.product_id', $v->product_id)
+                            ->select('product_warehouse.*', 'v.id as variant_id_from_join', 'v.sku as variant_sku_from_join')
+                            ->get()
+                            ->map(function ($row) {
+                                return [
+                                    'product_warehouse_id' => $row->id,
+                                    'warehouse_id' => $row->warehouse_id,
+                                    'variant_id' => $row->variant_id,
+                                    'variant_id_from_join' => $row->variant_id_from_join,
+                                    'variant_sku_from_join' => $row->variant_sku_from_join,
+                                    'physical_stock' => $row->physical_stock,
+                                    'qty' => $row->qty,
+                                    'type' => $row->type,
+                                ];
+                            })
+                            ->toArray();
+                        
+                        \Log::info('ProductController: All product_warehouse rows for product_id', [
+                            'product_id' => $v->product_id,
+                            'variant_id_requested' => $variantId,
+                            'variant_sku_requested' => $variantSku,
+                            'all_warehouse_rows' => $allWarehouseRows,
+                        ]);
+                    }
+                    
+                    // Warehouse V2: Get stock values directly from WarehouseService (from inventory_stocks)
+                    // Physical is the base value for calculation, never displayed
+                    $v->physical_stock = (int) ($stockData['physical_stock'] ?? 0);
+                    
+                    // Get stock values from WarehouseService (already calculated from inventory_stocks)
+                    $flashSaleStock = (int) ($stockData['flash_sale_stock'] ?? 0);  // From inventory_stocks.flash_sale_hold
+                    $dealStock = (int) ($stockData['deal_stock'] ?? 0);  // From inventory_stocks.deal_hold
+                    $availableStock = (int) ($stockData['available_stock'] ?? 0);  // From inventory_stocks.available_stock
+                    
+                    // Check if Flash Sale is active (to determine if we should use flash_sale_stock)
+                    $hasActiveFlashSale = ProductSale::query()
+                        ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
+                        ->where('productsales.variant_id', $v->id)
+                        ->where('fs.status', '1')
+                        ->where('fs.start', '<=', $now)
+                        ->where('fs.end', '>=', $now)
+                        ->exists();
+                    
+                    // Check if Deal is active (to determine if we should use deal_stock)
+                    $hasActiveDeal = SaleDeal::query()
+                        ->join('deals as d', 'd.id', '=', 'deal_sales.deal_id')
+                        ->where('d.status', '1')
+                        ->where('d.start', '<=', $now)
+                        ->where('d.end', '>=', $now)
+                        ->where('deal_sales.status', '1')
+                        ->where(function ($q) use ($v) {
+                            $q->where(function ($q2) use ($v) {
+                                $q2->whereNotNull('deal_sales.variant_id')
+                                    ->where('deal_sales.variant_id', $v->id);
+                            })->orWhere(function ($q3) use ($v) {
+                                $q3->whereNull('deal_sales.variant_id')
+                                    ->where('deal_sales.product_id', $v->product_id);
+                            });
+                        })
+                        ->exists();
+                    
+                    // Store values for reference
+                    $v->warehouse_stock = $availableStock;
+                    $v->flash_sale_stock = $flashSaleStock;
+                    $v->deal_stock = $dealStock;
+                    $v->fs_qty = $flashSaleStock;
+                    $v->deal_qty = $dealStock;
+                    
+                    // Apply priority logic for stock_display:
+                    // Priority 1: Flash Sale Stock (if FS active AND flash_sale_stock > 0)
+                    // Priority 2: Deal Stock (if no FS or FS = 0, AND Deal active AND deal_stock > 0)
+                    // Priority 3: Available Stock (if no FS/Deal or both = 0)
+                    // End: Out of Stock (if all = 0)
+                    if ($hasActiveFlashSale && $flashSaleStock > 0) {
+                        // Priority 1: Flash Sale Stock
+                        $v->stock_display = $flashSaleStock;
+                        $v->stock_source = 'flash_sale';
+                        $v->has_flash_sale = true;
+                        $v->has_deal = false;
+                    } elseif ((!$hasActiveFlashSale || $flashSaleStock == 0) && $hasActiveDeal && $dealStock > 0) {
+                        // Priority 2: Deal Stock (only if no FS or FS = 0, AND Deal active AND deal_stock > 0)
+                        $v->stock_display = $dealStock;
+                        $v->stock_source = 'deal';
+                        $v->has_flash_sale = false;
+                        $v->has_deal = true;
+                    } elseif ($availableStock > 0) {
+                        // Priority 3: Available Stock
+                        $v->stock_display = $availableStock;
+                        $v->stock_source = 'warehouse';
+                        $v->has_flash_sale = false;
+                        $v->has_deal = false;
+                    } else {
+                        // End: Out of Stock (all = 0)
+                        $v->stock_display = 0;
+                        $v->stock_source = 'warehouse';
+                        $v->has_flash_sale = false;
+                        $v->has_deal = false;
+                    }
+                    
+                    // Log stock_display for debugging
+                    \Log::info('ProductController: Variant stock calculated with priority logic', [
+                        'variant_id' => $variantId,
+                        'variant_sku' => $variantSku,
+                        'physical_stock' => $v->physical_stock,
+                        'flash_sale_stock' => $flashSaleStock,
+                        'deal_stock' => $dealStock,
+                        'available_stock' => $availableStock,
+                        'has_active_flash_sale' => $hasActiveFlashSale,
+                        'has_active_deal' => $hasActiveDeal,
+                        'stock_display' => $v->stock_display,
+                        'stock_source' => $v->stock_source,
+                    ]);
+                    
                 } catch (\Throwable $e) {
-                    // Fallback legacy stock
-                    $v->warehouse_stock = (int) ($v->stock ?? 0);
+                    // Warehouse V2 only - if error, return 0 (out of stock)
+                    $v->warehouse_stock = 0;
+                    $v->physical_stock = 0;
+                    $v->flash_sale_stock = 0;
+                    $v->deal_stock = 0;
+                    $v->stock_display = 0;
+                    $v->stock_source = 'warehouse';
+                    $v->has_flash_sale = false;
+                    $v->has_deal = false;
+                    $v->fs_qty = 0;
+                    $v->deal_qty = 0;
+                    
+                    \Log::error('ProductController: WarehouseService error, stock set to 0', [
+                        'variant_id' => $v->id,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
                 return $v;
             });
@@ -58,33 +220,125 @@ class ProductController extends Controller
                 $defaultVariant = $post->variant($post->id);
                 if ($defaultVariant) {
                     try {
-                        $stockData = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($defaultVariant->id);
+                        $stockData = $warehouseService->getVariantStock($defaultVariant->id);
                         $defaultVariant->warehouse_stock = (int) ($stockData['available_stock'] ?? $stockData['current_stock'] ?? 0);
+                        $defaultVariant->physical_stock = (int) ($stockData['physical_stock'] ?? 0);
+                        $defaultVariant->flash_sale_stock = (int) ($stockData['flash_sale_stock'] ?? 0);
+                        $defaultVariant->deal_stock = (int) ($stockData['deal_stock'] ?? 0);
+                        
+                        // Calculate stock_display (same logic as above)
+                        $flashSaleRemaining = max(0, (int) (ProductSale::query()
+                            ->join('flashsales as fs', 'fs.id', '=', 'productsales.flashsale_id')
+                            ->where('productsales.variant_id', $defaultVariant->id)
+                            ->where('fs.status', '1')
+                            ->where('fs.start', '<=', $now)
+                            ->where('fs.end', '>=', $now)
+                            ->selectRaw('SUM(productsales.number - productsales.buy) as remaining')
+                            ->value('remaining') ?? 0));
+                        
+                        $dealRemaining = max(0, (int) (SaleDeal::query()
+                            ->join('deals as d', 'd.id', '=', 'deal_sales.deal_id')
+                            ->where('d.status', '1')
+                            ->where('d.start', '<=', $now)
+                            ->where('d.end', '>=', $now)
+                            ->where('deal_sales.status', '1')
+                            ->where(function ($q) use ($defaultVariant) {
+                                $q->where(function ($q2) use ($defaultVariant) {
+                                    $q2->whereNotNull('deal_sales.variant_id')
+                                        ->where('deal_sales.variant_id', $defaultVariant->id);
+                                })->orWhere(function ($q3) use ($defaultVariant) {
+                                    $q3->whereNull('deal_sales.variant_id')
+                                        ->where('deal_sales.product_id', $defaultVariant->product_id);
+                                });
+                            })
+                            ->selectRaw('SUM(deal_sales.qty - COALESCE(deal_sales.buy, 0)) as remaining')
+                            ->value('remaining') ?? 0));
+                        
+                        if ($flashSaleRemaining > 0) {
+                            $defaultVariant->stock_display = $flashSaleRemaining;
+                            $defaultVariant->stock_source = 'flash_sale';
+                            $defaultVariant->has_flash_sale = true;
+                            $defaultVariant->has_deal = false;
+                        } elseif ($dealRemaining > 0) {
+                            $defaultVariant->stock_display = $dealRemaining;
+                            $defaultVariant->stock_source = 'deal';
+                            $defaultVariant->has_flash_sale = false;
+                            $defaultVariant->has_deal = true;
+                        } else {
+                            $defaultVariant->stock_display = $defaultVariant->warehouse_stock;
+                            $defaultVariant->stock_source = 'warehouse';
+                            $defaultVariant->has_flash_sale = false;
+                            $defaultVariant->has_deal = false;
+                        }
+                        $defaultVariant->fs_qty = $flashSaleRemaining;
+                        $defaultVariant->deal_qty = $dealRemaining;
                     } catch (\Throwable $e) {
-                        $defaultVariant->warehouse_stock = (int) ($defaultVariant->stock ?? $post->stock ?? 0);
+                        // Warehouse V2 only - if error, return 0 (out of stock)
+                        $defaultVariant->warehouse_stock = 0;
+                        $defaultVariant->physical_stock = 0;
+                        $defaultVariant->stock_display = 0;
+                        $defaultVariant->stock_source = 'warehouse';
+                        $defaultVariant->has_flash_sale = false;
+                        $defaultVariant->has_deal = false;
+                        $defaultVariant->fs_qty = 0;
+                        $defaultVariant->deal_qty = 0;
+                        
+                        \Log::error('ProductController: WarehouseService error for defaultVariant, stock set to 0', [
+                            'variant_id' => $defaultVariant->id,
+                            'error' => $e->getMessage(),
+                        ]);
                     }
                     $first = $defaultVariant;
                     $variants = collect([$defaultVariant]);
                 } else {
+                    // Warehouse V2 only - no legacy stock
                     $first = new Variant();
                     $first->price = 0;
                     $first->sku = '';
-                    $first->warehouse_stock = (int) ($post->stock ?? 0);
+                    $first->warehouse_stock = 0;
+                    $first->physical_stock = 0;
+                    $first->stock_display = 0;
+                    $first->stock_source = 'warehouse';
+                    $first->has_flash_sale = false;
+                    $first->has_deal = false;
+                    $first->fs_qty = 0;
+                    $first->deal_qty = 0;
                     $variants = collect([$first]);
                 }
             } else {
-                // Ensure first variant also has warehouse_stock set
-                if (!isset($first->warehouse_stock)) {
-                    try {
-                        $stockData = app(\App\Services\Warehouse\WarehouseServiceInterface::class)->getVariantStock($first->id);
-                        $first->warehouse_stock = (int) ($stockData['available_stock'] ?? $stockData['current_stock'] ?? 0);
-                    } catch (\Throwable $e) {
-                        $first->warehouse_stock = (int) ($first->stock ?? 0);
-                    }
+                // Ensure first variant has all stock properties set
+                if (!isset($first->stock_display)) {
+                    $first->stock_display = $first->warehouse_stock ?? 0;
+                    $first->stock_source = $first->stock_source ?? 'warehouse';
+                    $first->has_flash_sale = $first->has_flash_sale ?? false;
+                    $first->has_deal = $first->has_deal ?? false;
+                    $first->fs_qty = $first->fs_qty ?? 0;
+                    $first->deal_qty = $first->deal_qty ?? 0;
                 }
             }
             $data['variants'] = $variants;
             $data['first'] = $first;
+            
+            // Log final stock_display before returning view
+            \Log::info('ProductController: Final stock_display before view', [
+                'product_id' => $post->id,
+                'first_variant_id' => $first->id ?? null,
+                'first_stock_display' => $first->stock_display ?? null,
+                'first_stock_source' => $first->stock_source ?? null,
+            ]);
+            
+            // Special log for SKU LC60VN (clean test)
+            if (isset($first->sku) && $first->sku === 'LC60VN') {
+                \Log::info('CLEAN TEST - SKU: LC60VN - Final Stock: ' . ($first->stock_display ?? 0), [
+                    'variant_id' => $first->id ?? null,
+                    'stock_display' => $first->stock_display ?? 0,
+                    'physical_stock' => $first->physical_stock ?? 0,
+                    'warehouse_stock' => $first->warehouse_stock ?? 0,
+                    'flash_sale_stock' => $first->flash_sale_stock ?? 0,
+                    'deal_stock' => $first->deal_stock ?? 0,
+                    'stock_source' => $first->stock_source ?? null,
+                ]);
+            }
             
             $arrCate = json_decode($post->cat_id, true);
             $catid = (is_array($arrCate) && !empty($arrCate)) ? $arrCate[0] : ($post->cat_id ?? "");

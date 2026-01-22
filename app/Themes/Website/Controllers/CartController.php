@@ -1146,10 +1146,10 @@ class CartController extends Controller
                         }
 
                         if ($availableStock === null) {
-                            // Legacy fallback (Shopee variant stock)
+                            // Legacy fallback (Shopee variant stock) - no more "999" sentinel
                             $availableStock = isset($variant->stock) && $variant->stock !== null 
                                 ? (int)$variant->stock 
-                                : (isset($variant->product->stock) && $variant->product->stock == 1 ? 999 : 0);
+                                : 0;
                         }
                         
                         if ($availableStock <= 0) {

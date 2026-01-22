@@ -239,9 +239,10 @@ class CartService
             }
             
             // Get stock (fallback cho UI; stock thực đã được PriceEngine/Warehouse check)
+            // Legacy "999" sentinel is removed; fallback to 0 if unknown
             $stock = isset($variant->stock) && $variant->stock !== null 
                 ? (int)$variant->stock 
-                : (isset($product->stock) && $product->stock == 1 ? 999 : 0);
+                : 0;
             
             // Lấy price info cơ bản để hiển thị
             $priceInfo = $this->priceService->calculateVariantPrice($variant);
@@ -709,11 +710,11 @@ class CartService
             throw new \Exception('Sản phẩm không tồn tại');
         }
         
-        // Validate stock
+        // Validate stock - legacy "999" sentinel removed, fallback to 0
         $product = $variant->product;
         $variantStock = isset($variant->stock) && $variant->stock !== null 
             ? (int)$variant->stock 
-            : (isset($product->stock) && $product->stock == 1 ? 999 : 0);
+            : 0;
         
         if ($variantStock === 0) {
             throw new \Exception('Phân loại đã hết hàng');
@@ -900,11 +901,11 @@ class CartService
                     throw new \Exception("Rất tiếc, sản phẩm này chỉ còn tối đa {$physicalStock} sản phẩm trong kho. Vui lòng điều chỉnh lại số lượng.");
                 }
             } catch (\Exception $e) {
-                // Nếu lỗi từ WarehouseService, fallback về kiểm tra stock cũ
+                // Nếu lỗi từ WarehouseService, fallback về kiểm tra stock cũ (không dùng sentinel 999)
                 $product = $variant->product;
                 $variantStock = isset($variant->stock) && $variant->stock !== null 
                     ? (int)$variant->stock 
-                    : (isset($product->stock) && $product->stock == 1 ? 999 : 0);
+                    : 0;
                 
                 if ($variantStock > 0 && $qty > $variantStock) {
                     throw new \Exception('Số lượng vượt quá tồn kho');

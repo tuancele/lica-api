@@ -72,5 +72,14 @@ class AppServiceProvider extends ServiceProvider
         if (file_exists($helperPath = app_path('Modules/Warehouse/Helpers/helper.php'))) {
             require_once $helperPath;
         }
+
+        // Register Flash Sale Observers
+        if (class_exists(\App\Modules\FlashSale\Models\FlashSale::class)) {
+            \App\Modules\FlashSale\Models\FlashSale::observe(\App\Modules\FlashSale\Observers\FlashSaleObserver::class);
+        }
+        
+        if (class_exists(\App\Modules\FlashSale\Models\ProductSale::class)) {
+            \App\Modules\FlashSale\Models\ProductSale::observe(\App\Modules\FlashSale\Observers\ProductSaleObserver::class);
+        }
     }
 }

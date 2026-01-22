@@ -36,9 +36,9 @@ class ProductResource extends JsonResource
             'status' => $this->status,
             'feature' => $this->feature,
             'best' => $this->best,
-            'stock' => $this->stock,
-            'warehouse_stock' => isset($this->warehouse_stock) ? (int) $this->warehouse_stock : (int) $this->stock,
-            'is_out_of_stock' => isset($this->is_out_of_stock) ? (bool) $this->is_out_of_stock : ((int) $this->stock <= 0),
+            'stock' => 0, // Legacy field - deprecated, use warehouse_stock instead
+            'warehouse_stock' => isset($this->warehouse_stock) ? (int) $this->warehouse_stock : 0,
+            'is_out_of_stock' => isset($this->is_out_of_stock) ? (bool) $this->is_out_of_stock : (isset($this->warehouse_stock) ? ((int) $this->warehouse_stock <= 0) : true),
             'verified' => $this->verified,
             'sort' => $this->sort,
             'brand_id' => $this->brand_id,
