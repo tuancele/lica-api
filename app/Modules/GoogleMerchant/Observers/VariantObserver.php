@@ -22,6 +22,7 @@ class VariantObserver
 
     /**
      * Rule 3: Delete variant from GMC when deleted on website
+     * Use GmcOfferId to ensure consistent offerId generation
      */
     public function deleted(Variant $variant): void
     {
@@ -37,8 +38,10 @@ class VariantObserver
                 return;
             }
 
-            // Generate offerId for this variant
-            $offerId = 'PROD_' . (int) $variant->product->id . '_VAR_' . (int) $variant->id;
+            // Use GmcOfferId service to generate offerId (same logic as upsertProduct)
+            // This ensures offerId is consistent across all GMC operations
+            $offerIdService = app(\App\Services\Gmc\GmcOfferId::class);
+            $offerId = $offerIdService->forVariant($variant);
 
             // Delete from GMC
             $service = app(\App\Modules\GoogleMerchant\Services\GoogleMerchantService::class);
