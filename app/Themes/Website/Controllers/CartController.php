@@ -106,16 +106,41 @@ class CartController extends Controller
                     if (!$dealCheck['available']) {
                         $dealWarning = $dealCheck['message'];
                     } else {
-                        // Áp dụng giá Deal nếu thỏa điều kiện ưu tiên (kể cả Deal 0đ)
-                        $dealPricing = $this->applyDealPriceForCartItem(
-                            $item['item']['product_id'],
-                            $variantId,
-                            $quantity,
-                            $priceWithQuantity
-                        );
-                        if ($dealPricing !== null) {
-                            $priceWithQuantity['total_price'] = $dealPricing['total_price'];
-                            $priceWithQuantity['price_breakdown'] = $dealPricing['price_breakdown'];
+                        // ===== CRITICAL: Logic 2 - Sản phẩm mua kèm (Deal Sốc) LUÔN lấy giá từ Deal Sốc =====
+                        $isDealItem = !empty($item['is_deal']) && (int)$item['is_deal'] === 1;
+                        
+                        if ($isDealItem) {
+                            // Sản phẩm mua kèm: LUÔN lấy giá từ Deal Sốc (kể cả 0đ)
+                            $dealPrice = $this->cartService->getDealPrice($item['item']['product_id'], $variantId);
+                            $priceWithQuantity['total_price'] = $dealPrice * $quantity;
+                            $priceWithQuantity['price_breakdown'] = [
+                                [
+                                    'type' => 'deal',
+                                    'quantity' => $quantity,
+                                    'unit_price' => $dealPrice,
+                                    'subtotal' => $dealPrice * $quantity,
+                                ],
+                            ];
+                            
+                            Log::info('[CartController] Deal Sốc price applied (mua kèm - always use Deal price)', [
+                                'product_id' => $item['item']['product_id'],
+                                'variant_id' => $variantId,
+                                'deal_price' => $dealPrice,
+                                'quantity' => $quantity,
+                                'subtotal' => $dealPrice * $quantity,
+                            ]);
+                        } else {
+                            // Sản phẩm mua thông thường: Áp dụng giá Deal nếu thỏa điều kiện ưu tiên
+                            $dealPricing = $this->applyDealPriceForCartItem(
+                                $item['item']['product_id'],
+                                $variantId,
+                                $quantity,
+                                $priceWithQuantity
+                            );
+                            if ($dealPricing !== null) {
+                                $priceWithQuantity['total_price'] = $dealPricing['total_price'];
+                                $priceWithQuantity['price_breakdown'] = $dealPricing['price_breakdown'];
+                            }
                         }
                     }
                 }
