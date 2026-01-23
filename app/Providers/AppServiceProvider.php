@@ -100,5 +100,13 @@ class AppServiceProvider extends ServiceProvider
         if (class_exists(\App\Modules\FlashSale\Models\ProductSale::class)) {
             \App\Modules\FlashSale\Models\ProductSale::observe(\App\Modules\FlashSale\Observers\ProductSaleObserver::class);
         }
+
+        // Register Google Merchant observers
+        if (class_exists(\App\Modules\Product\Models\Product::class)) {
+            \App\Modules\Product\Models\Product::observe(\App\Modules\GoogleMerchant\Observers\ProductObserver::class);
+        }
+        if (class_exists(\App\Modules\Product\Models\Variant::class)) {
+            \App\Modules\Product\Models\Variant::observe(\App\Modules\GoogleMerchant\Observers\VariantObserver::class);
+        }
     }
 }

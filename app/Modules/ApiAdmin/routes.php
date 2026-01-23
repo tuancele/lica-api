@@ -43,6 +43,12 @@ Route::group([
         });
     });
 
+    // Google Merchant Center (GMC)
+    Route::prefix('gmc')->group(function () {
+        Route::get('/products/preview', 'GmcController@preview');
+        Route::post('/products/sync', 'GmcController@sync');
+    });
+
     // Flash Sale Management Routes
     Route::prefix('flash-sales')->group(function () {
         // List Flash Sales with pagination and filters

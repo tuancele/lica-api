@@ -13,7 +13,7 @@ use App\Modules\Brand\Models\Brand;
 use App\Modules\Color\Models\Color;
 use App\Modules\Size\Models\Size;
 use App\Modules\Origin\Models\Origin;
-use App\Modules\Ingredient\Models\Ingredient;
+use App\Modules\Dictionary\Models\IngredientPaulas;
 use App\Enums\ProductStatus;
 use App\Enums\ProductType;
 use Validator;
@@ -87,7 +87,8 @@ class ProductController extends Controller
         $data['origins'] = Origin::where('status', ProductStatus::ACTIVE->value)
             ->orderBy('sort', 'asc')->get();
         
-        $data['ingredients'] = Ingredient::where('status', ProductStatus::ACTIVE->value)
+        // Use IngredientPaulas dictionary as ingredient source
+        $data['ingredients'] = IngredientPaulas::where('status', '1')
             ->orderBy('name', 'asc')->get();
         
         return view($this->module . '::create', $data);
@@ -124,7 +125,8 @@ class ProductController extends Controller
         $data['origins'] = Origin::where('status', ProductStatus::ACTIVE->value)
             ->orderBy('sort', 'asc')->get();
         
-        $data['ingredients'] = Ingredient::where('status', ProductStatus::ACTIVE->value)
+        // Use IngredientPaulas dictionary as ingredient source
+        $data['ingredients'] = IngredientPaulas::where('status', '1')
             ->orderBy('name', 'asc')->get();
         
         // Safely decode gallery JSON

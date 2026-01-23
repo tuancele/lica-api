@@ -39,6 +39,7 @@ Route::group(['middleware' => 'web'], function () {
 	        Route::post('crawl/start','IngredientController@crawlStart')->name('dictionary.ingredient.crawl.start');
 	        Route::post('crawl/step','IngredientController@crawlStep')->name('dictionary.ingredient.crawl.step');
 	        Route::get('crawl/status','IngredientController@crawlStatus')->name('dictionary.ingredient.crawl.status');
+	        Route::post('crawl/cancel','IngredientController@crawlCancel')->name('dictionary.ingredient.crawl.cancel');
 	        Route::get('updateIngredient','IngredientController@updateIngredient');
 	        Route::post('getData','IngredientController@getData')->name('dictionary.ingredient.get');
 		});

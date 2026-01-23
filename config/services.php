@@ -43,4 +43,7 @@ return [
         'client_secret' => env('FACEBOOK_APP_SECRET'),
         'redirect' => env('FACEBOOK_APP_CALLBACK_URL'),
     ],
+
+    // Google Merchant Center (GMC)
+    'google_merchant_id' => env('GOOGLE_MERCHANT_ID', ''),
 ];

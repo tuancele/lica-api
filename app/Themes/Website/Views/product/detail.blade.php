@@ -1245,10 +1245,12 @@
                                 // Fallback to legacy HTML if we do not have processed ingredient data
                                 $str = $detail->ingredient;
                                 if (strpos($str, 'item_ingredient') === false) {
-                                    $list =  App\Modules\Ingredient\Models\Ingredient::where('status','1')->get();
+                                    // Use IngredientPaulas dictionary as fallback source
+                                    $list =  App\Modules\Dictionary\Models\IngredientPaulas::where('status','1')->get();
                                     if(isset($list) && !empty($list)){
                                         foreach($list as $value){
-                                            $str = str_replace($value->name,'<a href="javascript:;" class="item_ingredient" data-id="'.$value->slug.'">'.$value->name.'</a>',$str);
+                                            $linkText = '<a href="javascript:;" class="item_ingredient" data-id="'.$value->slug.'">'.$value->name.'</a>';
+                                            $str = str_replace($value->name, $linkText, $str);
                                         }
                                     }
                                 }

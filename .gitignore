@@ -24,6 +24,8 @@ yarn-error.log
 /storage/framework/testing/*
 /storage/framework/views/*
 /storage/logs/*
+/storage/app/google/*.json
+/storage/app/google/*.key
 
 # Giữ lại file giữ chỗ (.gitignore) để đảm bảo thư mục tồn tại
 !/storage/framework/cache/data/.gitignore

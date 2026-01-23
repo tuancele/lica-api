@@ -12,7 +12,6 @@ use App\Modules\Brand\Models\Brand;
 use App\Modules\Size\Models\Size;
 use App\Modules\Rate\Models\Rate;
 use App\Modules\Product\Models\Variant;
-use App\Modules\Ingredient\Models\Ingredient;
 use App\Modules\Promotion\Models\Promotion;
 use App\Modules\Search\Models\Search;
 use App\Modules\Subcriber\Models\Subcriber;

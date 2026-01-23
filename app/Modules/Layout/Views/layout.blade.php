@@ -183,7 +183,7 @@
                 <li @if(Session::get('sidebar_sub_active')=='taxonomy') class="active" @endif><a href="{{route('taxonomy')}}"><i class="fa fa-circle-o"></i> Danh mục sản phẩm</a></li>
                 <li @if(Session::get('sidebar_sub_active')=='origin') class="active" @endif><a href="{{route('origin')}}"><i class="fa fa-circle-o"></i> Xuất xứ</a></li>
                 <li @if(Session::get('sidebar_sub_active')=='brand') class="active" @endif><a href="{{route('brand')}}"><i class="fa fa-circle-o"></i> Thương hiệu</a></li>
-                <li @if(Session::get('sidebar_sub_active')=='ingredient') class="active" @endif><a href="{{route('ingredient')}}"><i class="fa fa-circle-o"></i> Thành phần</a></li>
+                {{-- Removed legacy admin ingredient module (/admin/ingredient) --}}
                 {{-- Removed color and size menu items - routes have been removed --}}
                 {{-- <li @if(Session::get('sidebar_sub_active')=='color') class="active" @endif><a href="{{route('color')}}"><i class="fa fa-circle-o"></i> Màu sắc</a></li> --}}
                 {{-- <li @if(Session::get('sidebar_sub_active')=='size') class="active" @endif><a href="{{route('size')}}"><i class="fa fa-circle-o"></i> Kích thước</a></li> --}}

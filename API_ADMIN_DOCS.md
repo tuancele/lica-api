@@ -104,6 +104,91 @@
 
 ---
 
+## Google Merchant Center (GMC) Admin API
+
+### 1. GET /admin/api/gmc/products/preview
+
+**Muc tieu:** Preview payload that would be sent to Google Merchant Center for one variant.
+
+**Query Params:**
+- `variant_id` (int, required)
+
+**Phan hoi mau (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "offerId": "SKU-123",
+    "title": "Product name",
+    "availability": "in stock",
+    "price": {"value": "120000", "currency": "VND"}
+  }
+}
+```
+
+**Trang thai:** Hoan thanh
+
+---
+
+## GoogleMerchant Module (Auto push to GMC)
+
+### Overview
+- Module path: `app/Modules/GoogleMerchant`
+- Service: `app/Modules/GoogleMerchant/Services/GoogleMerchantService.php`
+- Service account JSON: `storage/app/google/service-account.json` (must not be committed)
+- Config: `config/gmc.php` -> `gmc.merchant_id` (env: `GMC_MERCHANT_ID`)
+
+### Automation
+- Product observer: `app/Modules/GoogleMerchant/Observers/ProductObserver.php`
+- Variant observer: `app/Modules/GoogleMerchant/Observers/VariantObserver.php`
+- Jobs (queue):
+  - `app/Modules/GoogleMerchant/Jobs/PushProductToGmcJob.php`
+  - `app/Modules/GoogleMerchant/Jobs/PushVariantToGmcJob.php`
+
+### Payload rules (current)
+- offerId: `PROD_{product_id}_VAR_{variant_id}` (or `VAR_0` for product-only)
+- title: Product name; if Variant, append `color` / `size` names (example: `Base - Color - Size`)
+- description: high quality text (name/brand/origin/variant + description/content + ingredients), strip HTML + html_entity_decode + normalize whitespace, min length enforced
+- imageLink: absolute; if stored path (not http/https), prefix with `config('filesystems.disks.r2.url')`
+- additionalImageLinks: up to 10 images from product gallery (absolute)
+- brand: from product.brand.name, fallback `config('app.name')`
+- googleProductCategory: optional from `GMC_GOOGLE_PRODUCT_CATEGORY`
+- link: uses `GMC_STORE_BASE_URL` (fallback `APP_URL`) to avoid domain mismatch
+- contentLanguage: `vi`
+- targetCountry: `VN`
+- feedLabel: `VN`
+- availability: `in stock` if stock > 0 else `out of stock`
+- price currency: `VND`
+
+**Status:** Completed
+
+---
+
+### 2. POST /admin/api/gmc/products/sync
+
+**Muc tieu:** Sync one or more variants to GMC (insert).
+
+**Body (JSON):**
+- `variant_ids` (array<int>, required, min 1)
+- `dry_run` (bool, optional)
+
+**Phan hoi mau (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "dry_run": true,
+    "results": [
+      {"variant_id": 123, "success": true, "offer_id": "SKU-123", "sent": false}
+    ]
+  }
+}
+```
+
+**Trang thai:** Hoan thanh
+
+---
+
 ## Ingredient Dictionary Admin API
 
 ### 1. GET /admin/api/ingredients

@@ -218,7 +218,7 @@ class IngredientController extends Controller
                 'processed' => 0,
                 'done' => false,
                 'error' => null,
-                'logs' => [],
+                'logs' => ['[INFO] Crawl job queued. Waiting for worker to start...'],
                 'started_at' => time(),
                 'updated_at' => time(),
             ], now()->addHours(6));
@@ -232,10 +232,21 @@ class IngredientController extends Controller
             ]);
 
             // Run via queue worker. Using afterResponse prevents long-running work from blocking the HTTP request,
-            // especially when queue driver is misconfigured to "sync" in local env.
-            DictionaryIngredientCrawlJob::dispatch($crawlId, $userId, $offset, 100)
-                ->onQueue('dictionary-crawl')
-                ->afterResponse();
+            // but only if queue driver is not "sync" (sync driver runs jobs immediately)
+            $queueDriver = config('queue.default');
+            $job = DictionaryIngredientCrawlJob::dispatch($crawlId, $userId, $offset, 100)
+                ->onQueue('dictionary-crawl');
+            
+            // Only use afterResponse if queue driver is not sync
+            if ($queueDriver !== 'sync') {
+                $job->afterResponse();
+            }
+            
+            Log::debug('DictionaryIngredientCrawlJob job dispatched', [
+                'crawl_id' => $crawlId,
+                'queue_driver' => $queueDriver,
+                'after_response' => $queueDriver !== 'sync',
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -356,6 +367,87 @@ class IngredientController extends Controller
         }
     }
 
+    public function crawlCancel(Request $request): JsonResponse
+    {
+        try {
+            $crawlId = (string) ($request->crawl_id ?? '');
+            
+            $userId = (int) (Auth::id() ?? 0);
+            if ($userId <= 0) {
+                Log::warning('DictionaryIngredientCrawlJob crawlCancel unauthenticated', [
+                    'crawl_id' => $crawlId,
+                ]);
+                return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
+            }
+            
+            if ($crawlId === '') {
+                Log::warning('DictionaryIngredientCrawlJob crawlCancel missing crawl_id', [
+                    'user_id' => $userId,
+                ]);
+                return response()->json(['success' => false, 'message' => 'Missing crawl_id'], 422);
+            }
+            
+            $key = 'dictionary_ingredient_crawl_job:' . $crawlId;
+            $state = Cache::get($key);
+            if (!is_array($state)) {
+                Log::warning('DictionaryIngredientCrawlJob crawlCancel not found', [
+                    'crawl_id' => $crawlId,
+                    'user_id' => $userId,
+                ]);
+                return response()->json(['success' => false, 'message' => 'Crawl not found'], 404);
+            }
+            
+            if ((int) ($state['user_id'] ?? 0) !== $userId) {
+                Log::warning('DictionaryIngredientCrawlJob crawlCancel forbidden', [
+                    'crawl_id' => $crawlId,
+                    'user_id' => $userId,
+                    'state_user_id' => $state['user_id'] ?? null,
+                ]);
+                return response()->json(['success' => false, 'message' => 'Forbidden'], 403);
+            }
+            
+            // Check if already done or cancelled
+            if (!empty($state['done']) || !empty($state['cancelled'])) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Crawl already stopped',
+                    'data' => ['crawl_id' => $crawlId, 'status' => $state['status'] ?? 'unknown'],
+                ]);
+            }
+            
+            // Mark as cancelled
+            $state['cancelled'] = true;
+            $state['status'] = 'cancelling';
+            $state['updated_at'] = time();
+            Cache::put($key, $state, now()->addHours(6));
+            
+            Log::info('DictionaryIngredientCrawlJob crawl cancelled', [
+                'crawl_id' => $crawlId,
+                'user_id' => $userId,
+                'offset' => $state['offset'] ?? 0,
+                'processed' => $state['processed'] ?? 0,
+                'total' => $state['total'] ?? 0,
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Crawl cancellation requested',
+                'data' => [
+                    'crawl_id' => $crawlId,
+                    'status' => 'cancelling',
+                ],
+            ]);
+        } catch (Exception $e) {
+            Log::error('DictionaryIngredientCrawlJob crawlCancel exception', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'crawl_id' => $request->crawl_id ?? null,
+                'user_id' => Auth::id(),
+            ]);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     public function crawlStatus(Request $request): JsonResponse
     {
         try {
@@ -454,6 +546,7 @@ class IngredientController extends Controller
             'processed' => $cursor,
             'done' => $done,
             'error' => $error,
+            'cancelled' => !empty($state['cancelled']),
             'elapsed' => $elapsed,
             'step_processed' => $stepCount,
             'logs' => $newLogs,
