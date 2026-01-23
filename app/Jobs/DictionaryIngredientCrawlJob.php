@@ -19,12 +19,72 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    private static ?array $rateMap = null;
+    private static ?array $categoryMap = null;
+    private static ?array $benefitMap = null;
+
     public function __construct(
         private string $crawlId,
         private int $userId,
         private int $offset,
         private int $batchSize = 100
     ) {
+    }
+
+    private function loadMappingMaps(): void
+    {
+        if (self::$rateMap === null) {
+            self::$rateMap = [];
+            $rates = IngredientRate::select('id', 'name')->get();
+            foreach ($rates as $rate) {
+                $normalized = $this->normalizeForMapping($rate->name);
+                self::$rateMap[$normalized] = (string) $rate->id;
+                // Also add original name for exact match
+                self::$rateMap[strtolower(trim($rate->name))] = (string) $rate->id;
+            }
+            Log::debug('DictionaryIngredientCrawlJob rate map loaded', [
+                'crawl_id' => $this->crawlId,
+                'count' => count(self::$rateMap),
+            ]);
+        }
+
+        if (self::$categoryMap === null) {
+            self::$categoryMap = [];
+            $categories = IngredientCategory::select('id', 'name')->get();
+            foreach ($categories as $cat) {
+                $normalized = $this->normalizeForMapping($cat->name);
+                self::$categoryMap[$normalized] = (string) $cat->id;
+                // Also add original name for exact match
+                self::$categoryMap[strtolower(trim($cat->name))] = (string) $cat->id;
+            }
+            Log::debug('DictionaryIngredientCrawlJob category map loaded', [
+                'crawl_id' => $this->crawlId,
+                'count' => count(self::$categoryMap),
+            ]);
+        }
+
+        if (self::$benefitMap === null) {
+            self::$benefitMap = [];
+            $benefits = IngredientBenefit::select('id', 'name')->get();
+            foreach ($benefits as $benefit) {
+                $normalized = $this->normalizeForMapping($benefit->name);
+                self::$benefitMap[$normalized] = (string) $benefit->id;
+                // Also add original name for exact match
+                self::$benefitMap[strtolower(trim($benefit->name))] = (string) $benefit->id;
+            }
+            Log::debug('DictionaryIngredientCrawlJob benefit map loaded', [
+                'crawl_id' => $this->crawlId,
+                'count' => count(self::$benefitMap),
+            ]);
+        }
+    }
+
+    private function normalizeForMapping(string $value): string
+    {
+        // Normalize for better matching: lowercase, trim, remove extra spaces
+        $normalized = strtolower(trim($value));
+        $normalized = preg_replace('/\s+/', ' ', $normalized);
+        return $normalized;
     }
 
     public function handle(): void
@@ -38,6 +98,9 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
             'offset' => $this->offset,
             'batch_size' => $this->batchSize,
         ]);
+
+        // Load mapping maps into memory for performance
+        $this->loadMappingMaps();
 
         $state = Cache::get($key);
         if (!is_array($state)) {
@@ -297,13 +360,15 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
         ]);
     }
 
-    private function curlJson(string $url): array
+    private function curlJson(string $url, int $retryCount = 0, int $maxRetries = 3): array
     {
         $startTime = microtime(true);
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 40);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         $content = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
@@ -312,25 +377,31 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
         $fetchTime = round((microtime(true) - $startTime) * 1000, 2);
         $contentLength = strlen($content ?? '');
 
-        if ($error) {
-            Log::error('DictionaryIngredientCrawlJob curl error', [
+        if ($error || ($httpCode !== 200 && $httpCode !== 0)) {
+            if ($retryCount < $maxRetries) {
+                $waitTime = pow(2, $retryCount); // Exponential backoff: 1s, 2s, 4s
+                Log::warning('DictionaryIngredientCrawlJob curl retry', [
+                    'crawl_id' => $this->crawlId,
+                    'url' => $url,
+                    'error' => $error,
+                    'http_code' => $httpCode,
+                    'retry_count' => $retryCount + 1,
+                    'max_retries' => $maxRetries,
+                    'wait_time' => $waitTime,
+                ]);
+                sleep($waitTime);
+                return $this->curlJson($url, $retryCount + 1, $maxRetries);
+            }
+
+            Log::error('DictionaryIngredientCrawlJob curl error after retries', [
                 'crawl_id' => $this->crawlId,
                 'url' => $url,
                 'error' => $error,
                 'http_code' => $httpCode,
                 'fetch_time_ms' => $fetchTime,
+                'retry_count' => $retryCount,
             ]);
             return [];
-        }
-
-        if ($httpCode !== 200) {
-            Log::warning('DictionaryIngredientCrawlJob non-200 response', [
-                'crawl_id' => $this->crawlId,
-                'url' => $url,
-                'http_code' => $httpCode,
-                'content_length' => $contentLength,
-                'fetch_time_ms' => $fetchTime,
-            ]);
         }
 
         $decoded = json_decode((string) $content, true);
@@ -446,40 +517,127 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
         if ($rateName === '') {
             return '0';
         }
-        $detail = IngredientRate::where('name', $rateName)->first();
-        return $detail ? (string) $detail->id : '0';
+
+        // Try exact match first
+        $normalized = $this->normalizeForMapping($rateName);
+        if (isset(self::$rateMap[$normalized])) {
+            return self::$rateMap[$normalized];
+        }
+
+        // Try case-insensitive match
+        $lower = strtolower(trim($rateName));
+        if (isset(self::$rateMap[$lower])) {
+            return self::$rateMap[$lower];
+        }
+
+        // Try partial match (for cases like "Best Rated" vs "Best")
+        foreach (self::$rateMap as $key => $id) {
+            if (stripos($key, $normalized) !== false || stripos($normalized, $key) !== false) {
+                return $id;
+            }
+        }
+
+        return '0';
     }
 
     private function mapCategories(array $categories): array
     {
         $ids = [];
+        $notFound = [];
         foreach ($categories as $value) {
             $name = $value['name'] ?? '';
             if (!is_string($name) || $name === '') {
                 continue;
             }
-            $detail = IngredientCategory::where('name', $name)->first();
-            if ($detail) {
-                $ids[] = (string) $detail->id;
+
+            // Try exact match first
+            $normalized = $this->normalizeForMapping($name);
+            if (isset(self::$categoryMap[$normalized])) {
+                $ids[] = self::$categoryMap[$normalized];
+                continue;
+            }
+
+            // Try case-insensitive match
+            $lower = strtolower(trim($name));
+            if (isset(self::$categoryMap[$lower])) {
+                $ids[] = self::$categoryMap[$lower];
+                continue;
+            }
+
+            // Try partial match
+            $found = false;
+            foreach (self::$categoryMap as $key => $id) {
+                if (stripos($key, $normalized) !== false || stripos($normalized, $key) !== false) {
+                    $ids[] = $id;
+                    $found = true;
+                    break;
+                }
+            }
+
+            if (!$found) {
+                $notFound[] = $name;
             }
         }
-        return $ids;
+
+        if (!empty($notFound) && count($ids) === 0 && count($categories) > 0) {
+            Log::debug('DictionaryIngredientCrawlJob mapCategories not found', [
+                'crawl_id' => $this->crawlId,
+                'category_names' => $notFound,
+                'total_categories' => count($categories),
+            ]);
+        }
+
+        return array_unique($ids);
     }
 
     private function mapBenefits(array $benefits): array
     {
         $ids = [];
+        $notFound = [];
         foreach ($benefits as $value) {
             $name = $value['name'] ?? '';
             if (!is_string($name) || $name === '') {
                 continue;
             }
-            $detail = IngredientBenefit::where('name', $name)->first();
-            if ($detail) {
-                $ids[] = (string) $detail->id;
+
+            // Try exact match first
+            $normalized = $this->normalizeForMapping($name);
+            if (isset(self::$benefitMap[$normalized])) {
+                $ids[] = self::$benefitMap[$normalized];
+                continue;
+            }
+
+            // Try case-insensitive match
+            $lower = strtolower(trim($name));
+            if (isset(self::$benefitMap[$lower])) {
+                $ids[] = self::$benefitMap[$lower];
+                continue;
+            }
+
+            // Try partial match
+            $found = false;
+            foreach (self::$benefitMap as $key => $id) {
+                if (stripos($key, $normalized) !== false || stripos($normalized, $key) !== false) {
+                    $ids[] = $id;
+                    $found = true;
+                    break;
+                }
+            }
+
+            if (!$found) {
+                $notFound[] = $name;
             }
         }
-        return $ids;
+
+        if (!empty($notFound) && count($ids) === 0 && count($benefits) > 0) {
+            Log::debug('DictionaryIngredientCrawlJob mapBenefits not found', [
+                'crawl_id' => $this->crawlId,
+                'benefit_names' => $notFound,
+                'total_benefits' => count($benefits),
+            ]);
+        }
+
+        return array_unique($ids);
     }
 
     private function updateFromRemote(string $link, int $id): void
@@ -497,14 +655,36 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
             return;
         }
 
+        // Log raw data for debugging mapping issues
+        $rawRating = $rooms['rating'] ?? null;
+        $rawCategories = $rooms['relatedCategories'] ?? [];
+        $rawBenefits = $rooms['benefits'] ?? [];
+
         $description = $this->buildDescription($rooms['description'] ?? []);
         $reference = $this->buildReferences($rooms['references'] ?? []);
         $disclaimer = $this->normalizeString($rooms['strings']['disclaimer'] ?? '');
         $glance = $this->buildGlance($rooms['keyPoints'] ?? []);
 
-        $catIds = $this->mapCategories($rooms['relatedCategories'] ?? []);
-        $benefitIds = $this->mapBenefits($rooms['benefits'] ?? []);
-        $rateId = $this->mapRate($rooms['rating'] ?? '');
+        $catIds = $this->mapCategories($rawCategories);
+        $benefitIds = $this->mapBenefits($rawBenefits);
+        $rateId = $this->mapRate($rawRating);
+
+        // Log mapping details for first few items or when mapping fails
+        $shouldLogMapping = ($id % 50 === 0) || (count($catIds) === 0 && !empty($rawCategories)) || (count($benefitIds) === 0 && !empty($rawBenefits)) || ($rateId === '0' && !empty($rawRating));
+        
+        if ($shouldLogMapping) {
+            Log::info('DictionaryIngredientCrawlJob updateFromRemote mapping details', [
+                'crawl_id' => $this->crawlId,
+                'ingredient_id' => $id,
+                'name' => $rooms['name'] ?? '',
+                'raw_rating' => is_scalar($rawRating) ? (string) $rawRating : (is_array($rawRating) ? json_encode($rawRating) : 'null'),
+                'mapped_rate_id' => $rateId,
+                'raw_categories' => array_column($rawCategories, 'name'),
+                'mapped_category_ids' => $catIds,
+                'raw_benefits' => array_column($rawBenefits, 'name'),
+                'mapped_benefit_ids' => $benefitIds,
+            ]);
+        }
 
         $updateData = [
             'name' => $rooms['name'] ?? '',
