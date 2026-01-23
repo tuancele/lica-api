@@ -97,5 +97,6 @@ class ProductSaleObserver
             }
         }
     }
+
 }
 

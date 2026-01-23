@@ -30,11 +30,19 @@ class GmcSyncService
         $offerId = (string) $gmcProduct->getOfferId();
 
         if ($debug) {
+            $salePrice = $gmcProduct->getSalePrice();
+            $shippingWeight = $gmcProduct->getShippingWeight();
+            $productLength = $gmcProduct->getProductLength();
+            $productWidth = $gmcProduct->getProductWidth();
+            $productHeight = $gmcProduct->getProductHeight();
+            
             Log::info('[GMC] Prepared product for sync', [
                 'variant_id' => $variant->id,
                 'product_id' => $variant->product->id,
                 'merchant_id' => $merchantId,
                 'offer_id' => $offerId,
+                'item_group_id' => $gmcProduct->getItemGroupId(),
+                'is_default_variant' => method_exists($gmcProduct, 'getIsDefaultVariant') ? $gmcProduct->getIsDefaultVariant() : null,
                 'title' => $gmcProduct->getTitle(),
                 'link' => $gmcProduct->getLink(),
                 'image_link' => $gmcProduct->getImageLink(),
@@ -42,6 +50,17 @@ class GmcSyncService
                 'availability' => $gmcProduct->getAvailability(),
                 'price_value' => optional($gmcProduct->getPrice())->getValue(),
                 'price_currency' => optional($gmcProduct->getPrice())->getCurrency(),
+                'sale_price_value' => $salePrice ? optional($salePrice)->getValue() : null,
+                'sale_price_currency' => $salePrice ? optional($salePrice)->getCurrency() : null,
+                'sale_price_effective_date' => $gmcProduct->getSalePriceEffectiveDate(),
+                'shipping_weight_value' => $shippingWeight ? $shippingWeight->getValue() : null,
+                'shipping_weight_unit' => $shippingWeight ? $shippingWeight->getUnit() : null,
+                'product_length_value' => $productLength ? $productLength->getValue() : null,
+                'product_length_unit' => $productLength ? $productLength->getUnit() : null,
+                'product_width_value' => $productWidth ? $productWidth->getValue() : null,
+                'product_width_unit' => $productWidth ? $productWidth->getUnit() : null,
+                'product_height_value' => $productHeight ? $productHeight->getValue() : null,
+                'product_height_unit' => $productHeight ? $productHeight->getUnit() : null,
                 'brand' => $gmcProduct->getBrand(),
                 'google_product_category' => $gmcProduct->getGoogleProductCategory(),
                 'description_length' => mb_strlen((string) $gmcProduct->getDescription()),

@@ -108,5 +108,17 @@ class AppServiceProvider extends ServiceProvider
         if (class_exists(\App\Modules\Product\Models\Variant::class)) {
             \App\Modules\Product\Models\Variant::observe(\App\Modules\GoogleMerchant\Observers\VariantObserver::class);
         }
+
+        // Register Marketing Campaign observers for auto-push to GMC
+        if (class_exists(\App\Modules\Marketing\Models\MarketingCampaignProduct::class)) {
+            \App\Modules\Marketing\Models\MarketingCampaignProduct::observe(\App\Modules\Marketing\Observers\MarketingCampaignProductObserver::class);
+        }
+
+        // Load GoogleMerchant module routes and views
+        $googleMerchantRoutesPath = app_path('Modules/GoogleMerchant/routes.php');
+        if (file_exists($googleMerchantRoutesPath)) {
+            $this->loadRoutesFrom($googleMerchantRoutesPath);
+        }
+        $this->loadViewsFrom(app_path('Modules/GoogleMerchant/Views'), 'GoogleMerchant');
     }
 }

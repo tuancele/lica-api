@@ -107,7 +107,8 @@
         
         if(original && sale !== '') {
             var percent = 100 - (parseFloat(sale) / parseInt(original) * 100);
-            row.find('input.discount_percent').val(Math.round(percent * 100) / 100);
+            // Round to integer to avoid validation issues (integer requirement)
+            row.find('input.discount_percent').val(Math.round(percent));
         }
     });
 </script>

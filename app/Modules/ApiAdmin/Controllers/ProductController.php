@@ -831,4 +831,334 @@ class ProductController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Get product packaging dimensions
+     * 
+     * GET /admin/api/products/{id}/packaging
+     * 
+     * @param int $id
+     * @return JsonResponse
+     */
+    public function getProductPackaging(int $id): JsonResponse
+    {
+        try {
+            $product = Product::where('id', $id)
+                ->where('type', ProductType::PRODUCT->value)
+                ->first();
+            
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => '产品不存在'
+                ], 404);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'product_id' => $product->id,
+                    'weight' => (float) ($product->weight ?? 0), // grams
+                    'length' => (float) ($product->length ?? 0), // cm
+                    'width' => (float) ($product->width ?? 0),   // cm
+                    'height' => (float) ($product->height ?? 0), // cm
+                ]
+            ], 200);
+            
+        } catch (\Exception $e) {
+            Log::error('获取产品包装尺寸失败: ' . $e->getMessage(), [
+                'method' => __METHOD__,
+                'product_id' => $id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => '获取产品包装尺寸失败',
+                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update product packaging dimensions
+     * 
+     * PUT /admin/api/products/{id}/packaging
+     * 
+     * @param Request $request
+     * @param int $id
+     * @return JsonResponse
+     */
+    public function updateProductPackaging(Request $request, int $id): JsonResponse
+    {
+        try {
+            $product = Product::where('id', $id)
+                ->where('type', ProductType::PRODUCT->value)
+                ->first();
+            
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => '产品不存在'
+                ], 404);
+            }
+            
+            // Validate input
+            $validator = Validator::make($request->all(), [
+                'weight' => 'nullable|numeric|min:0',
+                'length' => 'nullable|numeric|min:0',
+                'width' => 'nullable|numeric|min:0',
+                'height' => 'nullable|numeric|min:0',
+            ], [
+                'weight.numeric' => 'Trọng lượng phải là số',
+                'weight.min' => 'Trọng lượng không được âm',
+                'length.numeric' => 'Chiều dài phải là số',
+                'length.min' => 'Chiều dài không được âm',
+                'width.numeric' => 'Chiều rộng phải là số',
+                'width.min' => 'Chiều rộng không được âm',
+                'height.numeric' => 'Chiều cao phải là số',
+                'height.min' => 'Chiều cao không được âm',
+            ]);
+            
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => '验证失败',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+            
+            // Update packaging dimensions
+            $updateData = [];
+            if ($request->has('weight')) {
+                $updateData['weight'] = (int) $request->weight;
+            }
+            if ($request->has('length')) {
+                $updateData['length'] = (int) $request->length;
+            }
+            if ($request->has('width')) {
+                $updateData['width'] = (int) $request->width;
+            }
+            if ($request->has('height')) {
+                $updateData['height'] = (int) $request->height;
+            }
+            
+            if (!empty($updateData)) {
+                $product->update($updateData);
+            }
+            
+            // Reload to get updated values
+            $product->refresh();
+            
+            return response()->json([
+                'success' => true,
+                'message' => '产品包装尺寸更新成功',
+                'data' => [
+                    'product_id' => $product->id,
+                    'weight' => (float) ($product->weight ?? 0), // grams
+                    'length' => (float) ($product->length ?? 0), // cm
+                    'width' => (float) ($product->width ?? 0),   // cm
+                    'height' => (float) ($product->height ?? 0), // cm
+                ]
+            ], 200);
+            
+        } catch (\Exception $e) {
+            Log::error('更新产品包装尺寸失败: ' . $e->getMessage(), [
+                'method' => __METHOD__,
+                'product_id' => $id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => '更新产品包装尺寸失败',
+                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get variant packaging dimensions
+     * 
+     * GET /admin/api/products/{id}/variants/{code}/packaging
+     * 
+     * @param int $id
+     * @param int $code
+     * @return JsonResponse
+     */
+    public function getVariantPackaging(int $id, int $code): JsonResponse
+    {
+        try {
+            $product = Product::where('id', $id)
+                ->where('type', ProductType::PRODUCT->value)
+                ->first();
+            
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => '产品不存在'
+                ], 404);
+            }
+            
+            $variant = Variant::where('id', $code)
+                ->where('product_id', $id)
+                ->first();
+            
+            if (!$variant) {
+                return response()->json([
+                    'success' => false,
+                    'message' => '变体不存在或不属于该产品'
+                ], 404);
+            }
+            
+            // Get dimensions from variant, fallback to product if not set
+            $weight = (float) ($variant->weight ?? $product->weight ?? 0);
+            $length = (float) ($variant->length ?? $product->length ?? 0);
+            $width = (float) ($variant->width ?? $product->width ?? 0);
+            $height = (float) ($variant->height ?? $product->height ?? 0);
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'variant_id' => $variant->id,
+                    'product_id' => $product->id,
+                    'weight' => $weight,   // grams
+                    'length' => $length,  // cm
+                    'width' => $width,    // cm
+                    'height' => $height,   // cm
+                    'source' => [
+                        'weight' => $variant->weight !== null ? 'variant' : ($product->weight !== null ? 'product' : 'default'),
+                        'length' => $variant->length !== null ? 'variant' : ($product->length !== null ? 'product' : 'default'),
+                        'width' => $variant->width !== null ? 'variant' : ($product->width !== null ? 'product' : 'default'),
+                        'height' => $variant->height !== null ? 'variant' : ($product->height !== null ? 'product' : 'default'),
+                    ]
+                ]
+            ], 200);
+            
+        } catch (\Exception $e) {
+            Log::error('获取变体包装尺寸失败: ' . $e->getMessage(), [
+                'method' => __METHOD__,
+                'product_id' => $id,
+                'variant_id' => $code,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => '获取变体包装尺寸失败',
+                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update variant packaging dimensions
+     * 
+     * PUT /admin/api/products/{id}/variants/{code}/packaging
+     * 
+     * @param Request $request
+     * @param int $id
+     * @param int $code
+     * @return JsonResponse
+     */
+    public function updateVariantPackaging(Request $request, int $id, int $code): JsonResponse
+    {
+        try {
+            $product = Product::where('id', $id)
+                ->where('type', ProductType::PRODUCT->value)
+                ->first();
+            
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => '产品不存在'
+                ], 404);
+            }
+            
+            $variant = Variant::where('id', $code)
+                ->where('product_id', $id)
+                ->first();
+            
+            if (!$variant) {
+                return response()->json([
+                    'success' => false,
+                    'message' => '变体不存在或不属于该产品'
+                ], 404);
+            }
+            
+            // Validate input
+            $validator = Validator::make($request->all(), [
+                'weight' => 'nullable|numeric|min:0',
+                'length' => 'nullable|numeric|min:0',
+                'width' => 'nullable|numeric|min:0',
+                'height' => 'nullable|numeric|min:0',
+            ], [
+                'weight.numeric' => 'Trọng lượng phải là số',
+                'weight.min' => 'Trọng lượng không được âm',
+                'length.numeric' => 'Chiều dài phải là số',
+                'length.min' => 'Chiều dài không được âm',
+                'width.numeric' => 'Chiều rộng phải là số',
+                'width.min' => 'Chiều rộng không được âm',
+                'height.numeric' => 'Chiều cao phải là số',
+                'height.min' => 'Chiều cao không được âm',
+            ]);
+            
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => '验证失败',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+            
+            // Update packaging dimensions
+            $updateData = [];
+            if ($request->has('weight')) {
+                $updateData['weight'] = (int) $request->weight;
+            }
+            if ($request->has('length')) {
+                $updateData['length'] = (int) $request->length;
+            }
+            if ($request->has('width')) {
+                $updateData['width'] = (int) $request->width;
+            }
+            if ($request->has('height')) {
+                $updateData['height'] = (int) $request->height;
+            }
+            
+            if (!empty($updateData)) {
+                $variant->update($updateData);
+            }
+            
+            // Reload to get updated values
+            $variant->refresh();
+            
+            return response()->json([
+                'success' => true,
+                'message' => '变体包装尺寸更新成功',
+                'data' => [
+                    'variant_id' => $variant->id,
+                    'product_id' => $product->id,
+                    'weight' => (float) ($variant->weight ?? 0),   // grams
+                    'length' => (float) ($variant->length ?? 0),  // cm
+                    'width' => (float) ($variant->width ?? 0),   // cm
+                    'height' => (float) ($variant->height ?? 0),  // cm
+                ]
+            ], 200);
+            
+        } catch (\Exception $e) {
+            Log::error('更新变体包装尺寸失败: ' . $e->getMessage(), [
+                'method' => __METHOD__,
+                'product_id' => $id,
+                'variant_id' => $code,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => '更新变体包装尺寸失败',
+                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误'
+            ], 500);
+        }
+    }
 }

@@ -85,6 +85,11 @@ class ProductService implements ProductServiceInterface
                 'seo_description' => $data['seo_description'] ?? null,
                 'cbmp' => $data['cbmp'] ?? null,
                 'user_id' => $data['user_id'] ?? auth()->id(),
+                // Packaging dimensions (grams, cm)
+                'weight' => $data['weight'] ?? 0,
+                'length' => $data['length'] ?? 0,
+                'width' => $data['width'] ?? 0,
+                'height' => $data['height'] ?? 0,
             ];
             
             // Create product
@@ -275,6 +280,11 @@ class ProductService implements ProductServiceInterface
                 'seo_description' => $data['seo_description'] ?? $product->seo_description,
                 'cbmp' => $data['cbmp'] ?? $product->cbmp,
                 'user_id' => auth()->id(),
+                // Packaging dimensions (grams, cm)
+                'weight' => $data['weight'] ?? $product->weight,
+                'length' => $data['length'] ?? $product->length,
+                'width' => $data['width'] ?? $product->width,
+                'height' => $data['height'] ?? $product->height,
             ];
             
             // Update product

@@ -40,7 +40,15 @@ Route::group([
             Route::post('/', 'ProductController@createVariant');
             Route::put('/{code}', 'ProductController@updateVariant');
             Route::delete('/{code}', 'ProductController@deleteVariant');
+            
+            // Variant packaging dimensions
+            Route::get('/{code}/packaging', 'ProductController@getVariantPackaging');
+            Route::put('/{code}/packaging', 'ProductController@updateVariantPackaging');
         });
+        
+        // Product packaging dimensions
+        Route::get('/{id}/packaging', 'ProductController@getProductPackaging');
+        Route::put('/{id}/packaging', 'ProductController@updateProductPackaging');
     });
 
     // Google Merchant Center (GMC)

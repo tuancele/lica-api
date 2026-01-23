@@ -46,6 +46,11 @@ class Product extends Model
         'sort',
         'view',
         'user_id',
+        // Packaging dimensions (grams, cm)
+        'weight',
+        'length',
+        'width',
+        'height',
     ];
     public function user(){
     	return $this->belongsTo('App\User','user_id','id');

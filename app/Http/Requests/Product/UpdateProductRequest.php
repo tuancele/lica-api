@@ -140,6 +140,21 @@ class UpdateProductRequest extends FormRequest
                 'numeric',
                 'min:0'
             ],
+            'length' => [
+                'nullable',
+                'numeric',
+                'min:0'
+            ],
+            'width' => [
+                'nullable',
+                'numeric',
+                'min:0'
+            ],
+            'height' => [
+                'nullable',
+                'numeric',
+                'min:0'
+            ],
             'sku' => [
                 'nullable',
                 'string',

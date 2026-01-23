@@ -10,7 +10,8 @@
         if($cp) {
             $price_sale = $cp->price;
             if($variant && $variant->price > 0){
-                $percent = round(100 - ($price_sale / $variant->price * 100), 2);
+                // Round to integer to avoid validation issues (integer requirement)
+                $percent = round(100 - ($price_sale / $variant->price * 100));
             }
         }
     }
@@ -26,7 +27,7 @@
     @endif</td>
     <td>
         <div class="input-group">
-            <input type="number" class="form-control discount_percent" value="{{$percent}}" placeholder="%" min="0" max="99" style="width: 70px;">
+            <input type="number" class="form-control discount_percent" value="{{$percent}}" placeholder="%" min="0" max="99" step="1" style="width: 70px;">
             <span class="input-group-addon">%</span>
         </div>
     </td>

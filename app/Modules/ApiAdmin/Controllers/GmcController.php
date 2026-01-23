@@ -47,9 +47,17 @@ class GmcController extends Controller
 
             $gmcProduct = $this->mapper->map($variant->product, $variant);
 
+            // Convert Google Product object to array for better readability
+            $productArray = $this->convertGmcProductToArray($gmcProduct);
+
             return response()->json([
                 'success' => true,
-                'data' => $gmcProduct,
+                'data' => [
+                    'variant_id' => $variant->id,
+                    'product_id' => $variant->product->id,
+                    'gmc_payload' => $productArray,
+                    'raw_object' => $gmcProduct, // Keep raw object for debugging
+                ],
             ], 200);
         } catch (\Throwable $e) {
             Log::error('[GMC] Preview failed', [
@@ -135,6 +143,111 @@ class GmcController extends Controller
                 'error' => config('app.debug') ? $e->getMessage() : 'Internal error',
             ], 500);
         }
+    }
+
+    /**
+     * Convert Google ShoppingContent Product object to array for JSON preview
+     */
+    private function convertGmcProductToArray($gmcProduct): array
+    {
+        $result = [];
+
+        // Basic fields
+        if ($gmcProduct->getOfferId() !== null) {
+            $result['offerId'] = $gmcProduct->getOfferId();
+        }
+        if ($gmcProduct->getTitle() !== null) {
+            $result['title'] = $gmcProduct->getTitle();
+        }
+        if ($gmcProduct->getDescription() !== null) {
+            $result['description'] = $gmcProduct->getDescription();
+        }
+        if ($gmcProduct->getLink() !== null) {
+            $result['link'] = $gmcProduct->getLink();
+        }
+        if ($gmcProduct->getImageLink() !== null) {
+            $result['imageLink'] = $gmcProduct->getImageLink();
+        }
+        if ($gmcProduct->getAdditionalImageLinks() !== null) {
+            $result['additionalImageLinks'] = $gmcProduct->getAdditionalImageLinks();
+        }
+        if ($gmcProduct->getChannel() !== null) {
+            $result['channel'] = $gmcProduct->getChannel();
+        }
+        if ($gmcProduct->getContentLanguage() !== null) {
+            $result['contentLanguage'] = $gmcProduct->getContentLanguage();
+        }
+        if ($gmcProduct->getTargetCountry() !== null) {
+            $result['targetCountry'] = $gmcProduct->getTargetCountry();
+        }
+        if ($gmcProduct->getAvailability() !== null) {
+            $result['availability'] = $gmcProduct->getAvailability();
+        }
+        if ($gmcProduct->getCondition() !== null) {
+            $result['condition'] = $gmcProduct->getCondition();
+        }
+        if ($gmcProduct->getBrand() !== null) {
+            $result['brand'] = $gmcProduct->getBrand();
+        }
+        if ($gmcProduct->getGoogleProductCategory() !== null) {
+            $result['googleProductCategory'] = $gmcProduct->getGoogleProductCategory();
+        }
+
+        // Price
+        $price = $gmcProduct->getPrice();
+        if ($price !== null) {
+            $result['price'] = [
+                'value' => $price->getValue(),
+                'currency' => $price->getCurrency(),
+            ];
+        }
+
+        // Sale Price
+        $salePrice = $gmcProduct->getSalePrice();
+        if ($salePrice !== null) {
+            $result['salePrice'] = [
+                'value' => $salePrice->getValue(),
+                'currency' => $salePrice->getCurrency(),
+            ];
+        }
+        if ($gmcProduct->getSalePriceEffectiveDate() !== null) {
+            $result['salePriceEffectiveDate'] = $gmcProduct->getSalePriceEffectiveDate();
+        }
+
+        // Packaging dimensions
+        $shippingWeight = $gmcProduct->getShippingWeight();
+        if ($shippingWeight !== null) {
+            $result['shippingWeight'] = [
+                'value' => $shippingWeight->getValue(),
+                'unit' => $shippingWeight->getUnit(),
+            ];
+        }
+
+        $productLength = $gmcProduct->getProductLength();
+        if ($productLength !== null) {
+            $result['productLength'] = [
+                'value' => $productLength->getValue(),
+                'unit' => $productLength->getUnit(),
+            ];
+        }
+
+        $productWidth = $gmcProduct->getProductWidth();
+        if ($productWidth !== null) {
+            $result['productWidth'] = [
+                'value' => $productWidth->getValue(),
+                'unit' => $productWidth->getUnit(),
+            ];
+        }
+
+        $productHeight = $gmcProduct->getProductHeight();
+        if ($productHeight !== null) {
+            $result['productHeight'] = [
+                'value' => $productHeight->getValue(),
+                'unit' => $productHeight->getUnit(),
+            ];
+        }
+
+        return $result;
     }
 }
 

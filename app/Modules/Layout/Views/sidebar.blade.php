@@ -91,6 +91,11 @@
         <li @if(Session::get('sidebar_sub_active')=='list') class="active" @endif><a href="{{route('warehouse')}}"><i class="fa fa-circle-o"></i> Tồn kho</a></li>
     </ul>
   </li>
+  <li class="treeview @if(Session::get('sidebar_active')=='google-merchant') active @endif">
+    <a href="{{route('google-merchant.index')}}">
+        <i class="fa fa-shopping-cart"></i> <span>Google Merchant</span>
+    </a>
+  </li>
   @can('setting')
   <li class="header">Hệ thống</li>
   @can('user')

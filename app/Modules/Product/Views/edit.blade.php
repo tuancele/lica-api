@@ -251,12 +251,6 @@
                                 <input type="text" name="sku" class="shopee-input" value="{{$defaultVariant->sku ?? ''}}" placeholder="SKU sản phẩm (Không bắt buộc)">
                             </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="form-item">
-                                <label class="form-label">Trọng lượng (kg)</label>
-                                <input type="text" name="weight" class="shopee-input" value="{{$defaultVariant->weight ?? 0}}">
-                            </div>
-                        </div>
                     </div>
                 </div>
 
@@ -311,6 +305,39 @@
 
                 <div style="margin-top: 14px;">
                     <button type="button" class="btn-shopee btn-shopee-outline" id="btn_enable_variants" style="padding: 6px 14px; @if($initialHasVariants)display:none;@endif">+ Thêm nhóm phân loại</button>
+                </div>
+            </div>
+
+            <div class="shopee-card">
+                <div class="section-title">Kích thước đóng gói</div>
+                <p style="font-size: 12px; color: #999; margin-bottom: 16px;">
+                    Phí vận chuyển thực tế sẽ thay đổi nếu bạn nhập sai kích thước. Đơn vị: trọng lượng (grams), chiều dài/rộng/cao (cm).
+                </p>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-item">
+                            <label class="form-label">Trọng lượng (grams)</label>
+                            <input type="number" name="weight" class="shopee-input" value="{{ $detail->weight ?? 0 }}" min="0" step="0.01">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-item">
+                            <label class="form-label">Chiều dài (cm)</label>
+                            <input type="number" name="length" class="shopee-input" value="{{ $detail->length ?? 10 }}" min="0" step="0.01">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-item">
+                            <label class="form-label">Chiều rộng (cm)</label>
+                            <input type="number" name="width" class="shopee-input" value="{{ $detail->width ?? 10 }}" min="0" step="0.01">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-item">
+                            <label class="form-label">Chiều cao (cm)</label>
+                            <input type="number" name="height" class="shopee-input" value="{{ $detail->height ?? 10 }}" min="0" step="0.01">
+                        </div>
+                    </div>
                 </div>
             </div>
 

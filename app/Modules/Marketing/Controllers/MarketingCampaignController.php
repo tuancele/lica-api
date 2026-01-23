@@ -220,32 +220,85 @@ class MarketingCampaignController extends Controller
             ]);
 
             if ($up) {
-            $pricesale = $request->pricesale;
-            $checklist = $request->checklist; // IDs of selected products (from the main table)
+            $pricesale = $request->pricesale ?? [];
+            $checklist = $request->checklist ?? []; // IDs of selected products (from the main table)
             
-            // Delete removed products (products that were in campaign but not in submitted checklist)
-            // Note: If the user removes a row from the table, it won't be in 'checklist' or 'pricesale'.
-            // But we need to distinguish "empty checklist because no products" vs "empty because user deleted all".
-            // The form submits all existing rows.
+            Log::info('[MarketingCampaign] Update request data', [
+                'campaign_id' => $request->id,
+                'pricesale_count' => count($pricesale),
+                'checklist_count' => count($checklist),
+                'pricesale_keys' => array_keys($pricesale),
+                'checklist' => $checklist,
+            ]);
             
-            if(isset($checklist)){
-                 MarketingCampaignProduct::where('campaign_id', $request->id)->whereNotIn('product_id', $checklist)->delete();
+            // Get all product IDs that should be in the campaign (from pricesale, as it's the source of truth)
+            $productIdsToKeep = array_keys($pricesale);
+            
+            // Delete removed products (products that were in campaign but not in submitted pricesale)
+            if (!empty($productIdsToKeep)) {
+                MarketingCampaignProduct::where('campaign_id', $request->id)
+                    ->whereNotIn('product_id', $productIdsToKeep)
+                    ->delete();
             } else {
-                 // If checklist is empty, it means all removed
-                 MarketingCampaignProduct::where('campaign_id', $request->id)->delete();
+                // If pricesale is empty, delete all products from campaign
+                MarketingCampaignProduct::where('campaign_id', $request->id)->delete();
             }
 
-            if (isset($pricesale) && !empty($pricesale)) {
+            // Process each product in pricesale
+            if (!empty($pricesale)) {
                 foreach ($pricesale as $productId => $price) {
-                    $exists = MarketingCampaignProduct::where('campaign_id', $request->id)->where('product_id', $productId)->first();
+                    // Skip if productId is not numeric (could be array key issue)
+                    if (!is_numeric($productId)) {
+                        Log::warning('[MarketingCampaign] Invalid product ID in pricesale', [
+                            'campaign_id' => $request->id,
+                            'product_id' => $productId,
+                            'price' => $price,
+                        ]);
+                        continue;
+                    }
+                    
+                    $productId = (int) $productId;
+                    
+                    // Clean price value (remove commas, spaces, dots from number formatting)
+                    $cleanPrice = ($price != "" && $price !== null) ? str_replace([',', ' '], '', $price) : 0;
+                    $cleanPrice = (float) $cleanPrice;
+                    
+                    if ($cleanPrice <= 0) {
+                        Log::warning('[MarketingCampaign] Invalid price, skipping product', [
+                            'campaign_id' => $request->id,
+                            'product_id' => $productId,
+                            'raw_price' => $price,
+                            'clean_price' => $cleanPrice,
+                        ]);
+                        continue;
+                    }
+                    
+                    // Check if product already exists in campaign (query AFTER delete to avoid stale data)
+                    $exists = MarketingCampaignProduct::where('campaign_id', $request->id)
+                        ->where('product_id', $productId)
+                        ->first();
                     
                     if ($exists) {
+                        // Update existing product price
+                        $oldPrice = $exists->price;
                         $exists->update([
-                            'price' => ($price != "") ? str_replace(',', '', $price) : 0,
+                            'price' => $cleanPrice,
+                        ]);
+                        Log::info('[MarketingCampaign] Updated existing product price', [
+                            'campaign_id' => $request->id,
+                            'product_id' => $productId,
+                            'old_price' => $oldPrice,
+                            'new_price' => $cleanPrice,
                         ]);
                     } else {
+                        // Create new product in campaign
+                        // Check overlap first
                         if ($this->checkProductOverlap($productId, $start, $end, $request->id)) {
-                             continue; 
+                            Log::warning('[MarketingCampaign] Product overlap detected, skipped', [
+                                'campaign_id' => $request->id,
+                                'product_id' => $productId,
+                            ]);
+                            continue; 
                         }
 
                         // Validate product stock > 0 (only for new products)
@@ -253,7 +306,7 @@ class MarketingCampaignController extends Controller
                         if ($stock <= 0) {
                             $product = Product::find($productId);
                             $productName = $product ? $product->name : "ID {$productId}";
-                            Log::warning("Product has no stock, skipped from MarketingCampaign update", [
+                            Log::warning('[MarketingCampaign] Product has no stock, skipped', [
                                 'product_id' => $productId,
                                 'product_name' => $productName,
                                 'campaign_id' => $request->id,
@@ -262,37 +315,71 @@ class MarketingCampaignController extends Controller
                             continue; // Skip this product
                         }
 
-                        MarketingCampaignProduct::create([
-                            'campaign_id' => $request->id,
-                            'product_id' => $productId,
-                            'price' => ($price != "") ? str_replace(',', '', $price) : 0,
-                            'limit' => 0
-                        ]);
+                        try {
+                            MarketingCampaignProduct::create([
+                                'campaign_id' => $request->id,
+                                'product_id' => $productId,
+                                'price' => $cleanPrice,
+                                'limit' => 0
+                            ]);
+                            Log::info('[MarketingCampaign] Created new product in campaign', [
+                                'campaign_id' => $request->id,
+                                'product_id' => $productId,
+                                'price' => $cleanPrice,
+                            ]);
+                        } catch (\Exception $e) {
+                            Log::error('[MarketingCampaign] Failed to create product in campaign', [
+                                'campaign_id' => $request->id,
+                                'product_id' => $productId,
+                                'price' => $cleanPrice,
+                                'error' => $e->getMessage(),
+                                'trace' => $e->getTraceAsString(),
+                            ]);
+                            // Continue processing other products even if one fails
+                        }
                     }
                 }
+            } else {
+                Log::warning('[MarketingCampaign] No pricesale data in request', [
+                    'campaign_id' => $request->id,
+                    'request_all' => $request->all(),
+                ]);
             }
 
+            \DB::commit();
+            
+            Log::info('[MarketingCampaign] Campaign updated successfully', [
+                'campaign_id' => $request->id,
+            ]);
+            
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Cập nhật thành công!',
                 'url' => route('marketing.campaign.index')
             ]);
-        } // End if ($up)
-        
-        \DB::commit();
+        } else {
+            \DB::rollBack();
+            Log::error('[MarketingCampaign] Campaign update failed - campaign not found or update returned false', [
+                'campaign_id' => $request->id,
+            ]);
+            return response()->json([
+                'status' => 'error',
+                'errors' => array('alert' => array('0' => 'Cập nhật không thành công!'))
+            ]);
+        }
         
         } catch (\Exception $e) {
             \DB::rollBack();
+            Log::error('[MarketingCampaign] Exception during campaign update', [
+                'campaign_id' => $request->id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'status' => 'error',
                 'errors' => array('alert' => array('0' => 'Có lỗi xảy ra: ' . $e->getMessage()))
             ]);
         }
-
-        return response()->json([
-            'status' => 'error',
-            'errors' => array('alert' => array('0' => 'Cập nhật không thành công!'))
-        ]);
     }
 
     public function delete(Request $request)
