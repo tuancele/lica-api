@@ -9,6 +9,7 @@ use App\Modules\Dictionary\Models\IngredientRate;
 use App\Modules\Product\Models\Product;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Jobs\DictionaryIngredientCrawlJob;
 use Drnxloc\LaravelHtmlDom\HtmlDomParser;
@@ -64,16 +65,63 @@ class IngredientController extends Controller
 
     public function crawl(){
         active('dictionary','ingredient');
+        
         $link = "https://www.paulaschoice.com/ingredient-dictionary?csortb1=ingredientNotRated&csortd1=1&csortb2=ingredientRating&csortd2=2&csortb3=name&csortd3=1&start=0&sz=1&ajax=true";
+        
+        Log::info('DictionaryIngredientCrawlJob crawl page accessed', [
+            'user_id' => Auth::id(),
+            'url' => $link,
+        ]);
+
+        $startTime = microtime(true);
         $ch = curl_init($link);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 40);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
         $content = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
         curl_close($ch);
+        
+        $fetchTime = round((microtime(true) - $startTime) * 1000, 2);
+
+        if ($error) {
+            Log::error('DictionaryIngredientCrawlJob crawl page fetch error', [
+                'url' => $link,
+                'error' => $error,
+                'http_code' => $httpCode,
+                'fetch_time_ms' => $fetchTime,
+            ]);
+            $data['page'] = 0;
+            $data['total'] = 0;
+            return view($this->view.'::ingredient.crawl',$data);
+        }
+
         $api = json_decode($content, true);
+        
+        if (!is_array($api) || !isset($api['paging']['total'])) {
+            Log::warning('DictionaryIngredientCrawlJob crawl page invalid response', [
+                'url' => $link,
+                'http_code' => $httpCode,
+                'content_preview' => substr($content ?? '', 0, 200),
+            ]);
+            $data['page'] = 0;
+            $data['total'] = 0;
+            return view($this->view.'::ingredient.crawl',$data);
+        }
+
         $total = $api['paging']['total'];
-        $page =  ceil($total/2000);
+        $page = ceil($total/2000);
         $data['page'] = $page;
         $data['total'] = $total;
+
+        Log::info('DictionaryIngredientCrawlJob crawl page loaded', [
+            'user_id' => Auth::id(),
+            'total' => $total,
+            'page' => $page,
+            'fetch_time_ms' => $fetchTime,
+        ]);
+
         return view($this->view.'::ingredient.crawl',$data); 
     }
 
@@ -143,11 +191,18 @@ class IngredientController extends Controller
         try {
             $offset = (int) ($request->offset ?? 0);
             if ($offset < 0) {
+                Log::warning('DictionaryIngredientCrawlJob invalid offset', [
+                    'offset' => $offset,
+                    'user_id' => Auth::id(),
+                ]);
                 return response()->json(['success' => false, 'message' => 'Invalid offset'], 422);
             }
 
             $userId = (int) (Auth::id() ?? 0);
             if ($userId <= 0) {
+                Log::warning('DictionaryIngredientCrawlJob unauthenticated request', [
+                    'offset' => $offset,
+                ]);
                 return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
             }
 
@@ -168,6 +223,14 @@ class IngredientController extends Controller
                 'updated_at' => time(),
             ], now()->addHours(6));
 
+            Log::info('DictionaryIngredientCrawlJob crawl started', [
+                'crawl_id' => $crawlId,
+                'user_id' => $userId,
+                'offset' => $offset,
+                'ip' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
+
             // Run via queue worker. Using afterResponse prevents long-running work from blocking the HTTP request,
             // especially when queue driver is misconfigured to "sync" in local env.
             DictionaryIngredientCrawlJob::dispatch($crawlId, $userId, $offset, 100)
@@ -182,6 +245,12 @@ class IngredientController extends Controller
                 ],
             ]);
         } catch (Exception $e) {
+            Log::error('DictionaryIngredientCrawlJob crawlStart exception', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => Auth::id(),
+                'offset' => $request->offset ?? null,
+            ]);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -295,19 +364,34 @@ class IngredientController extends Controller
 
             $userId = (int) (Auth::id() ?? 0);
             if ($userId <= 0) {
+                Log::warning('DictionaryIngredientCrawlJob crawlStatus unauthenticated', [
+                    'crawl_id' => $crawlId,
+                ]);
                 return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
             }
 
             if ($crawlId === '') {
+                Log::warning('DictionaryIngredientCrawlJob crawlStatus missing crawl_id', [
+                    'user_id' => $userId,
+                ]);
                 return response()->json(['success' => false, 'message' => 'Missing crawl_id'], 422);
             }
 
             $key = 'dictionary_ingredient_crawl_job:' . $crawlId;
             $state = Cache::get($key);
             if (!is_array($state)) {
+                Log::warning('DictionaryIngredientCrawlJob crawlStatus not found', [
+                    'crawl_id' => $crawlId,
+                    'user_id' => $userId,
+                ]);
                 return response()->json(['success' => false, 'message' => 'Crawl not found'], 404);
             }
             if ((int) ($state['user_id'] ?? 0) !== $userId) {
+                Log::warning('DictionaryIngredientCrawlJob crawlStatus forbidden', [
+                    'crawl_id' => $crawlId,
+                    'user_id' => $userId,
+                    'state_user_id' => $state['user_id'] ?? null,
+                ]);
                 return response()->json(['success' => false, 'message' => 'Forbidden'], 403);
             }
 
@@ -319,11 +403,37 @@ class IngredientController extends Controller
             $since = max(0, $since);
             $newLogs = array_slice($logs, $since);
 
+            $responseData = $this->crawlPublicState($state, count($newLogs), $newLogs, $since + count($newLogs));
+            
+            // Log status check periodically (every 10 requests or when done/error)
+            $logStatus = false;
+            if ($since === 0 || !empty($state['done']) || !empty($state['error'])) {
+                $logStatus = true;
+            }
+
+            if ($logStatus) {
+                Log::debug('DictionaryIngredientCrawlJob crawlStatus checked', [
+                    'crawl_id' => $crawlId,
+                    'user_id' => $userId,
+                    'status' => $state['status'] ?? 'unknown',
+                    'processed' => $responseData['processed'] ?? 0,
+                    'total' => $responseData['total'] ?? 0,
+                    'done' => $responseData['done'] ?? false,
+                    'has_error' => !empty($responseData['error']),
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
-                'data' => $this->crawlPublicState($state, count($newLogs), $newLogs, $since + count($newLogs)),
+                'data' => $responseData,
             ]);
         } catch (Exception $e) {
+            Log::error('DictionaryIngredientCrawlJob crawlStatus exception', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'crawl_id' => $request->crawl_id ?? null,
+                'user_id' => Auth::id(),
+            ]);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -354,14 +464,50 @@ class IngredientController extends Controller
 
     private function curlJson(string $url): array
     {
+        $startTime = microtime(true);
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 40);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
         $content = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
         curl_close($ch);
 
+        $fetchTime = round((microtime(true) - $startTime) * 1000, 2);
+        $contentLength = strlen($content ?? '');
+
+        if ($error) {
+            Log::error('DictionaryIngredientCrawlJob curl error (Controller)', [
+                'url' => $url,
+                'error' => $error,
+                'http_code' => $httpCode,
+                'fetch_time_ms' => $fetchTime,
+            ]);
+            return [];
+        }
+
+        if ($httpCode !== 200) {
+            Log::warning('DictionaryIngredientCrawlJob non-200 response (Controller)', [
+                'url' => $url,
+                'http_code' => $httpCode,
+                'content_length' => $contentLength,
+                'fetch_time_ms' => $fetchTime,
+            ]);
+        }
+
         $decoded = json_decode((string) $content, true);
-        return is_array($decoded) ? $decoded : [];
+        if (!is_array($decoded)) {
+            Log::warning('DictionaryIngredientCrawlJob invalid JSON (Controller)', [
+                'url' => $url,
+                'http_code' => $httpCode,
+                'content_length' => $contentLength,
+                'content_preview' => substr($content ?? '', 0, 200),
+            ]);
+            return [];
+        }
+
+        return $decoded;
     }
 
     private function normalizeString($value): string
@@ -463,26 +609,71 @@ class IngredientController extends Controller
 
     public function detail($link,$id){
         try{
+            Log::debug('DictionaryIngredientCrawlJob detail fetch started', [
+                'ingredient_id' => $id,
+                'url' => $link,
+            ]);
+
+            $startTime = microtime(true);
             $rooms = $this->curlJson($link);
+            $fetchTime = round((microtime(true) - $startTime) * 1000, 2);
+
+            if (empty($rooms)) {
+                Log::warning('DictionaryIngredientCrawlJob detail empty response', [
+                    'ingredient_id' => $id,
+                    'url' => $link,
+                    'fetch_time_ms' => $fetchTime,
+                ]);
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Empty response from remote'
+                ]);
+            }
+
             $content2 = $this->buildDescription($rooms['description'] ?? []);
             $reference = $this->buildReferences($rooms['references'] ?? []);
             $disclaimer = $this->normalizeString($rooms['strings']['disclaimer'] ?? '');
             $glance = $this->buildGlance($rooms['keyPoints'] ?? []);
 
+            $catIds = $this->getCategory($rooms['relatedCategories'] ?? []);
+            $benefitIds = $this->getBenefit($rooms['benefits'] ?? []);
+            $rateId = $this->getRate($rooms['rating'] ?? '');
+
             $this->model::where('id',$id)->update(
                 [
                     'name' => $rooms['name'] ?? '',
-                    'rate_id' => $this->getRate($rooms['rating'] ?? ''),
+                    'rate_id' => $rateId,
                     'content' => $content2,
                     'reference' => $reference,
                     'disclaimer' => $disclaimer,
                     'glance' => $glance,
                     'status' => '1',
-                    'cat_id' => json_encode($this->getCategory($rooms['relatedCategories'] ?? [])),
-                    'benefit_id' => json_encode($this->getBenefit($rooms['benefits'] ?? [])),
+                    'cat_id' => json_encode($catIds),
+                    'benefit_id' => json_encode($benefitIds),
                 ]
             );
+
+            $processTime = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('DictionaryIngredientCrawlJob detail updated', [
+                'ingredient_id' => $id,
+                'name' => $rooms['name'] ?? '',
+                'rate_id' => $rateId,
+                'categories_count' => count($catIds),
+                'benefits_count' => count($benefitIds),
+                'has_content' => !empty($content2),
+                'has_reference' => !empty($reference),
+                'has_glance' => !empty($glance),
+                'fetch_time_ms' => $fetchTime,
+                'total_time_ms' => $processTime,
+            ]);
         }catch (Exception $e) {
+            Log::error('DictionaryIngredientCrawlJob detail exception', [
+                'ingredient_id' => $id,
+                'url' => $link,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'status' => 'error',
                 'message' => $e->getMessage()

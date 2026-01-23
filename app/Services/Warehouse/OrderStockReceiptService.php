@@ -145,17 +145,21 @@ class OrderStockReceiptService
             ]);
 
             // If target status is completed, complete the receipt immediately
-            // Note: createReceipt() may have already completed it if status was 'completed' in data
-            // But we create as 'draft' first, so we need to complete it manually
+            // Note: For receipts created from orders, do NOT update warehouse stock
+            // Stock is already managed by order checkout process
             if ($status === StockReceipt::STATUS_COMPLETED) {
                 if ($receipt->status === StockReceipt::STATUS_COMPLETED) {
                     Log::info('Receipt already completed by createReceipt', ['receipt_id' => $receipt->id]);
                 } else {
-                    Log::info('Completing receipt', [
+                    Log::info('Completing receipt from order (without stock update)', [
                         'receipt_id' => $receipt->id,
                         'current_status' => $receipt->status,
+                        'order_id' => $order->id,
+                        'order_code' => $order->code,
                     ]);
-                    $receipt = $this->stockReceiptService->completeReceipt($receipt->id, Auth::id() ?? 1);
+                    // Complete receipt WITHOUT updating warehouse stock
+                    // Stock is already managed by order checkout/fulfillment process
+                    $receipt = $this->stockReceiptService->completeReceipt($receipt->id, Auth::id() ?? 1, false);
                 }
             }
 
@@ -208,20 +212,20 @@ class OrderStockReceiptService
             DB::beginTransaction();
 
             if ($delete) {
-                // Delete the receipt (will also reverse stock via service)
-                $this->stockReceiptService->voidReceipt($receipt->id, Auth::id() ?? 1);
+                // Delete the receipt (do NOT reverse stock - stock is managed by order cancellation)
+                $this->stockReceiptService->voidReceipt($receipt->id, Auth::id() ?? 1, false);
                 $receipt->delete();
                 
-                Log::info('Export receipt deleted for cancelled order', [
+                Log::info('Export receipt deleted for cancelled order (without stock reversal)', [
                     'order_id' => $order->id,
                     'receipt_id' => $receipt->id,
                     'receipt_code' => $receipt->receipt_code,
                 ]);
             } else {
-                // Mark as cancelled (will also reverse stock)
-                $this->stockReceiptService->voidReceipt($receipt->id, Auth::id() ?? 1);
+                // Mark as cancelled (do NOT reverse stock - stock is managed by order cancellation)
+                $this->stockReceiptService->voidReceipt($receipt->id, Auth::id() ?? 1, false);
                 
-                Log::info('Export receipt cancelled for cancelled order', [
+                Log::info('Export receipt cancelled for cancelled order (without stock reversal)', [
                     'order_id' => $order->id,
                     'receipt_id' => $receipt->id,
                     'receipt_code' => $receipt->receipt_code,
@@ -277,10 +281,11 @@ class OrderStockReceiptService
             }
 
             // If order status is '0' (chờ xác nhận) and receipt is not completed, complete it
+            // Note: Do NOT update stock for receipts from orders
             if (($newStatus === '0' || $newStatus === 0) && $receipt->status !== StockReceipt::STATUS_COMPLETED) {
-                $this->stockReceiptService->completeReceipt($receipt->id, Auth::id() ?? 1);
+                $this->stockReceiptService->completeReceipt($receipt->id, Auth::id() ?? 1, false);
                 
-                Log::info('Export receipt completed for order status change', [
+                Log::info('Export receipt completed for order status change (without stock update)', [
                     'order_id' => $order->id,
                     'receipt_id' => $receipt->id,
                     'old_status' => $oldStatus,

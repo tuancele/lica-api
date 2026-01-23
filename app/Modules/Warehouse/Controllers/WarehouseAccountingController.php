@@ -93,6 +93,15 @@ class WarehouseAccountingController extends Controller
     public function void(Request $request, int $id)
     {
         try {
+            // Check if receipt is from order - if so, prevent manual void
+            $receipt = \App\Models\StockReceipt::findOrFail($id);
+            if ($receipt->reference_type === 'order') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không thể hủy phiếu được tạo từ đơn hàng. Phiếu chỉ có thể bị hủy khi đơn hàng bị hủy.',
+                ], 403);
+            }
+            
             $receipt = $this->stockReceiptService->voidReceipt($id, Auth::id());
             
             return response()->json([

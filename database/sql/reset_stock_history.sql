@@ -42,3 +42,4 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- FROM inventory_stocks;
 
 
+

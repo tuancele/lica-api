@@ -143,56 +143,90 @@ class StockReceiptService
     }
 
     /**
-     * Complete receipt - update stock
+     * Complete receipt (update stock)
+     * 
+     * @param int $receiptId
+     * @param int $userId
+     * @param bool $updateStock If true, update warehouse stock; if false, only update status (for receipts created from orders)
+     * @return StockReceipt
      */
-    public function completeReceipt(int $receiptId, int $userId): StockReceipt
+    public function completeReceipt(int $receiptId, int $userId, bool $updateStock = true): StockReceipt
     {
         DB::beginTransaction();
         
         try {
             $receipt = StockReceipt::with('items.variant')->findOrFail($receiptId);
             
+            // Validation: If receipt is created from order, force updateStock = false
+            // This ensures stock is not updated when completing receipts from orders
+            if ($receipt->reference_type === 'order') {
+                if ($updateStock) {
+                    Log::warning('Attempted to complete order receipt with stock update - forcing updateStock=false', [
+                        'receipt_id' => $receiptId,
+                        'receipt_code' => $receipt->receipt_code,
+                        'reference_id' => $receipt->reference_id,
+                        'reference_code' => $receipt->reference_code,
+                    ]);
+                }
+                $updateStock = false; // Force no stock update for order receipts
+            }
+            
             if ($receipt->status !== StockReceipt::STATUS_APPROVED && $receipt->status !== StockReceipt::STATUS_DRAFT) {
                 throw new \Exception('Chỉ có thể hoàn thành phiếu ở trạng thái nháp hoặc đã duyệt');
             }
 
-            foreach ($receipt->items as $item) {
-                $variant = $item->variant;
-                $quantity = $item->quantity;
-                
-                // Get stock before
-                $stockInfo = $this->warehouseService->getVariantStock($variant->id);
-                $stockBefore = $stockInfo['physical_stock'] ?? 0;
-
-                // Update stock
-                if ($receipt->type === 'import') {
-                    // Import: increase stock
-                    $result = $this->inventoryService->importStock(
-                        $variant->id,
-                        $quantity,
-                        'warehouse_import: ' . $receipt->receipt_code
-                    );
-                    $stockAfter = $result['after'] ?? ($stockBefore + $quantity);
-                } else {
-                    // Export: decrease stock
-                    // Validate stock availability
-                    $availableStock = $stockInfo['available_stock'] ?? 0;
-                    if ($quantity > $availableStock) {
-                        throw new \Exception("Không đủ tồn kho cho variant {$variant->sku}. Yêu cầu: {$quantity}, Có sẵn: {$availableStock}");
-                    }
+            // Only update stock if $updateStock is true (manual receipts)
+            if ($updateStock) {
+                foreach ($receipt->items as $item) {
+                    $variant = $item->variant;
+                    $quantity = $item->quantity;
                     
-                    $result = $this->inventoryService->manualExportStock(
-                        $variant->id,
-                        $quantity,
-                        'warehouse_export: ' . $receipt->receipt_code
-                    );
-                    $stockAfter = $result['after'] ?? ($stockBefore - $quantity);
-                }
+                    // Get stock before
+                    $stockInfo = $this->warehouseService->getVariantStock($variant->id);
+                    $stockBefore = $stockInfo['physical_stock'] ?? 0;
 
-                // Update item with stock after
-                $item->update([
-                    'stock_after' => $stockAfter,
-                ]);
+                    // Update stock
+                    if ($receipt->type === 'import') {
+                        // Import: increase stock
+                        $result = $this->inventoryService->importStock(
+                            $variant->id,
+                            $quantity,
+                            'warehouse_import: ' . $receipt->receipt_code
+                        );
+                        $stockAfter = $result['after'] ?? ($stockBefore + $quantity);
+                    } else {
+                        // Export: decrease stock
+                        // Validate stock availability
+                        $availableStock = $stockInfo['available_stock'] ?? 0;
+                        if ($quantity > $availableStock) {
+                            throw new \Exception("Không đủ tồn kho cho variant {$variant->sku}. Yêu cầu: {$quantity}, Có sẵn: {$availableStock}");
+                        }
+                        
+                        $result = $this->inventoryService->manualExportStock(
+                            $variant->id,
+                            $quantity,
+                            'warehouse_export: ' . $receipt->receipt_code
+                        );
+                        $stockAfter = $result['after'] ?? ($stockBefore - $quantity);
+                    }
+
+                    // Update item with stock after
+                    $item->update([
+                        'stock_after' => $stockAfter,
+                    ]);
+                }
+            } else {
+                // For receipts from orders, just record stock_after without updating warehouse
+                foreach ($receipt->items as $item) {
+                    $variant = $item->variant;
+                    $stockInfo = $this->warehouseService->getVariantStock($variant->id);
+                    $stockAfter = $stockInfo['physical_stock'] ?? 0;
+                    
+                    // Record current stock without updating
+                    $item->update([
+                        'stock_after' => $stockAfter,
+                    ]);
+                }
             }
 
             // Update receipt status
@@ -368,13 +402,37 @@ class StockReceiptService
     /**
      * Void receipt (Hủy phiếu và hoàn kho)
      * Chỉ có thể hủy phiếu đã completed
+     * 
+     * @param int $receiptId
+     * @param int $userId
+     * @param bool $updateStock If true, reverse warehouse stock; if false, only update status (for receipts created from orders)
+     * @return StockReceipt
      */
-    public function voidReceipt(int $receiptId, int $userId): StockReceipt
+    public function voidReceipt(int $receiptId, int $userId, bool $updateStock = true): StockReceipt
     {
         DB::beginTransaction();
         
         try {
             $receipt = StockReceipt::with('items.variant')->findOrFail($receiptId);
+            
+            // Validation: Receipts created from orders cannot be voided manually
+            // They can only be cancelled when the order is cancelled
+            if ($receipt->reference_type === 'order' && $updateStock) {
+                throw new \Exception('Không thể hủy phiếu được tạo từ đơn hàng. Phiếu chỉ có thể bị hủy khi đơn hàng bị hủy.');
+            }
+            
+            // If receipt is from order, force updateStock = false
+            if ($receipt->reference_type === 'order') {
+                if ($updateStock) {
+                    Log::warning('Attempted to void order receipt with stock update - forcing updateStock=false', [
+                        'receipt_id' => $receiptId,
+                        'receipt_code' => $receipt->receipt_code,
+                        'reference_id' => $receipt->reference_id,
+                        'reference_code' => $receipt->reference_code,
+                    ]);
+                }
+                $updateStock = false; // Force no stock update for order receipts
+            }
             
             if ($receipt->status !== StockReceipt::STATUS_COMPLETED) {
                 throw new \Exception('Chỉ có thể hủy phiếu đã hoàn thành');
@@ -384,39 +442,55 @@ class StockReceiptService
                 throw new \Exception('Phiếu đã được hủy trước đó');
             }
 
-            // Reverse stock changes
-            foreach ($receipt->items as $item) {
-                $variant = $item->variant;
-                $quantity = $item->quantity;
-                
-                // Get current stock
-                $stockInfo = $this->warehouseService->getVariantStock($variant->id);
-                $stockBefore = $stockInfo['physical_stock'] ?? 0;
+            // Only reverse stock if $updateStock is true (manual receipts)
+            if ($updateStock) {
+                // Reverse stock changes
+                foreach ($receipt->items as $item) {
+                    $variant = $item->variant;
+                    $quantity = $item->quantity;
+                    
+                    // Get current stock
+                    $stockInfo = $this->warehouseService->getVariantStock($variant->id);
+                    $stockBefore = $stockInfo['physical_stock'] ?? 0;
 
-                // Reverse: Import -> subtract, Export -> add
-                if ($receipt->type === 'import') {
-                    // Import was added, so subtract
-                    $result = $this->inventoryService->manualExportStock(
-                        $variant->id,
-                        $quantity,
-                        'warehouse_void_import: ' . $receipt->receipt_code
-                    );
-                    $stockAfter = $result['after'] ?? ($stockBefore - $quantity);
-                } else {
-                    // Export was subtracted, so add back
-                    $result = $this->inventoryService->importStock(
-                        $variant->id,
-                        $quantity,
-                        'warehouse_void_export: ' . $receipt->receipt_code
-                    );
-                    $stockAfter = $result['after'] ?? ($stockBefore + $quantity);
+                    // Reverse: Import -> subtract, Export -> add
+                    if ($receipt->type === 'import') {
+                        // Import was added, so subtract
+                        $result = $this->inventoryService->manualExportStock(
+                            $variant->id,
+                            $quantity,
+                            'warehouse_void_import: ' . $receipt->receipt_code
+                        );
+                        $stockAfter = $result['after'] ?? ($stockBefore - $quantity);
+                    } else {
+                        // Export was subtracted, so add back
+                        $result = $this->inventoryService->importStock(
+                            $variant->id,
+                            $quantity,
+                            'warehouse_void_export: ' . $receipt->receipt_code
+                        );
+                        $stockAfter = $result['after'] ?? ($stockBefore + $quantity);
+                    }
+
+                    // Update item with void info
+                    $item->update([
+                        'stock_after' => $stockAfter,
+                        'notes' => ($item->notes ?? '') . ' [Đã hủy: ' . now()->format('Y-m-d H:i:s') . ']',
+                    ]);
                 }
-
-                // Update item with void info
-                $item->update([
-                    'stock_after' => $stockAfter,
-                    'notes' => ($item->notes ?? '') . ' [Đã hủy: ' . now()->format('Y-m-d H:i:s') . ']',
-                ]);
+            } else {
+                // For receipts from orders, just record current stock without reversing
+                foreach ($receipt->items as $item) {
+                    $variant = $item->variant;
+                    $stockInfo = $this->warehouseService->getVariantStock($variant->id);
+                    $stockAfter = $stockInfo['physical_stock'] ?? 0;
+                    
+                    // Update item with void info (no stock reversal)
+                    $item->update([
+                        'stock_after' => $stockAfter,
+                        'notes' => ($item->notes ?? '') . ' [Đã hủy: ' . now()->format('Y-m-d H:i:s') . ']',
+                    ]);
+                }
             }
 
             // Update receipt status
