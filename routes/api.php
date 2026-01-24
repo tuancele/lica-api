@@ -17,11 +17,6 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-// Debug Log API - for frontend JavaScript to write logs
-Route::prefix('debug')->group(function () {
-    Route::post('/log', 'DebugLogController@writeLog'); // POST /api/debug/log
-});
-
 // 推荐系统API
 Route::prefix('recommendations')->group(function () {
     Route::get('/', 'Api\RecommendationController@getRecommendations');

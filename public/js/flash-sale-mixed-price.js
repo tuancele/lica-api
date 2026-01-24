@@ -52,18 +52,6 @@
                             return;
                         }
                         
-                        // Validate và tính lại bằng CartPriceCalculator nếu có
-                        if (typeof CartPriceCalculator !== 'undefined' && data.price_breakdown) {
-                            const validation = CartPriceCalculator.validateFlashSalePrice(data);
-                            if (validation.isValid && validation.calculated) {
-                                // Sử dụng kết quả từ CartPriceCalculator để đảm bảo tính nhất quán
-                                data.total_price = validation.calculated.totalPrice;
-                                console.log('[FlashSale] Validated with CartPriceCalculator:', validation);
-                            } else if (!validation.isValid) {
-                                console.warn('[FlashSale] Price mismatch detected:', validation);
-                            }
-                        }
-                        
                         // Cập nhật giá hiển thị
                         if (priceElementSelector && data.price_breakdown && data.price_breakdown.length > 0) {
                             this.updatePriceDisplay(priceElementSelector, data);
@@ -135,32 +123,19 @@
             // Xóa warning cũ nếu có
             $container.find('.flash-sale-warning').remove();
 
-            // Sử dụng CartPriceCalculator để format breakdown nếu có
-            let breakdownHtml = '';
-            if (priceBreakdown && priceBreakdown.length > 1) {
-                if (typeof CartPriceCalculator !== 'undefined') {
-                    // Sử dụng CartPriceCalculator để tính và format
-                    const calculated = CartPriceCalculator.calculateFromBreakdown(priceBreakdown);
-                    breakdownHtml = `<div>${calculated.formattedBreakdown}</div>`;
-                } else {
-                    // Fallback: format thủ công
-                    breakdownHtml = `
+            // Tạo warning element với tiêu đề mới (dùng class CSS thay vì inline style)
+            const warningHtml = `
+                <div class="flash-sale-warning">
+                    <i class="fa fa-exclamation-triangle"></i>
+                    <strong>Vượt quá số lượng Flash Sale</strong>
+                    ${priceBreakdown && priceBreakdown.length > 1 ? `
                         <div>
                             ${priceBreakdown.map(bd => {
                                 const typeLabel = bd.type === 'flashsale' ? 'Flash Sale' : (bd.type === 'promotion' ? 'Khuyến mãi' : 'Giá thường');
                                 return `${bd.quantity} sản phẩm × ${this.formatNumber(bd.unit_price)}đ (${typeLabel}) = ${this.formatNumber(bd.subtotal)}đ`;
                             }).join('<br>')}
                         </div>
-                    `;
-                }
-            }
-
-            // Tạo warning element với tiêu đề mới (dùng class CSS thay vì inline style)
-            const warningHtml = `
-                <div class="flash-sale-warning">
-                    <i class="fa fa-exclamation-triangle"></i>
-                    <strong>Vượt quá số lượng Flash Sale</strong>
-                    ${breakdownHtml}
+                    ` : ''}
                 </div>
             `;
 

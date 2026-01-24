@@ -288,7 +288,6 @@
 @endsection
 @section('footer')
 <script src="{{asset('js/cart-api-v1.js')}}"></script>
-<script src="{{asset('js/cart-price-calculator.js')}}"></script>
 <script>
     window.dealCounts = @json($deal_counts ?? []);
     
@@ -548,25 +547,12 @@
                         setTimeout(function() {
                             // Always re-fetch cart after remove to sync totals & deal rules from backend
                             CartAPI.getCart().done(function(cartRes) {
-                                if (cartRes && cartRes.data) {
-                                    // CRITICAL: Chỉ dùng CartPriceCalculator để update
-                                    if (typeof CartPriceCalculator === 'undefined') {
-                                        console.error('[CART] CartPriceCalculator not loaded');
-                                        // Fallback: reload page
-                                        window.location.reload();
-                                        return;
-                                    }
-                                    
-                                    // Update cart totals CHỈ từ CartPriceCalculator
-                                    var calcResult = CartPriceCalculator.updateCartTotals(cartRes.data, {}, {
-                                        subtotal: '.subtotal-price',
-                                        total: '.total-price'
-                                    });
-                                    
-                                    // Update count
-                                    if (cartRes.data.summary && cartRes.data.summary.total_qty !== undefined) {
-                                        $('.count-cart').text(cartRes.data.summary.total_qty || 0);
-                                    }
+                                if (cartRes && cartRes.data && cartRes.data.summary) {
+                                    var summary = cartRes.data.summary;
+                                    // Sidebar + table totals: always from backend
+                                    $('.subtotal-price').text(CartAPI.formatCurrency(summary.subtotal));
+                                    $('.total-price').text(CartAPI.formatCurrency(summary.total !== undefined ? summary.total : summary.subtotal));
+                            $('.count-cart').text(summary.total_qty || 0);
                             
                             // Also update checkout button state
                             if (summary.total_qty === 0) {
@@ -739,45 +725,17 @@
                     if (response.success && response.data) {
                         var data = response.data;
                         
-                        // CRITICAL: Chỉ dùng CartPriceCalculator để update
-                        if (typeof CartPriceCalculator === 'undefined') {
-                            console.error('[CART] CartPriceCalculator not loaded');
-                            CartAPI.showError('Lỗi tính toán giá. Vui lòng tải lại trang.');
-                            $input.val(currentVal);
-                            return;
+                        // Update item subtotal
+                        $('.item-total-' + variantId).text(CartAPI.formatCurrency(data.subtotal));
+                        
+                        // Update cart summary
+                        if (data.summary) {
+                            $('.total-price').text(CartAPI.formatCurrency(data.summary.total !== undefined ? data.summary.total : data.summary.subtotal));
+                            $('.count-cart').text(data.summary.total_qty || 0);
                         }
                         
-                        // Re-fetch cart data để lấy dữ liệu mới nhất từ Backend
-                        CartPriceCalculator.fetchCartData(function(err, cartData) {
-                            if (err || !cartData) {
-                                console.error('[CART] Failed to fetch cart data:', err);
-                                CartAPI.showError('Không thể lấy dữ liệu giỏ hàng. Vui lòng thử lại.');
-                                $input.val(currentVal);
-                                return;
-                            }
-
-                            // Update item subtotal từ cartData (không dùng data.subtotal từ response)
-                            var itemData = cartData.items.find(function(item) {
-                                return item.variant_id === parseInt(variantId);
-                            });
-                            
-                            if (itemData) {
-                                CartPriceCalculator.updateItemPrice(variantId, itemData.subtotal);
-                            }
-
-                            // Update cart totals CHỈ từ CartPriceCalculator
-                            var calcResult = CartPriceCalculator.updateCartTotals(cartData, {}, {
-                                total: '.total-price'
-                            });
-
-                            // Update count
-                            if (cartData.summary && cartData.summary.total_qty !== undefined) {
-                                $('.count-cart').text(cartData.summary.total_qty || 0);
-                            }
-                            
-                            // Check Flash Sale Mixed Price (sẽ update lại giá nếu có breakdown)
-                            checkFlashSalePrice(variantId, newQty);
-                        });
+                        // Check Flash Sale Mixed Price
+                        checkFlashSalePrice(variantId, newQty);
                     } else {
                         // Revert quantity on error
                         $input.val(currentVal);
@@ -836,42 +794,14 @@
                     if (response.success && response.data) {
                         var data = response.data;
                         
-                        // CRITICAL: Chỉ dùng CartPriceCalculator để update
-                        if (typeof CartPriceCalculator === 'undefined') {
-                            console.error('[CART] CartPriceCalculator not loaded');
-                            CartAPI.showError('Lỗi tính toán giá. Vui lòng tải lại trang.');
-                            $input.val(currentVal);
-                            return;
-                        }
+                        // Update item subtotal
+                        $('.item-total-' + variantId).text(CartAPI.formatCurrency(data.subtotal));
                         
-                        // Re-fetch cart data để lấy dữ liệu mới nhất từ Backend
-                        CartPriceCalculator.fetchCartData(function(err, cartData) {
-                            if (err || !cartData) {
-                                console.error('[CART] Failed to fetch cart data:', err);
-                                CartAPI.showError('Không thể lấy dữ liệu giỏ hàng. Vui lòng thử lại.');
-                                $input.val(currentVal);
-                                return;
-                            }
-
-                            // Update item subtotal từ cartData (không dùng data.subtotal từ response)
-                            var itemData = cartData.items.find(function(item) {
-                                return item.variant_id === parseInt(variantId);
-                            });
-                            
-                            if (itemData) {
-                                CartPriceCalculator.updateItemPrice(variantId, itemData.subtotal);
-                            }
-
-                            // Update cart totals CHỈ từ CartPriceCalculator
-                            var calcResult = CartPriceCalculator.updateCartTotals(cartData, {}, {
-                                total: '.total-price'
-                            });
-
-                            // Update count
-                            if (cartData.summary && cartData.summary.total_qty !== undefined) {
-                                $('.count-cart').text(cartData.summary.total_qty || 0);
-                            }
-                        });
+                        // Update cart summary
+                        if (data.summary) {
+                            $('.total-price').text(CartAPI.formatCurrency(data.summary.total !== undefined ? data.summary.total : data.summary.subtotal));
+                            $('.count-cart').text(data.summary.total_qty || 0);
+                        }
                     } else {
                         // Revert quantity on error
                         $input.val(currentVal);
@@ -927,30 +857,8 @@
                 '.item-total-' + variantId, // Price display selector
                 '.flash-sale-warning-container-' + variantId, // Warning container
                 function(priceData) {
-                    // CRITICAL: Validate và update giá CHỈ bằng CartPriceCalculator
-                    if (typeof CartPriceCalculator !== 'undefined' && priceData) {
-                        // Validate price breakdown
-                        if (priceData.price_breakdown) {
-                            const validation = CartPriceCalculator.validateFlashSalePrice(priceData);
-                            if (validation.isValid && validation.calculated) {
-                                priceData.total_price = validation.calculated.totalPrice;
-                            }
-                        }
-                        
-                        // Update item price CHỈ bằng CartPriceCalculator
-                        CartPriceCalculator.updateItemPrice(variantId, priceData.total_price);
-                        
-                        // Update cart totals CHỈ từ CartPriceCalculator
-                        CartPriceCalculator.fetchCartData(function(err, cartData) {
-                            if (!err && cartData) {
-                                CartPriceCalculator.updateCartTotals(cartData, {}, {
-                                    total: '.total-price'
-                                });
-                            }
-                        });
-                    } else {
-                        console.warn('[CART] CartPriceCalculator not loaded, cannot update totals');
-                    }
+                    // Callback: Cập nhật tổng tiền sau khi tính giá thành công
+                    FlashSaleMixedPrice.updateTotalOrderPrice();
                     
                     // Show/hide warning row based on warning content
                     setTimeout(function() {
@@ -990,45 +898,17 @@
                     if (response.success && response.data) {
                         var data = response.data;
                         
-                        // CRITICAL: Chỉ dùng CartPriceCalculator để update
-                        if (typeof CartPriceCalculator === 'undefined') {
-                            console.error('[CART] CartPriceCalculator not loaded');
-                            CartAPI.showError('Lỗi tính toán giá. Vui lòng tải lại trang.');
-                            $input.val(parseInt($input.val()) || 1);
-                            return;
+                        // Update item subtotal
+                        $('.item-total-' + variantId).text(CartAPI.formatCurrency(data.subtotal));
+                        
+                        // Update cart summary
+                        if (data.summary) {
+                            $('.total-price').text(CartAPI.formatCurrency(data.summary.total !== undefined ? data.summary.total : data.summary.subtotal));
+                            $('.count-cart').text(data.summary.total_qty || 0);
                         }
                         
-                        // Re-fetch cart data để lấy dữ liệu mới nhất từ Backend
-                        CartPriceCalculator.fetchCartData(function(err, cartData) {
-                            if (err || !cartData) {
-                                console.error('[CART] Failed to fetch cart data:', err);
-                                CartAPI.showError('Không thể lấy dữ liệu giỏ hàng. Vui lòng thử lại.');
-                                $input.val(parseInt($input.val()) || 1);
-                                return;
-                            }
-
-                            // Update item subtotal từ cartData (không dùng data.subtotal từ response)
-                            var itemData = cartData.items.find(function(item) {
-                                return item.variant_id === parseInt(variantId);
-                            });
-                            
-                            if (itemData) {
-                                CartPriceCalculator.updateItemPrice(variantId, itemData.subtotal);
-                            }
-
-                            // Update cart totals CHỈ từ CartPriceCalculator
-                            var calcResult = CartPriceCalculator.updateCartTotals(cartData, {}, {
-                                total: '.total-price'
-                            });
-
-                            // Update count
-                            if (cartData.summary && cartData.summary.total_qty !== undefined) {
-                                $('.count-cart').text(cartData.summary.total_qty || 0);
-                            }
-                            
-                            // Check Flash Sale Mixed Price (sẽ update lại giá nếu có breakdown)
-                            checkFlashSalePrice(variantId, newQty);
-                        });
+                        // Check Flash Sale Mixed Price
+                        checkFlashSalePrice(variantId, newQty);
                     } else {
                         CartAPI.showError(response.message || 'Cập nhật số lượng thất bại');
                         // Reload to get correct value

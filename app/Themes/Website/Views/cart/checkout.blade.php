@@ -306,37 +306,7 @@ $member = auth()->guard('member')->user();
 </section>
 @endsection
 @section('footer')
-<script src="{{asset('js/debug-logger.js')}}"></script>
-<script src="{{asset('js/cart-price-calculator.js')}}"></script>
 <script>
-    // Helper function: Log to both console and Laravel
-    function logToLaravel(level, message, context) {
-        // Always log to console
-        const consoleMethod = level === 'error' ? 'error' : 
-                             level === 'warning' ? 'warn' : 
-                             'log';
-        console[consoleMethod](message, context || {});
-        
-        // Also log to Laravel if DebugLogger is available
-        // Map level to DebugLogger method
-        if (typeof DebugLogger !== 'undefined') {
-            const loggerMethod = level === 'error' ? 'error' :
-                                level === 'warning' ? 'warn' :
-                                level === 'debug' ? 'debug' :
-                                'log'; // default to 'log' for 'info' and others
-            
-            if (typeof DebugLogger[loggerMethod] === 'function') {
-                DebugLogger[loggerMethod](message, context);
-            } else {
-                // Fallback to log if method doesn't exist
-                DebugLogger.log(message, context);
-            }
-        }
-    }
-    
-    // Make logToLaravel globally available for cart-price-calculator.js
-    window.logToLaravel = logToLaravel;
-    
     // Bước 3: Khóa biến $totalPrice cho Sidebar (Global Data Lock)
     // JavaScript CHỈ ĐƯỢC PHÉP đọc số từ đây, không được tự tính toán lại
     // Con số này phải là tổng từ CartService (kể cả Deal Sốc 0đ)
@@ -483,24 +453,24 @@ $member = auth()->guard('member')->user();
                 // Bước 3: Sửa lỗi AJAX getFeeShip
                 // Chỉ làm 2 việc: Gán giá trị vào input[name="feeShip"] và gọi updateTotalOrderPriceCheckout()
                 // CẤM: Không được dùng các lệnh kiểu amount + feeship trực tiếp trong hàm AJAX
-                // CẤM: Không được ghi đè HTML trực tiếp - để updateTotalOrderPriceCheckout() xử lý
-                const feeShipNum = parseInt(res.feeship.replace(/[^\d]/g, '')) || 0;
-                console.log('[JS_CART_CHECKOUT_LOG] Updating shipping fee:', feeShipNum);
+                console.log('[AJAX_FEESHIP_SAVE_ADDRESS] Response received:', res);
+                console.log('[AJAX_FEESHIP_SAVE_ADDRESS] checkoutPriceBreakdowns BEFORE update:', window.checkoutPriceBreakdowns);
+                console.log('[AJAX_FEESHIP_SAVE_ADDRESS] Number of items in breakdowns:', window.checkoutPriceBreakdowns ? Object.keys(window.checkoutPriceBreakdowns).length : 0);
+                
+                // CRITICAL: Dùng parseFloat thay vì parseInt để tránh mất số thập phân
+                const feeShipNum = parseFloat(res.feeship.replace(/[^\d]/g, '')) || 0;
                 $('input[name="feeShip"]').val(feeShipNum);
+                console.log('[AJAX_FEESHIP_SAVE_ADDRESS] Parsed feeShip:', feeShipNum, '| Type:', typeof feeShipNum);
                 
-                // CRITICAL: Không ghi đè HTML trực tiếp - để updateTotalOrderPriceCheckout() xử lý
-                // $('.item-ship').html(res.feeship+'đ'); // REMOVED - Let updateTotalOrderPriceCheckout() handle
-                // $('.fee_ship').html(res.feeship+'đ'); // REMOVED - Let updateTotalOrderPriceCheckout() handle
+                // Cập nhật hiển thị phí ship
+                $('.item-ship').html(res.feeship+'đ');
+                $('.fee_ship').html(res.feeship+'đ');
                 
-                // CRITICAL: Update checkoutData.feeship BEFORE calling updateTotalOrderPriceCheckout
-                window.checkoutData.feeship = feeShipNum;
+                console.log('[AJAX_FEESHIP_SAVE_ADDRESS] checkoutPriceBreakdowns AFTER update:', window.checkoutPriceBreakdowns);
+                console.log('[AJAX_FEESHIP_SAVE_ADDRESS] Number of items in breakdowns:', window.checkoutPriceBreakdowns ? Object.keys(window.checkoutPriceBreakdowns).length : 0);
                 
-                // CRITICAL: Always fetch fresh cart data when shipping fee changes
-                // This ensures subtotal is up-to-date (in case quantity was changed recently)
-                // forceFetchCartData = true to ensure real-time calculation accuracy
-                console.log('[JS_CART_CHECKOUT_LOG] Calling updateTotalOrderPriceCheckout(true) after shipping fee update, feeShipNum:', feeShipNum);
-                console.log('[JS_CART_CHECKOUT_LOG] Reason: Fetch fresh cart data to ensure subtotal is correct after quantity changes');
-                window.updateTotalOrderPriceCheckout(true);
+                // Gọi hàm tính tổng để cập nhật tổng thanh toán
+                updateTotalOrderPriceCheckout();
             },
             error: function(xhr, status, error){
                 alert('Có lỗi xảy ra, xin vui lòng thử lại');
@@ -597,24 +567,24 @@ $member = auth()->guard('member')->user();
                 // Bước 3: Sửa lỗi AJAX getFeeShip
                 // Chỉ làm 2 việc: Gán giá trị vào input[name="feeShip"] và gọi updateTotalOrderPriceCheckout()
                 // CẤM: Không được dùng các lệnh kiểu amount + feeship trực tiếp trong hàm AJAX
-                // CẤM: Không được ghi đè HTML trực tiếp - để updateTotalOrderPriceCheckout() xử lý
-                const feeShipNum = parseInt(res.feeship.replace(/[^\d]/g, '')) || 0;
-                console.log('[JS_CART_CHECKOUT_LOG] Updating shipping fee:', feeShipNum);
+                console.log('[AJAX_FEESHIP_GETFEESHIP] Response received:', res);
+                console.log('[AJAX_FEESHIP_GETFEESHIP] checkoutPriceBreakdowns BEFORE update:', window.checkoutPriceBreakdowns);
+                console.log('[AJAX_FEESHIP_GETFEESHIP] Number of items in breakdowns:', window.checkoutPriceBreakdowns ? Object.keys(window.checkoutPriceBreakdowns).length : 0);
+                
+                // CRITICAL: Dùng parseFloat thay vì parseInt để tránh mất số thập phân
+                const feeShipNum = parseFloat(res.feeship.replace(/[^\d]/g, '')) || 0;
                 $('input[name="feeShip"]').val(feeShipNum);
+                console.log('[AJAX_FEESHIP_GETFEESHIP] Parsed feeShip:', feeShipNum, '| Type:', typeof feeShipNum);
                 
-                // CRITICAL: Không ghi đè HTML trực tiếp - để updateTotalOrderPriceCheckout() xử lý
-                // $('.item-ship').html(res.feeship+'đ'); // REMOVED - Let updateTotalOrderPriceCheckout() handle
-                // $('.fee_ship').html(res.feeship+'đ'); // REMOVED - Let updateTotalOrderPriceCheckout() handle
+                // Cập nhật hiển thị phí ship
+                $('.item-ship').html(res.feeship+'đ');
+                $('.fee_ship').html(res.feeship+'đ');
                 
-                // CRITICAL: Update checkoutData.feeship BEFORE calling updateTotalOrderPriceCheckout
-                window.checkoutData.feeship = feeShipNum;
+                console.log('[AJAX_FEESHIP_GETFEESHIP] checkoutPriceBreakdowns AFTER update:', window.checkoutPriceBreakdowns);
+                console.log('[AJAX_FEESHIP_GETFEESHIP] Number of items in breakdowns:', window.checkoutPriceBreakdowns ? Object.keys(window.checkoutPriceBreakdowns).length : 0);
                 
-                // CRITICAL: Always fetch fresh cart data when shipping fee changes
-                // This ensures subtotal is up-to-date (in case quantity was changed recently)
-                // forceFetchCartData = true to ensure real-time calculation accuracy
-                console.log('[JS_CART_CHECKOUT_LOG] Calling updateTotalOrderPriceCheckout(true) after shipping fee update, feeShipNum:', feeShipNum);
-                console.log('[JS_CART_CHECKOUT_LOG] Reason: Fetch fresh cart data to ensure subtotal is correct after quantity changes');
-                window.updateTotalOrderPriceCheckout(true);
+                // Gọi hàm tính tổng để cập nhật tổng thanh toán
+                updateTotalOrderPriceCheckout();
             }
         });
     }
@@ -636,24 +606,24 @@ $member = auth()->guard('member')->user();
                 // Bước 3: Sửa lỗi AJAX getFeeShip
                 // Chỉ làm 2 việc: Gán giá trị vào input[name="feeShip"] và gọi updateTotalOrderPriceCheckout()
                 // CẤM: Không được dùng các lệnh kiểu amount + feeship trực tiếp trong hàm AJAX
-                // CẤM: Không được ghi đè HTML trực tiếp - để updateTotalOrderPriceCheckout() xử lý
-                const feeShipNum = parseInt(res.feeship.replace(/[^\d]/g, '')) || 0;
-                console.log('[JS_CART_CHECKOUT_LOG] Updating shipping fee:', feeShipNum);
+                console.log('[AJAX_FEESHIP_GHTK] Response received:', res);
+                console.log('[AJAX_FEESHIP_GHTK] checkoutPriceBreakdowns BEFORE update:', window.checkoutPriceBreakdowns);
+                console.log('[AJAX_FEESHIP_GHTK] Number of items in breakdowns:', window.checkoutPriceBreakdowns ? Object.keys(window.checkoutPriceBreakdowns).length : 0);
+                
+                // CRITICAL: Dùng parseFloat thay vì parseInt để tránh mất số thập phân
+                const feeShipNum = parseFloat(res.feeship.replace(/[^\d]/g, '')) || 0;
                 $('input[name="feeShip"]').val(feeShipNum);
+                console.log('[AJAX_FEESHIP_GHTK] Parsed feeShip:', feeShipNum, '| Type:', typeof feeShipNum);
                 
-                // CRITICAL: Không ghi đè HTML trực tiếp - để updateTotalOrderPriceCheckout() xử lý
-                // $('.item-ship').html(res.feeship+'đ'); // REMOVED - Let updateTotalOrderPriceCheckout() handle
-                // $('.fee_ship').html(res.feeship+'đ'); // REMOVED - Let updateTotalOrderPriceCheckout() handle
+                // Cập nhật hiển thị phí ship
+                $('.item-ship').html(res.feeship+'đ');
+                $('.fee_ship').html(res.feeship+'đ');
                 
-                // CRITICAL: Update checkoutData.feeship BEFORE calling updateTotalOrderPriceCheckout
-                window.checkoutData.feeship = feeShipNum;
+                console.log('[AJAX_FEESHIP_GHTK] checkoutPriceBreakdowns AFTER update:', window.checkoutPriceBreakdowns);
+                console.log('[AJAX_FEESHIP_GHTK] Number of items in breakdowns:', window.checkoutPriceBreakdowns ? Object.keys(window.checkoutPriceBreakdowns).length : 0);
                 
-                // CRITICAL: Always fetch fresh cart data when shipping fee changes
-                // This ensures subtotal is up-to-date (in case quantity was changed recently)
-                // forceFetchCartData = true to ensure real-time calculation accuracy
-                console.log('[JS_CART_CHECKOUT_LOG] Calling updateTotalOrderPriceCheckout(true) after shipping fee update, feeShipNum:', feeShipNum);
-                console.log('[JS_CART_CHECKOUT_LOG] Reason: Fetch fresh cart data to ensure subtotal is correct after quantity changes');
-                window.updateTotalOrderPriceCheckout(true);
+                // Gọi hàm tính tổng để cập nhật tổng thanh toán
+                updateTotalOrderPriceCheckout();
             },
             error: function(xhr, status, error){
                 alert('Có lỗi xảy ra, xin vui lòng thử lại');
@@ -865,18 +835,14 @@ $('.btn_coupon').click(function(){
                 
                 // Cập nhật Data Store từ response
                 const saleNum = parseInt(res.sale.replace(/[^\d]/g, '')) || 0;
-                console.log('[JS_CART_CHECKOUT_LOG] Applying coupon (input), sale value:', saleNum);
                 if (typeof syncCheckoutData === 'function') {
                     syncCheckoutData(undefined, saleNum, undefined);
                 } else {
                     window.checkoutData.sale = saleNum;
-                    // Use CartPriceCalculator to update
-                    console.log('[JS_CART_CHECKOUT_LOG] Calling updateTotalOrderPriceCheckout() after coupon apply (input)');
-                    window.updateTotalOrderPriceCheckout();
+                    updateTotalOrderPriceCheckout();
                 }
                 
-                // CRITICAL: Let updateTotalOrderPriceCheckout() handle all UI updates
-                // $('.sale-promotion').html('-'+res.sale); // REMOVED - Let updateTotalOrderPriceCheckout() handle
+                $('.sale-promotion').html('-'+res.sale);
                 $('.item-promotion-'+res.id+' .btn_apply').html('Hủy').addClass('btn_cancel_promotion').removeClass('btn_apply');
                 $('.box-code-coupon').html('<span>'+res.code+'</span>');
             }else{
@@ -913,18 +879,14 @@ $('body').on('click','.btn_apply',function(){
                 
                 // Đồng bộ giảm giá với Data Store
                 const saleNum = parseInt(res.sale.replace(/[^\d]/g, '')) || 0;
-                console.log('[JS_CART_CHECKOUT_LOG] Applying coupon, sale value:', saleNum);
                 if (typeof syncCheckoutData === 'function') {
                     syncCheckoutData(undefined, saleNum, undefined);
                 } else {
                     window.checkoutData.sale = saleNum;
-                    // Use CartPriceCalculator to update
-                    console.log('[JS_CART_CHECKOUT_LOG] Calling updateTotalOrderPriceCheckout() after coupon apply');
-                    window.updateTotalOrderPriceCheckout();
+                    updateTotalOrderPriceCheckout();
                 }
                 
-                // CRITICAL: Let updateTotalOrderPriceCheckout() handle all UI updates
-                // $('.sale-promotion').html('-'+res.sale); // REMOVED - Let updateTotalOrderPriceCheckout() handle
+                $('.sale-promotion').html('-'+res.sale);
                 $('.item-promotion-'+id+' .btn_apply').html('Hủy').addClass('btn_cancel_promotion').removeClass('btn_apply');
                 $('.box-code-coupon').html('<span>'+res.code+'</span>');
                 $('.box-alert-promotion').html('');
@@ -956,15 +918,11 @@ $('body').on('click','.btn_cancel_promotion',function(){
                     syncCheckoutData(undefined, 0, undefined);
                 } else if (window.checkoutData) {
                     window.checkoutData.sale = 0;
-                    // Use CartPriceCalculator to update
-                    window.updateTotalOrderPriceCheckout();
+                    updateTotalOrderPriceCheckout();
                 } else {
-                    // Fallback: Only if checkoutData not initialized
-                    console.warn('[JS_CART_CHECKOUT_LOG] checkoutData not initialized, using server response');
                     $('.total-order').html(res.total);
                 }
-                // CRITICAL: Let updateTotalOrderPriceCheckout() handle all UI updates
-                // $('.sale-promotion').html('0đ'); // REMOVED - Let updateTotalOrderPriceCheckout() handle
+                $('.sale-promotion').html('0đ');
                 $('.item-promotion-'+id+' .btn_cancel_promotion').html('Áp dụng').addClass('btn_apply').removeClass('btn_cancel_promotion');
                 $('.box-code-coupon').html('');
                 $('.box-alert-promotion').html('');
@@ -1217,77 +1175,43 @@ $('body').on('click','.btn_cancel_promotion',function(){
                 '.price-item-' + variantId, // Price display selector
                 '.flash-sale-warning-container-' + variantId, // Warning container
                 function(priceData) {
-                    // CRITICAL: Lưu price breakdown và update CHỈ bằng CartPriceCalculator
+                    // Lưu price breakdown để tính tổng
                     if (!window.checkoutPriceBreakdowns) {
                         window.checkoutPriceBreakdowns = {};
                     }
                     window.checkoutPriceBreakdowns[variantId] = priceData;
                     
-                    // Validate và tính lại bằng CartPriceCalculator
-                    if (typeof CartPriceCalculator !== 'undefined' && priceData.price_breakdown) {
-                        const validation = CartPriceCalculator.validateFlashSalePrice(priceData);
-                        if (validation.isValid && validation.calculated) {
-                            // Sử dụng kết quả từ CartPriceCalculator
-                            priceData.total_price = validation.calculated.totalPrice;
-                        }
-                    }
-                    
-                    // Cập nhật giá hiển thị CHỈ bằng CartPriceCalculator
-                    if (typeof CartPriceCalculator !== 'undefined') {
-                        CartPriceCalculator.updateItemPrice(variantId, priceData.total_price, '.price-item-' + variantId);
+                    // Cập nhật giá hiển thị và breakdown giá
+                    const $priceItem = $('.price-item-' + variantId);
+                    if ($priceItem.length) {
+                        $priceItem.text(FlashSaleMixedPrice.formatNumber(priceData.total_price) + 'đ');
                         
-                        // Cập nhật breakdown giá bằng CartPriceCalculator
+                        // Bước 4: Cập nhật breakdown giá (ví dụ: 100x385,000 + 11x440,000)
                         if (priceData.price_breakdown && priceData.price_breakdown.length > 1) {
-                            const calculated = CartPriceCalculator.calculateFromBreakdown(priceData.price_breakdown);
-                            console.log('[JS_CART_CHECKOUT_LOG] Calculated breakdown:', calculated);
-                            const $breakdownContainer = $('.price-item-' + variantId).next('.fs-11.text-muted.mt-1');
-                            
+                            const $breakdownContainer = $priceItem.next('.fs-11.text-muted.mt-1');
                             if ($breakdownContainer.length) {
-                                // Format: "1x350.000đ + 19x525.000đ"
                                 let breakdownText = '';
-                                calculated.breakdown.forEach(function(bd, index) {
-                                    // Use unitPrice from breakdown, fallback to calculated unitPrice if 0
-                                    const displayUnitPrice = bd.unitPrice > 0 ? bd.unitPrice : (bd.subtotal > 0 && bd.quantity > 0 ? bd.subtotal / bd.quantity : 0);
-                                    breakdownText += bd.quantity + 'x' + CartPriceCalculator.formatCurrency(displayUnitPrice);
-                                    if (index < calculated.breakdown.length - 1) {
+                                priceData.price_breakdown.forEach(function(bd, index) {
+                                    breakdownText += bd.quantity + 'x' + FlashSaleMixedPrice.formatNumber(bd.unit_price) + 'đ';
+                                    if (index < priceData.price_breakdown.length - 1) {
                                         breakdownText += ' + ';
                                     }
                                 });
-                                console.log('[JS_CART_CHECKOUT_LOG] Breakdown text:', breakdownText);
                                 $breakdownContainer.text(breakdownText);
                             } else {
-                                // Tạo mới container nếu chưa có
-                                let breakdownText = '';
-                                calculated.breakdown.forEach(function(bd, index) {
-                                    const displayUnitPrice = bd.unitPrice > 0 ? bd.unitPrice : (bd.subtotal > 0 && bd.quantity > 0 ? bd.subtotal / bd.quantity : 0);
-                                    breakdownText += bd.quantity + 'x' + CartPriceCalculator.formatCurrency(displayUnitPrice);
-                                    if (index < calculated.breakdown.length - 1) {
-                                        breakdownText += ' + ';
-                                    }
-                                });
+                                // Nếu chưa có container breakdown, tạo mới
                                 const breakdownHtml = '<div class="fs-11 text-muted mt-1" style="cursor: pointer;" title="Click để xem chi tiết">' +
-                                    breakdownText + '</div>';
-                                $('.price-item-' + variantId).after(breakdownHtml);
+                                    priceData.price_breakdown.map(function(bd, index) {
+                                        return bd.quantity + 'x' + FlashSaleMixedPrice.formatNumber(bd.unit_price) + 'đ';
+                                    }).join(' + ') +
+                                    '</div>';
+                                $priceItem.after(breakdownHtml);
                             }
-                        }
-                    } else {
-                        // Fallback nếu CartPriceCalculator chưa load
-                        console.warn('[Checkout] CartPriceCalculator not loaded, using FlashSaleMixedPrice fallback');
-                        const $priceItem = $('.price-item-' + variantId);
-                        if ($priceItem.length) {
-                            $priceItem.text(FlashSaleMixedPrice.formatNumber(priceData.total_price) + 'đ');
                         }
                     }
                     
-                    // Callback: Cập nhật tổng tiền đơn hàng CHỈ bằng CartPriceCalculator
-                    console.log('[JS_CART_CHECKOUT_LOG] checkFlashSalePriceCheckout callback - priceData:', priceData);
-                    console.log('[JS_CART_CHECKOUT_LOG] checkFlashSalePriceCheckout callback - checkoutPriceBreakdowns updated for variant', variantId);
-                    if (typeof CartPriceCalculator !== 'undefined') {
-                        console.log('[JS_CART_CHECKOUT_LOG] Calling updateTotalOrderPriceCheckout() from checkFlashSalePriceCheckout callback');
-                        window.updateTotalOrderPriceCheckout();
-                    } else {
-                        console.warn('[Checkout] CartPriceCalculator not loaded');
-                    }
+                    // Callback: Cập nhật tổng tiền đơn hàng sau khi tính giá thành công
+                    updateTotalOrderPriceCheckout();
                     
                     // Kiểm tra và xử lý lỗi tồn kho
                     if (priceData.is_available === false) {
@@ -1331,458 +1255,6 @@ $('body').on('click','.btn_cancel_promotion',function(){
             );
     };
     
-    // ===== Bước 2: Viết lại hàm tính Tổng sử dụng CartPriceCalculator =====
-    // CRITICAL: Define functions in global scope so they can be called from anywhere
-    // Inner function to calculate and update totals
-    function calculateAndUpdateTotals(cartData) {
-                console.log('[JS_CART_CHECKOUT_LOG] ===== calculateAndUpdateTotals() START =====');
-                console.log('[JS_CART_CHECKOUT_LOG] calculateAndUpdateTotals() called with cartData:', cartData);
-                console.log('[JS_CART_CHECKOUT_LOG] calculateAndUpdateTotals() - Current checkoutData:', window.checkoutData);
-                console.log('[JS_CART_CHECKOUT_LOG] calculateAndUpdateTotals() - Current input[name="feeShip"] value:', $('input[name="feeShip"]').val());
-                console.log('[JS_CART_CHECKOUT_LOG] calculateAndUpdateTotals() - Current checkoutPriceBreakdowns:', window.checkoutPriceBreakdowns);
-                
-                let items = [];
-                
-                // CRITICAL: Merge cartData with checkoutPriceBreakdowns
-                // Priority: checkoutPriceBreakdowns (latest from FlashSale API) > cartData (from backend)
-                // This ensures ALL items are included, not just those in checkoutPriceBreakdowns
-                
-                if (cartData && cartData.items && Array.isArray(cartData.items)) {
-                    console.log('[JS_CART_CHECKOUT_LOG] Processing items from cartData, count:', cartData.items.length);
-                    // Process all items from cart
-                    cartData.items.forEach(function(item) {
-                        if (item.variant_id && item.subtotal !== undefined && item.subtotal !== null) {
-                            const variantId = item.variant_id;
-                            let itemSubtotal = parseFloat(item.subtotal) || 0;
-                            
-                            // If this item exists in checkoutPriceBreakdowns, use that price (more accurate from FlashSale API)
-                            // CRITICAL: Deal items can have total_price = 0, so we must use parseFloat correctly
-                            if (window.checkoutPriceBreakdowns && window.checkoutPriceBreakdowns[variantId]) {
-                                const breakdownData = window.checkoutPriceBreakdowns[variantId];
-                                if (breakdownData && breakdownData.total_price !== undefined && breakdownData.total_price !== null) {
-                                    const breakdownPrice = parseFloat(breakdownData.total_price);
-                                    // Use breakdownPrice even if it's 0 (for Deal items)
-                                    // Only use || 0 if breakdownPrice is NaN
-                                    const finalPrice = isNaN(breakdownPrice) ? 0 : breakdownPrice;
-                                    console.log('[JS_CART_CHECKOUT_LOG] Item', variantId, 'using breakdown price:', finalPrice, '(raw:', breakdownData.total_price, ', parsed:', breakdownPrice, ')', 'instead of cart price:', itemSubtotal);
-                                    itemSubtotal = finalPrice;
-                                }
-                            }
-                            
-                            items.push({
-                                subtotal: itemSubtotal,
-                                voucher: null // Voucher SP sẽ được thêm sau nếu có
-                            });
-                        }
-                    });
-                } else if (window.checkoutPriceBreakdowns && Object.keys(window.checkoutPriceBreakdowns).length > 0) {
-                    console.log('[JS_CART_CHECKOUT_LOG] Fallback: Using checkoutPriceBreakdowns, count:', Object.keys(window.checkoutPriceBreakdowns).length);
-                    // Fallback: Use checkoutPriceBreakdowns if cartData not available
-                    Object.keys(window.checkoutPriceBreakdowns).forEach(function(vId) {
-                        const itemData = window.checkoutPriceBreakdowns[vId];
-                        // CRITICAL: Include items even if total_price is 0 (for Deal items)
-                        // Use parseFloat to handle both 0 and null/undefined correctly
-                        if (itemData && itemData.total_price !== undefined && itemData.total_price !== null) {
-                            const itemSubtotal = parseFloat(itemData.total_price);
-                            // Log for debugging
-                            console.log('[JS_CART_CHECKOUT_LOG] Item variant', vId, 'from checkoutPriceBreakdowns:', {
-                                total_price: itemData.total_price,
-                                parsed: itemSubtotal,
-                                isNaN: isNaN(itemSubtotal)
-                            });
-                            items.push({
-                                subtotal: isNaN(itemSubtotal) ? 0 : itemSubtotal,
-                                voucher: null
-                            });
-                        }
-                    });
-                } else if (window.checkoutData && window.checkoutData.subtotal) {
-                    console.log('[JS_CART_CHECKOUT_LOG] Last fallback: Using checkoutData.subtotal:', window.checkoutData.subtotal);
-                    // Last fallback: Use checkoutData.subtotal (from Backend when page loaded)
-                    items.push({
-                        subtotal: parseFloat(window.checkoutData.subtotal) || 0,
-                        voucher: null
-                    });
-                }
-                
-                // Calculate subtotal sum
-                // CRITICAL: Include items even if subtotal is 0 (for Deal items)
-                const subtotalSum = items.reduce(function(sum, item) {
-                    const itemSubtotal = parseFloat(item.subtotal);
-                    return sum + (isNaN(itemSubtotal) ? 0 : itemSubtotal);
-                }, 0);
-                console.log('[JS_CART_CHECKOUT_LOG] Items for calculation:', items);
-                console.log('[JS_CART_CHECKOUT_LOG] Subtotal sum:', subtotalSum);
-                console.log('[JS_CART_CHECKOUT_LOG] checkoutPriceBreakdowns:', window.checkoutPriceBreakdowns);
-                
-                // EXTREME DEBUG: Log each item's contribution to subtotal
-                console.log('[JS_CART_CHECKOUT_LOG] 🔍 ITEM BREAKDOWN:', items.map(function(item, index) {
-                    const itemSubtotal = parseFloat(item.subtotal);
-                    return {
-                        index: index,
-                        subtotal: item.subtotal,
-                        parsed: itemSubtotal,
-                        isNaN: isNaN(itemSubtotal),
-                        contribution: isNaN(itemSubtotal) ? 0 : itemSubtotal
-                    };
-                }));
-                
-                // CRITICAL VALIDATION: Ensure subtotal is not zero when items exist
-                if (items.length > 0 && subtotalSum === 0) {
-                    console.error('[JS_CART_CHECKOUT_LOG] ❌ CRITICAL: Subtotal is 0 but items exist!', {
-                        items: items,
-                        cartData: cartData,
-                        checkoutPriceBreakdowns: window.checkoutPriceBreakdowns
-                    });
-                }
-
-                // CRITICAL: Get shipping fee from input field (most up-to-date)
-                // Parse correctly by removing all non-digit characters first
-                const shippingFeeInputRaw = $('input[name="feeShip"]').val() || '';
-                const shippingFeeInput = parseFloat(shippingFeeInputRaw.toString().replace(/[^\d]/g, '')) || 0;
-                const shippingFeeData = parseFloat(window.checkoutData.feeship) || 0;
-                const shippingFee = shippingFeeInput || shippingFeeData;
-                
-                // EXTREME DEBUG: Check all possible sources of shipping fee
-                const feeShipFromHTML = $('.fee_ship').text() || '';
-                const feeShipFromHTMLParsed = parseFloat(feeShipFromHTML.toString().replace(/[^\d]/g, '')) || 0;
-                
-                const shippingFeeDebug = {
-                    'input[name="feeShip"] raw': shippingFeeInputRaw,
-                    'input[name="feeShip"] parsed': shippingFeeInput,
-                    'window.checkoutData.feeship': window.checkoutData.feeship,
-                    'window.checkoutData.feeship parsed': shippingFeeData,
-                    '.fee_ship HTML text': feeShipFromHTML,
-                    '.fee_ship HTML parsed': feeShipFromHTMLParsed,
-                    'Final shippingFee used': shippingFee,
-                    'Type of shippingFee': typeof shippingFee,
-                    'Is NaN?': isNaN(shippingFee)
-                };
-                console.log('[JS_CART_CHECKOUT_LOG] 🔍 SHIPPING FEE DEBUG - All Sources:', shippingFeeDebug);
-                logToLaravel('info', 'SHIPPING FEE DEBUG - All Sources', shippingFeeDebug);
-                
-                // Validation: Ensure shipping fee is a valid number
-                if (isNaN(shippingFee) || shippingFee < 0) {
-                    console.error('[JS_CART_CHECKOUT_LOG] ❌ Invalid shipping fee:', {
-                        raw: shippingFeeInputRaw,
-                        parsed: shippingFeeInput,
-                        data: shippingFeeData,
-                        final: shippingFee
-                    });
-                }
-                
-                console.log('[JS_CART_CHECKOUT_LOG] Shipping fee - Input raw:', shippingFeeInputRaw, 'Input parsed:', shippingFeeInput, 'Data:', shippingFeeData, 'Final:', shippingFee);
-
-                // CRITICAL: Get order voucher from checkoutData.sale (most up-to-date)
-                const saleValue = parseFloat(window.checkoutData.sale) || 0;
-                
-                // Validation: Ensure sale value is a valid number
-                if (isNaN(saleValue) || saleValue < 0) {
-                    console.error('[JS_CART_CHECKOUT_LOG] Invalid sale value:', {
-                        checkoutDataSale: window.checkoutData.sale,
-                        parsed: saleValue
-                    });
-                }
-                
-                const orderVoucher = saleValue > 0 ? {
-                    type: 'FIXED',
-                    value: saleValue
-                } : null;
-                console.log('[JS_CART_CHECKOUT_LOG] Order voucher - sale:', saleValue, 'voucher:', orderVoucher);
-                
-                // Validation: Check if subtotal sum matches expected
-                const expectedSubtotal = window.checkoutPriceBreakdowns ? 
-                    Object.keys(window.checkoutPriceBreakdowns).reduce(function(sum, vId) {
-                        const itemData = window.checkoutPriceBreakdowns[vId];
-                        return sum + (parseFloat(itemData?.total_price) || 0);
-                    }, 0) : 0;
-                
-                if (Math.abs(subtotalSum - expectedSubtotal) > 1 && expectedSubtotal > 0) {
-                    console.warn('[JS_CART_CHECKOUT_LOG] Subtotal mismatch!', {
-                        calculated: subtotalSum,
-                        expected: expectedSubtotal,
-                        difference: Math.abs(subtotalSum - expectedSubtotal)
-                    });
-                }
-
-                // Calculate using CartPriceCalculator
-                const calcInput = {
-                    itemsCount: items.length,
-                    items: items.map(function(item) {
-                        return {
-                            subtotal: item.subtotal,
-                            voucher: item.voucher
-                        };
-                    }),
-                    shippingFee: shippingFee,
-                    shippingVoucher: null,
-                    orderVoucher: orderVoucher
-                };
-                console.log('[JS_CART_CHECKOUT_LOG] 🔢 CALLING CartPriceCalculator.calculateTotal with:', calcInput);
-                logToLaravel('info', 'CALLING CartPriceCalculator.calculateTotal', calcInput);
-                
-                const calcResult = CartPriceCalculator.calculateTotal({
-                    items: items,
-                    shippingFee: shippingFee,
-                    shippingVoucher: null, // Voucher ship sẽ được thêm sau nếu có
-                    orderVoucher: orderVoucher
-                });
-
-                console.log('[JS_CART_CHECKOUT_LOG] Calculation result:', calcResult);
-                
-                // EXTREME DEBUG: Manual calculation to verify
-                const manualSubtotal = items.reduce(function(sum, item) {
-                    return sum + (parseFloat(item.subtotal) || 0);
-                }, 0);
-                const manualItemDiscount = 0; // No item vouchers in this case
-                const manualOrderDiscount = orderVoucher ? orderVoucher.value : 0;
-                const manualShippingFee = shippingFee;
-                const manualTotal = (manualSubtotal - manualItemDiscount - manualOrderDiscount) + manualShippingFee;
-                
-                console.log('[JS_CART_CHECKOUT_LOG] 🔢 MANUAL CALCULATION CHECK:', {
-                    'Manual Subtotal': manualSubtotal,
-                    'Manual Item Discount': manualItemDiscount,
-                    'Manual Order Discount': manualOrderDiscount,
-                    'Manual Shipping Fee': manualShippingFee,
-                    'Manual Total Formula': `(${manualSubtotal} - ${manualItemDiscount} - ${manualOrderDiscount}) + ${manualShippingFee}`,
-                    'Manual Total Result': manualTotal,
-                    'CartPriceCalculator Subtotal': calcResult.subtotal,
-                    'CartPriceCalculator Item Discount': calcResult.itemDiscount,
-                    'CartPriceCalculator Order Discount': calcResult.orderDiscount,
-                    'CartPriceCalculator Shipping Fee': calcResult.shippingFee,
-                    'CartPriceCalculator Total': calcResult.total,
-                    'Difference (Manual vs Calculator)': Math.abs(manualTotal - calcResult.total)
-                });
-                
-                console.log('[JS_CART_CHECKOUT_LOG] Expected: subtotal=' + subtotalSum + ', shipping=' + shippingFee + ', discount=' + (orderVoucher ? orderVoucher.value : 0) + ', total=' + (subtotalSum - (orderVoucher ? orderVoucher.value : 0) + shippingFee));
-                
-                // Validation: Check if calculated total matches expected
-                const expectedTotal = (subtotalSum - (orderVoucher ? orderVoucher.value : 0)) + shippingFee;
-                const calculatedTotal = calcResult.total;
-                const totalDifference = Math.abs(calculatedTotal - expectedTotal);
-                
-                console.log('[JS_CART_CHECKOUT_LOG] ✅ VALIDATION CHECK:', {
-                    'Expected Total': expectedTotal,
-                    'Calculated Total': calculatedTotal,
-                    'Difference': totalDifference,
-                    'Is Match?': totalDifference <= 1,
-                    'Formula': `(${subtotalSum} - ${(orderVoucher ? orderVoucher.value : 0)}) + ${shippingFee} = ${expectedTotal}`
-                });
-                
-                if (totalDifference > 1) {
-                    const mismatchData = {
-                        calculated: calculatedTotal,
-                        expected: expectedTotal,
-                        difference: totalDifference,
-                        calcResult: calcResult,
-                        inputs: {
-                            subtotalSum: subtotalSum,
-                            shippingFee: shippingFee,
-                            orderDiscount: orderVoucher ? orderVoucher.value : 0
-                        },
-                        'BREAKDOWN': {
-                            'Subtotal': subtotalSum,
-                            'Order Discount': orderVoucher ? orderVoucher.value : 0,
-                            'Shipping Fee': shippingFee,
-                            'Expected': expectedTotal,
-                            'Got': calculatedTotal,
-                            'Missing': expectedTotal - calculatedTotal
-                        }
-                    };
-                    console.error('[JS_CART_CHECKOUT_LOG] ❌ TOTAL MISMATCH!', mismatchData);
-                    logToLaravel('error', '❌ TOTAL MISMATCH!', mismatchData);
-                } else {
-                    console.log('[JS_CART_CHECKOUT_LOG] ✅ Total matches expected:', calculatedTotal);
-                    logToLaravel('info', '✅ Total matches expected', { total: calculatedTotal });
-                }
-
-                // Update UI using CartPriceCalculator
-                console.log('[JS_CART_CHECKOUT_LOG] 🎨 UPDATING UI with:', {
-                    subtotal: calcResult.subtotal,
-                    total: calcResult.total,
-                    shippingFee: calcResult.shippingFee,
-                    discount: calcResult.itemDiscount + calcResult.orderDiscount,
-                    selectors: {
-                        subtotal: '.subtotal-cart',
-                        total: '.total-order',
-                        shippingFee: '.fee_ship',
-                        discount: '.sale-promotion'
-                    }
-                });
-                
-                CartPriceCalculator.updateUI(calcResult, {
-                    subtotal: '.subtotal-cart',
-                    total: '.total-order',
-                    shippingFee: '.fee_ship',
-                    discount: '.sale-promotion'
-                });
-                
-                // EXTREME DEBUG: Verify UI was updated correctly
-                const uiSubtotal = $('.subtotal-cart').text();
-                const uiTotal = $('.total-order').text();
-                const uiShippingFee = $('.fee_ship').text();
-                const uiDiscount = $('.sale-promotion').text();
-                
-                console.log('[JS_CART_CHECKOUT_LOG] 🎨 UI VALUES AFTER UPDATE:', {
-                    '.subtotal-cart': uiSubtotal,
-                    '.total-order': uiTotal,
-                    '.fee_ship': uiShippingFee,
-                    '.sale-promotion': uiDiscount
-                });
-
-                // Update checkoutData
-                window.checkoutData.feeship = shippingFee;
-                window.checkoutData.total = calcResult.total;
-                // CRITICAL: Also update subtotal in checkoutData to match calculated subtotal
-                // This ensures form submission uses correct subtotal
-                window.checkoutData.subtotal = subtotalSum;
-
-                console.log('[JS_CART_CHECKOUT_LOG] UI updated, final total:', calcResult.total);
-                console.log('[JS_CART_CHECKOUT_LOG] checkoutData updated:', {
-                    subtotal: window.checkoutData.subtotal,
-                    feeship: window.checkoutData.feeship,
-                    sale: window.checkoutData.sale,
-                    total: window.checkoutData.total
-                });
-
-            // Update individual item prices CHỈ từ CartPriceCalculator
-            if (window.checkoutPriceBreakdowns) {
-                Object.keys(window.checkoutPriceBreakdowns).forEach(function(vId) {
-                    const itemData = window.checkoutPriceBreakdowns[vId];
-                    if (itemData && itemData.total_price !== undefined) {
-                        // CRITICAL: Chỉ dùng CartPriceCalculator để format và update
-                        CartPriceCalculator.updateItemPrice(parseInt(vId), itemData.total_price, '.price-item-' + vId);
-                        
-                        // Update breakdown display (nếu có)
-                        if (itemData.price_breakdown && itemData.price_breakdown.length > 1) {
-                            const $breakdownContainer = $('.price-item-' + vId).next('.fs-11.text-muted.mt-1');
-                            if ($breakdownContainer.length) {
-                                // Sử dụng CartPriceCalculator để format breakdown
-                                const calculated = CartPriceCalculator.calculateFromBreakdown(itemData.price_breakdown);
-                                // Format: "1x350.000đ + 19x525.000đ"
-                                let breakdownText = '';
-                                calculated.breakdown.forEach(function(bd, index) {
-                                    // Use unitPrice from breakdown, fallback to calculated unitPrice if 0
-                                    const displayUnitPrice = bd.unitPrice > 0 ? bd.unitPrice : (bd.subtotal > 0 && bd.quantity > 0 ? bd.subtotal / bd.quantity : 0);
-                                    breakdownText += bd.quantity + 'x' + CartPriceCalculator.formatCurrency(displayUnitPrice);
-                                    if (index < calculated.breakdown.length - 1) {
-                                        breakdownText += ' + ';
-                                    }
-                                });
-                                $breakdownContainer.text(breakdownText);
-                            }
-                        }
-                    }
-                });
-            }
-
-                return calcResult.total;
-    }
-    
-    // CRITICAL: Define in global scope (window) so it can be called from anywhere
-    window.updateTotalOrderPriceCheckout = function(forceFetchCartData) {
-        console.log('[JS_CART_CHECKOUT_LOG] updateTotalOrderPriceCheckout() called, forceFetchCartData:', forceFetchCartData);
-        console.log('[JS_CART_CHECKOUT_LOG] Stack trace:', new Error().stack);
-        
-        if (!window.checkoutData) {
-            console.warn('[JS_CART_CHECKOUT_LOG] checkoutData is not initialized');
-            return 0;
-        }
-
-        // Check if CartPriceCalculator is available
-        if (typeof CartPriceCalculator === 'undefined') {
-            console.warn('[Checkout] CartPriceCalculator not loaded, using fallback');
-            // Fallback to old method if needed
-                const subtotal = parseFloat(window.checkoutData.subtotal) || 0;
-                const discount = parseFloat(window.checkoutData.sale) || 0;
-                // Parse correctly by removing all non-digit characters first
-                const feeshipRaw = $('input[name="feeShip"]').val() || '';
-                const feeship = parseFloat(feeshipRaw.toString().replace(/[^\d]/g, '')) || 0;
-                const finalTotal = Math.max(0, subtotal - discount + feeship);
-            // Use Intl.NumberFormat as fallback
-            const formatCurrency = (amount) => new Intl.NumberFormat('vi-VN').format(Math.round(amount)) + 'đ';
-            $('.subtotal-cart').text(formatCurrency(subtotal));
-            $('.sale-promotion').text('-' + formatCurrency(discount));
-            $('.fee_ship').text(formatCurrency(feeship));
-            $('.total-order').text(formatCurrency(finalTotal));
-            return finalTotal;
-        }
-        
-        // CRITICAL: Always fetch cart data if forceFetchCartData is true
-        // When forceFetchCartData is false, only skip fetch if checkoutPriceBreakdowns exists and has data
-        // This ensures real-time calculation accuracy when shipping fee or voucher changes
-        const shouldFetchCartData = forceFetchCartData === true || 
-                                    !window.checkoutPriceBreakdowns || 
-                                    Object.keys(window.checkoutPriceBreakdowns).length === 0;
-        
-        // EXTRA SAFETY: If forceFetchCartData is explicitly true, ALWAYS fetch (override other conditions)
-        if (forceFetchCartData === true) {
-            console.log('[JS_CART_CHECKOUT_LOG] forceFetchCartData=true, will fetch fresh cart data to ensure real-time accuracy');
-        }
-        
-        console.log('[JS_CART_CHECKOUT_LOG] shouldFetchCartData:', shouldFetchCartData, 'checkoutPriceBreakdowns keys:', window.checkoutPriceBreakdowns ? Object.keys(window.checkoutPriceBreakdowns).length : 0);
-        
-        if (shouldFetchCartData && typeof CartAPI !== 'undefined' && CartAPI.getCart) {
-                // Use async approach: fetch cart data, then calculate
-                CartAPI.getCart()
-                    .done(function(response) {
-                        if (response.success && response.data) {
-                            const cartData = response.data;
-                            
-                            // CRITICAL: Update checkoutPriceBreakdowns for ALL items from cart
-                            // But don't overwrite items that were already updated by FlashSale API (they have more accurate prices)
-                            if (cartData.items && Array.isArray(cartData.items)) {
-                                if (!window.checkoutPriceBreakdowns) {
-                                    window.checkoutPriceBreakdowns = {};
-                                }
-                                cartData.items.forEach(function(item) {
-                                    if (item.variant_id) {
-                                        const variantId = item.variant_id;
-                                        // Only update if this item doesn't exist in checkoutPriceBreakdowns
-                                        // This preserves prices updated by FlashSale API
-                                        // CRITICAL: Deal items can have subtotal = 0, so we must use parseFloat correctly
-                                        if (!window.checkoutPriceBreakdowns[variantId]) {
-                                            const itemSubtotal = parseFloat(item.subtotal);
-                                            const finalPrice = isNaN(itemSubtotal) ? 0 : itemSubtotal;
-                                            console.log('[JS_CART_CHECKOUT_LOG] Adding item', variantId, 'to checkoutPriceBreakdowns:', {
-                                                subtotal: item.subtotal,
-                                                parsed: itemSubtotal,
-                                                final: finalPrice
-                                            });
-                                            window.checkoutPriceBreakdowns[variantId] = {
-                                                total_price: finalPrice,
-                                                price_breakdown: item.price_breakdown || null,
-                                                is_available: true
-                                            };
-                                        }
-                                    }
-                                });
-                            }
-                            
-                            // Calculate using CartPriceCalculator - pass cartData to ensure ALL items are included
-                            calculateAndUpdateTotals(cartData);
-                        } else {
-                            // Fallback to existing data
-                            console.warn('[Checkout] Cart API response invalid, using existing data');
-                            calculateAndUpdateTotals(null);
-                        }
-                    })
-                    .fail(function(xhr, status, error) {
-                        console.warn('[Checkout] Failed to fetch cart data, using existing data:', error);
-                        // Fallback to existing data
-                        calculateAndUpdateTotals(null);
-                    });
-            } else {
-                // Fallback: Use existing data if CartAPI not available or don't need to fetch
-                if (!shouldFetchCartData) {
-                    console.log('[JS_CART_CHECKOUT_LOG] Skipping cart data fetch, using existing checkoutPriceBreakdowns');
-                } else {
-                    console.warn('[Checkout] CartAPI not available, using existing data');
-                }
-                calculateAndUpdateTotals(null);
-            }
-    };
-    
     $(document).ready(function() {
         
         // Store price breakdown data for each item
@@ -1820,109 +1292,206 @@ $('body').on('click','.btn_cancel_promotion',function(){
             }
 
             // Sau khi sync xong thì mới render ra màn hình
-            window.updateTotalOrderPriceCheckout();
+            updateTotalOrderPriceCheckout();
         };
+
+        // ===== Bước 2: Viết lại hàm tính Tổng (Clean Code) =====
+        // Thay thế toàn bộ nội dung hàm updateTotalOrderPriceCheckout bằng logic sạch
+        // để tránh việc cộng nhầm biến rác
+        function updateTotalOrderPriceCheckout() {
+            console.log('[UPDATE_TOTAL] ===== BẮT ĐẦU TÍNH TỔNG =====');
+            
+            if (!window.checkoutData) {
+                console.warn('[UPDATE_TOTAL] checkoutData is not initialized');
+                return 0;
+            }
+
+            function formatPrice(price) {
+                if (typeof FlashSaleMixedPrice !== 'undefined' && FlashSaleMixedPrice.formatNumber) {
+                    return FlashSaleMixedPrice.formatNumber(price);
+                }
+                return new Intl.NumberFormat('vi-VN').format(price);
+            }
+
+            // ===== BƯỚC 1: KIỂM TRA VÀ LOG window.checkoutPriceBreakdowns =====
+            console.log('[UPDATE_TOTAL] Step 1: Checking window.checkoutPriceBreakdowns');
+            console.log('[UPDATE_TOTAL] window.checkoutPriceBreakdowns:', window.checkoutPriceBreakdowns);
+            console.log('[UPDATE_TOTAL] Number of items in breakdowns:', window.checkoutPriceBreakdowns ? Object.keys(window.checkoutPriceBreakdowns).length : 0);
+            
+            if (window.checkoutPriceBreakdowns) {
+                Object.keys(window.checkoutPriceBreakdowns).forEach(function(vId) {
+                    let itemData = window.checkoutPriceBreakdowns[vId];
+                    console.log('[UPDATE_TOTAL] Item variantId:', vId, '| total_price:', itemData?.total_price, '| Full data:', itemData);
+                });
+            }
+
+            // ===== BƯỚC 2: TÍNH SUBTOTAL TỪ BREAKDOWNS =====
+            let calculatedSubtotal = 0;
+            let hasBreakdownData = false;
+            let breakdownItems = [];
+            
+            if (window.checkoutPriceBreakdowns && Object.keys(window.checkoutPriceBreakdowns).length > 0) {
+                console.log('[UPDATE_TOTAL] Step 2: Calculating subtotal from breakdowns');
+                
+                // CRITICAL: Tính tổng từ TẤT CẢ items trong breakdown - KHÔNG BỎ SÓT ITEM NÀO
+                const allVariantIds = Object.keys(window.checkoutPriceBreakdowns);
+                console.log('[UPDATE_TOTAL] All variant IDs found:', allVariantIds, '| Count:', allVariantIds.length);
+                
+                allVariantIds.forEach(function(vId, index) {
+                    let itemData = window.checkoutPriceBreakdowns[vId];
+                    console.log('[UPDATE_TOTAL] Processing item #' + (index + 1) + ' of ' + allVariantIds.length + ':', {
+                        variantId: vId,
+                        itemData: itemData,
+                        total_price: itemData?.total_price,
+                        total_price_type: typeof itemData?.total_price
+                    });
+                    
+                    if (itemData && itemData.total_price !== undefined && itemData.total_price !== null) {
+                        const itemPrice = parseFloat(itemData.total_price) || 0;
+                        const beforeAdd = calculatedSubtotal;
+                        calculatedSubtotal += itemPrice;
+                        hasBreakdownData = true;
+                        breakdownItems.push({
+                            variantId: vId,
+                            price: itemPrice,
+                            beforeAdd: beforeAdd,
+                            afterAdd: calculatedSubtotal
+                        });
+                        console.log('[UPDATE_TOTAL] ✓ Added item #' + (index + 1) + ':', {
+                            variantId: vId,
+                            price: itemPrice,
+                            before: beforeAdd,
+                            after: calculatedSubtotal,
+                            accumulated: calculatedSubtotal
+                        });
+                    } else {
+                        console.error('[UPDATE_TOTAL] ✗ Item #' + (index + 1) + ' SKIPPED - Invalid data:', {
+                            variantId: vId,
+                            itemData: itemData,
+                            reason: !itemData ? 'itemData is null/undefined' : 
+                                   (itemData.total_price === undefined ? 'total_price is undefined' : 
+                                   (itemData.total_price === null ? 'total_price is null' : 'unknown'))
+                        });
+                    }
+                });
+                
+                console.log('[UPDATE_TOTAL] Breakdown calculation complete:', {
+                    itemCount: breakdownItems.length,
+                    calculatedSubtotal: calculatedSubtotal,
+                    items: breakdownItems
+                });
+            } else {
+                console.log('[UPDATE_TOTAL] No breakdown data found, will use backend subtotal');
+            }
+            
+            // Nếu không có breakdown data hoặc breakdown rỗng, dùng subtotal từ backend
+            // Điều này đảm bảo khi trang load lần đầu, subtotal được lấy từ backend
+            if (!hasBreakdownData) {
+                calculatedSubtotal = parseFloat(window.checkoutData.subtotal) || 0;
+                console.log('[UPDATE_TOTAL] Using backend subtotal:', calculatedSubtotal);
+            }
+
+            // ===== BƯỚC 3: LẤY DISCOUNT =====
+            const discount = parseFloat(window.checkoutData.sale) || 0;
+            console.log('[UPDATE_TOTAL] Step 3: Discount =', discount);
+            
+            // ===== BƯỚC 4: LẤY PHÍ SHIP =====
+            const feeshipInput = $('input[name="feeShip"]').val();
+            const feeship = parseFloat(feeshipInput) || 0;
+            console.log('[UPDATE_TOTAL] Step 4: Shipping fee');
+            console.log('[UPDATE_TOTAL]   - Input value (raw):', feeshipInput);
+            console.log('[UPDATE_TOTAL]   - Parsed value:', feeship);
+            console.log('[UPDATE_TOTAL]   - Type:', typeof feeship);
+
+            // ===== BƯỚC 5: TÍNH TỔNG CUỐI CÙNG =====
+            // Phép tính duy nhất và cuối cùng: Subtotal - Discount + Shipping Fee
+            // Phí vận chuyển phải là bước cộng cuối cùng sau khi đã trừ toàn bộ mã giảm giá
+            const finalTotal = calculatedSubtotal - discount + feeship;
+            
+            console.log('[UPDATE_TOTAL] Step 5: Final calculation');
+            console.log('[UPDATE_TOTAL]   - Subtotal:', calculatedSubtotal);
+            console.log('[UPDATE_TOTAL]   - Discount:', discount);
+            console.log('[UPDATE_TOTAL]   - Shipping Fee:', feeship);
+            console.log('[UPDATE_TOTAL]   - Formula: Subtotal - Discount + Shipping Fee');
+            console.log('[UPDATE_TOTAL]   - Calculation:', calculatedSubtotal, '-', discount, '+', feeship, '=', finalTotal);
+
+            // ===== BƯỚC 6: CẬP NHẬT DATA STORE =====
+            window.checkoutData.subtotal = calculatedSubtotal;
+            window.checkoutData.feeship = feeship;
+            window.checkoutData.total = Math.max(0, finalTotal);
+            
+            console.log('[UPDATE_TOTAL] Step 6: Updated window.checkoutData:', window.checkoutData);
+
+            // ===== BƯỚC 7: CẬP NHẬT UI =====
+            $('.subtotal-cart').text(formatPrice(calculatedSubtotal) + 'đ');
+            $('.sale-promotion').text('-' + formatPrice(discount) + 'đ');
+            $('.fee_ship').text(formatPrice(feeship) + 'đ');
+            $('.total-order').text(formatPrice(Math.max(0, finalTotal)) + 'đ');
+            
+            console.log('[UPDATE_TOTAL] Step 7: UI updated');
+            console.log('[UPDATE_TOTAL] ===== KẾT THÚC TÍNH TỔNG =====');
+            console.log('[UPDATE_TOTAL] FINAL RESULT:', {
+                calculatedSubtotal: calculatedSubtotal,
+                discount: discount,
+                feeship: feeship,
+                finalTotal: finalTotal,
+                breakdownItemsCount: breakdownItems.length,
+                hasBreakdownData: hasBreakdownData
+            });
+
+            // 8. Cập nhật giá từng dòng khi thay đổi số lượng
+            // Quét qua các item trong window.checkoutPriceBreakdowns (đã có từ backend)
+            if (window.checkoutPriceBreakdowns) {
+                Object.keys(window.checkoutPriceBreakdowns).forEach(function(vId) {
+                    let itemData = window.checkoutPriceBreakdowns[vId];
+                    if (itemData && itemData.total_price !== undefined) {
+                        // Cập nhật lại con số hiển thị của từng dòng sản phẩm
+                        const $priceItem = $('.price-item-' + vId);
+                        if ($priceItem.length) {
+                            $priceItem.text(formatPrice(itemData.total_price) + 'đ');
+                        }
+                        
+                        // Bước 4: Cập nhật breakdown giá (ví dụ: 100x385,000 + 11x440,000)
+                        if (itemData.price_breakdown && itemData.price_breakdown.length > 1) {
+                            const $breakdownContainer = $('.price-item-' + vId).next('.fs-11.text-muted.mt-1');
+                            if ($breakdownContainer.length) {
+                                let breakdownText = '';
+                                itemData.price_breakdown.forEach(function(bd, index) {
+                                    breakdownText += bd.quantity + 'x' + formatPrice(bd.unit_price) + 'đ';
+                                    if (index < itemData.price_breakdown.length - 1) {
+                                        breakdownText += ' + ';
+                                    }
+                                });
+                                $breakdownContainer.text(breakdownText);
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Gatekeeper: nếu subtotal tính được <= 0 => cảnh báo
+            if (calculatedSubtotal <= 0) {
+                console.warn('[Checkout_Sync] calculatedSubtotal is 0 or negative. Using original subtotal from backend.', {
+                    calculatedSubtotal: calculatedSubtotal,
+                    originalSubtotal: window.checkoutData.subtotal,
+                    checkoutData: window.checkoutData
+                });
+            }
+
+            return finalTotal;
+        }
         
         // Handle quantity change in checkout (qtyplus/qtyminus buttons)
         $('body').on('click', '.qtyplus, .qtyminus', function() {
             var variantId = $(this).attr('data-id');
             var $input = $('#quantity-' + variantId);
-            var $btn = $(this);
-            var currentVal = parseInt($input.val()) || 1;
-            var quantity = currentVal;
+            var quantity = parseInt($input.val()) || 1;
             
-            // Determine new quantity based on button
-            if ($(this).hasClass('qtyplus')) {
-                quantity = currentVal + 1;
-            } else if ($(this).hasClass('qtyminus')) {
-                if (currentVal <= 1) return;
-                quantity = currentVal - 1;
-            }
-            
-            $input.val(quantity);
-            $btn.prop('disabled', true);
-            
-            // CRITICAL: Update cart in backend first, then recalculate
-            if (typeof CartAPI === 'undefined') {
-                console.error('[Checkout] CartAPI not loaded');
-                $input.val(currentVal);
-                $btn.prop('disabled', false);
-                return;
-            }
-            
-            CartAPI.updateItem(variantId, quantity)
-                .done(function(response) {
-                    if (response.success) {
-                        // Fetch fresh cart data from backend
-                        if (typeof CartPriceCalculator !== 'undefined') {
-                            CartPriceCalculator.fetchCartData(function(err, cartData) {
-                                if (err || !cartData) {
-                                    console.error('[Checkout] Failed to fetch cart data:', err);
-                                    $input.val(currentVal);
-                                    $btn.prop('disabled', false);
-                                    return;
-                                }
-                                
-                                // Update item price from cart data
-                                var itemData = cartData.items.find(function(item) {
-                                    return item.variant_id === parseInt(variantId);
-                                });
-                                
-                                if (itemData) {
-                                    // CRITICAL: Don't update checkoutPriceBreakdowns here
-                                    // Let checkFlashSalePriceCheckout() update it with correct price from FlashSale API
-                                    // Only update if FlashSale API is not available
-                                    
-                                    // Update item price display temporarily (will be updated by FlashSale API)
-                                    CartPriceCalculator.updateItemPrice(variantId, itemData.subtotal, '.price-item-' + variantId);
-                                    
-                                    // Update breakdown display if exists
-                                    if (itemData.price_breakdown && itemData.price_breakdown.length > 1) {
-                                        const calculated = CartPriceCalculator.calculateFromBreakdown(itemData.price_breakdown);
-                                        const $breakdownContainer = $('.price-item-' + variantId).next('.fs-11.text-muted.mt-1');
-                                        
-                                        if ($breakdownContainer.length) {
-                                            let breakdownText = '';
-                                            calculated.breakdown.forEach(function(bd, index) {
-                                                // Use unitPrice from breakdown, fallback to calculated unitPrice if 0
-                                                const displayUnitPrice = bd.unitPrice > 0 ? bd.unitPrice : (bd.subtotal > 0 && bd.quantity > 0 ? bd.subtotal / bd.quantity : 0);
-                                                breakdownText += bd.quantity + 'x' + CartPriceCalculator.formatCurrency(displayUnitPrice);
-                                                if (index < calculated.breakdown.length - 1) {
-                                                    breakdownText += ' + ';
-                                                }
-                                            });
-                                            $breakdownContainer.text(breakdownText);
-                                        }
-                                    }
-                                    
-                                    // CRITICAL: Check Flash Sale price FIRST - this will update checkoutPriceBreakdowns with correct price
-                                    // checkFlashSalePriceCheckout() will call updateTotalOrderPriceCheckout() in its callback
-                                    console.log('[JS_CART_CHECKOUT_LOG] Calling checkFlashSalePriceCheckout() for variant', variantId, 'quantity', quantity);
-                                    checkFlashSalePriceCheckout(variantId, quantity);
-                                } else {
-                                    // If item not found, still try FlashSale API
-                                    // checkFlashSalePriceCheckout() will call updateTotalOrderPriceCheckout() in its callback
-                                    checkFlashSalePriceCheckout(variantId, quantity);
-                                }
-                                
-                                $btn.prop('disabled', false);
-                            });
-                        } else {
-                            console.error('[Checkout] CartPriceCalculator not loaded');
-                            $input.val(currentVal);
-                            $btn.prop('disabled', false);
-                        }
-                    } else {
-                        $input.val(currentVal);
-                        $btn.prop('disabled', false);
-                        console.error('[Checkout] Update item failed:', response.message);
-                    }
-                })
-                .fail(function(xhr, status, error) {
-                    $input.val(currentVal);
-                    $btn.prop('disabled', false);
-                    console.error('[Checkout] Update item error:', error);
-                });
+            // Debounce to avoid too many calls
+            clearTimeout(window.checkoutPriceTimeout);
+            window.checkoutPriceTimeout = setTimeout(function() {
+                checkFlashSalePriceCheckout(variantId, quantity);
+            }, 300);
         });
         
         // Handle manual input change
@@ -1932,87 +1501,12 @@ $('body').on('click','.btn_cancel_promotion',function(){
                 return;
             }
             var variantId = inputId.replace('quantity-', '');
-            var $input = $(this);
-            var currentVal = parseInt($input.val()) || 1;
-            var quantity = currentVal;
-            
-            if (quantity <= 0) {
-                $input.val(1);
-                quantity = 1;
-            }
+            var quantity = parseInt($(this).val()) || 1;
             
             // Debounce
             clearTimeout(window.checkoutPriceTimeout);
             window.checkoutPriceTimeout = setTimeout(function() {
-                // CRITICAL: Update cart in backend first, then recalculate
-                if (typeof CartAPI === 'undefined') {
-                    console.error('[Checkout] CartAPI not loaded');
-                    return;
-                }
-                
-                CartAPI.updateItem(variantId, quantity)
-                    .done(function(response) {
-                        if (response.success) {
-                            // Fetch fresh cart data from backend
-                            if (typeof CartPriceCalculator !== 'undefined') {
-                                CartPriceCalculator.fetchCartData(function(err, cartData) {
-                                    if (err || !cartData) {
-                                        console.error('[Checkout] Failed to fetch cart data:', err);
-                                        $input.val(currentVal);
-                                        return;
-                                    }
-                                    
-                                    // Update item price from cart data
-                                    var itemData = cartData.items.find(function(item) {
-                                        return item.variant_id === parseInt(variantId);
-                                    });
-                                    
-                                    if (itemData) {
-                                        // CRITICAL: Don't update checkoutPriceBreakdowns here
-                                        // Let checkFlashSalePriceCheckout() update it with correct price from FlashSale API
-                                        
-                                        // Update item price display temporarily (will be updated by FlashSale API)
-                                        CartPriceCalculator.updateItemPrice(variantId, itemData.subtotal, '.price-item-' + variantId);
-                                        
-                                        // Update breakdown display if exists
-                                        if (itemData.price_breakdown && itemData.price_breakdown.length > 1) {
-                                            const calculated = CartPriceCalculator.calculateFromBreakdown(itemData.price_breakdown);
-                                            const $breakdownContainer = $('.price-item-' + variantId).next('.fs-11.text-muted.mt-1');
-                                            
-                                            if ($breakdownContainer.length) {
-                                                let breakdownText = '';
-                                                calculated.breakdown.forEach(function(bd, index) {
-                                                    breakdownText += bd.quantity + 'x' + CartPriceCalculator.formatCurrency(bd.unit_price);
-                                                    if (index < calculated.breakdown.length - 1) {
-                                                        breakdownText += ' + ';
-                                                    }
-                                                });
-                                                $breakdownContainer.text(breakdownText);
-                                            }
-                                        }
-                                        
-                                        // CRITICAL: Check Flash Sale price FIRST - this will update checkoutPriceBreakdowns with correct price
-                                        // checkFlashSalePriceCheckout() will call updateTotalOrderPriceCheckout() in its callback
-                                        checkFlashSalePriceCheckout(variantId, quantity);
-                                    } else {
-                                        // If item not found, still try FlashSale API
-                                        // checkFlashSalePriceCheckout() will call updateTotalOrderPriceCheckout() in its callback
-                                        checkFlashSalePriceCheckout(variantId, quantity);
-                                    }
-                                });
-                            } else {
-                                console.error('[Checkout] CartPriceCalculator not loaded');
-                                $input.val(currentVal);
-                            }
-                        } else {
-                            $input.val(currentVal);
-                            console.error('[Checkout] Update item failed:', response.message);
-                        }
-                    })
-                    .fail(function(xhr, status, error) {
-                        $input.val(currentVal);
-                        console.error('[Checkout] Update item error:', error);
-                    });
+                checkFlashSalePriceCheckout(variantId, quantity);
             }, 500);
         });
         
@@ -2020,7 +1514,7 @@ $('body').on('click','.btn_cancel_promotion',function(){
         $(document).ready(function() {
             // Đợi một chút để đảm bảo window.checkoutData đã được khởi tạo
             setTimeout(function() {
-                window.updateTotalOrderPriceCheckout();
+                updateTotalOrderPriceCheckout();
             }, 100);
         });
     });
