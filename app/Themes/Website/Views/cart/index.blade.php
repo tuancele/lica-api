@@ -857,8 +857,8 @@
                 '.item-total-' + variantId, // Price display selector
                 '.flash-sale-warning-container-' + variantId, // Warning container
                 function(priceData) {
-                    // Callback: Cập nhật tổng tiền sau khi tính giá thành công
-                    FlashSaleMixedPrice.updateTotalOrderPrice();
+                    // DEPRECATED: Không còn tự tính toán tổng tiền từ DOM
+                    // Tổng tiền phải lấy từ Backend response (CartAPI.updateCartUI)
                     
                     // Show/hide warning row based on warning content
                     setTimeout(function() {

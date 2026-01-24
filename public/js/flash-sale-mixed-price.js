@@ -297,43 +297,10 @@
         },
         
         /**
-         * Cập nhật tổng giá trị đơn hàng
-         * Tính tổng từ tất cả các item trong giỏ hàng/thanh toán
+         * DEPRECATED: Hàm này đã bị xóa bỏ
+         * Tất cả logic tính toán tổng tiền phải lấy từ Backend
+         * Không được tự tính toán từ DOM nữa
          */
-        updateTotalOrderPrice: function() {
-            let totalPrice = 0;
-            
-            // Lấy tất cả giá item từ các selector .item-total-{id} (Cart) hoặc .price-item-{id} (Checkout)
-            $('[class*="item-total-"], [class*="price-item-"]').each(function() {
-                const $item = $(this);
-                const priceText = $item.text().replace(/[^\d]/g, '');
-                const itemPrice = parseInt(priceText) || 0;
-                
-                // Nếu là .item-total-{id}, giá đã là subtotal (price × quantity)
-                // Nếu là .price-item-{id}, cần nhân với quantity
-                if ($item.attr('class').includes('price-item-')) {
-                    const itemId = $item.attr('class').match(/price-item-(\d+)/);
-                    if (itemId && itemId[1]) {
-                        const variantId = itemId[1];
-                        const $quantityInput = $('#quantity-' + variantId);
-                        const quantity = parseInt($quantityInput.val()) || 1;
-                        totalPrice += (itemPrice * quantity);
-                    } else {
-                        totalPrice += itemPrice;
-                    }
-                } else {
-                    // .item-total-{id} đã là subtotal
-                    totalPrice += itemPrice;
-                }
-            });
-            
-            // Cập nhật tổng tiền vào các selector tổng trong Cart
-            $('.shop_table .order-total .total-price, .cart_totals .total-price').each(function() {
-                $(this).text(FlashSaleMixedPrice.formatNumber(totalPrice) + 'đ');
-            });
-            
-            return totalPrice;
-        },
         
         /**
          * Khởi tạo Event Listeners cho Product Detail Page
