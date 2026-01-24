@@ -1222,7 +1222,13 @@ document.addEventListener('DOMContentLoaded', function() {
             $('.count-cart').html(res.total);
             $('body .total-price').html(res.price+'đ');
             $('#page_checkout .subtotal-cart').html(res.price+'đ');
-            $('#page_checkout .total-order').html(res.totalPrice+'đ');
+            // CRITICAL: Sau khi cập nhật subtotal-cart, gọi lại hàm tính tổng từ DOM
+            if (typeof updateTotalOrderPriceCheckout === 'function') {
+                updateTotalOrderPriceCheckout();
+            } else {
+                // Fallback: Cập nhật trực tiếp nếu hàm chưa có
+                $('#page_checkout .total-order').html(res.totalPrice+'đ');
+            }
             if(window.location.href == '{{asset("cart/thanh-toan")}}'){
                 loadPromotion();
                 getFeeShip();
@@ -1256,7 +1262,13 @@ document.addEventListener('DOMContentLoaded', function() {
             $('.count-cart').html(res.total);
             $('body .total-price').html(res.price+'đ');
             $('#page_checkout .subtotal-cart').html(res.price+'đ');
-            $('#page_checkout .total-order').html(res.totalPrice+'đ');
+            // CRITICAL: Sau khi cập nhật subtotal-cart, gọi lại hàm tính tổng từ DOM
+            if (typeof updateTotalOrderPriceCheckout === 'function') {
+                updateTotalOrderPriceCheckout();
+            } else {
+                // Fallback: Cập nhật trực tiếp nếu hàm chưa có
+                $('#page_checkout .total-order').html(res.totalPrice+'đ');
+            }
             if(window.location.href == '{{asset("cart/thanh-toan")}}'){
                 loadPromotion();
                 getFeeShip();

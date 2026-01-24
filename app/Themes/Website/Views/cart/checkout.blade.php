@@ -1156,7 +1156,7 @@ $('body').on('click','.btn_cancel_promotion',function(){
                 '.flash-sale-warning-container-' + variantId, // Warning container
                 function(priceData) {
                     // Lưu price breakdown chỉ để kiểm tra stock error, KHÔNG dùng để tính tổng
-                    // Tổng tiền phải lấy từ Backend (window.checkoutData.subtotal)
+                    // Tổng tiền phải đọc trực tiếp từ DOM (.subtotal-cart)
                     if (!window.checkoutPriceBreakdowns) {
                         window.checkoutPriceBreakdowns = {};
                     }
@@ -1245,58 +1245,53 @@ $('body').on('click','.btn_cancel_promotion',function(){
         // Bước 1: Khóa biến Subtotal - Tuyệt đối không tính lại ở Frontend
         // Biến window.checkoutData.subtotal phải được coi là hằng số sau khi trang đã load
         // Chỉ có Backend mới được phép thay đổi số này
+        // DEPRECATED: Hàm syncCheckoutData không còn cần thiết
+        // Tất cả logic tính toán đều đọc trực tiếp từ DOM
+        // Giữ lại để tương thích với code cũ (nếu có gọi)
         window.syncCheckoutData = function (newSubtotal, newSale, newFeeship) {
-            if (!window.checkoutData) {
-                window.checkoutData = {
-                    subtotal: 0,
-                    sale: 0,
-                    feeship: 0,
-                    total: 0
-                };
-            }
-
-            // CẤM: Không cho phép Frontend thay đổi subtotal
-            // Subtotal chỉ được set từ Backend khi trang load
-            // if (typeof newSubtotal !== 'undefined' && newSubtotal !== null) {
-            //     window.checkoutData.subtotal = parseFloat(newSubtotal) || 0;
-            // }
-            
-            if (typeof newSale !== 'undefined' && newSale !== null) {
-                window.checkoutData.sale = parseFloat(newSale) || 0;
-            }
-            
-            // Chỉ cập nhật feeship, không làm ảnh hưởng đến subtotal
+            // Chỉ cập nhật phí ship vào input ẩn nếu có
             if (typeof newFeeship !== 'undefined' && newFeeship !== null) {
-                window.checkoutData.feeship = parseFloat(newFeeship) || 0;
-                // Đồng bộ input ẩn để các chỗ khác (nếu có) vẫn đọc được
-                $('input[name="feeShip"]').val(window.checkoutData.feeship);
+                $('input[name="feeShip"]').val(parseFloat(newFeeship) || 0);
+            }
+            
+            // Cập nhật giảm giá hiển thị nếu có
+            if (typeof newSale !== 'undefined' && newSale !== null) {
+                const formatter = new Intl.NumberFormat('vi-VN');
+                const saleNum = parseFloat(newSale) || 0;
+                if (saleNum > 0) {
+                    $('.sale-promotion').text('-' + formatter.format(saleNum) + 'đ');
+                } else {
+                    $('.sale-promotion').text('0đ');
+                }
             }
 
-            // Sau khi sync xong thì mới render ra màn hình
+            // Sau khi sync xong thì tính lại tổng từ DOM
             updateTotalOrderPriceCheckout();
         };
 
-        // ===== Bước 2: Viết lại hàm tính Tổng (Clean Code - Lấy dữ liệu từ Backend) =====
-        // CRITICAL: Không tự tính lại Subtotal từ Breakdown
-        // Backend đã tính toán xong Flash Sale, Deal Sốc và giá phân cấp
-        // JavaScript chỉ làm nhiệm vụ cộng thêm phí ship vào con số Subtotal mà Backend đã trả về
+        // ===== Bước 2: Viết lại hàm tính Tổng (Đọc trực tiếp từ DOM) =====
+        // CRITICAL: Đọc chính xác con số đang hiển thị trên màn hình
+        // Không dùng window.checkoutData hay breakdowns vì có thể bị sai với Deal sốc
         function updateTotalOrderPriceCheckout() {
-            // 1. Lấy dữ liệu gốc từ window object (Backend chốt)
-            const subtotal = parseFloat(window.checkoutData.subtotal) || 0;
-            const discount = parseFloat(window.checkoutData.sale) || 0;
+            // 1. Đọc chính xác con số Subtotal đang hiển thị ở thẻ .subtotal-cart (Ví dụ: "350.000đ")
+            const subtotalText = $('.subtotal-cart').first().text().replace(/[^0-9]/g, '');
+            const subtotal = parseFloat(subtotalText) || 0;
+            
+            // 2. Đọc chính xác phí ship từ input ẩn (Ví dụ: 22000)
             const feeship = parseFloat($('input[name="feeShip"]').val()) || 0;
             
-            // 2. Phép tính duy nhất
+            // 3. Đọc giảm giá từ voucher (nếu có hiển thị)
+            const discountText = $('.sale-promotion').text().replace(/[^0-9]/g, '');
+            const discount = parseFloat(discountText) || 0;
+            
+            // 4. Phép tính duy nhất: Tổng cuối = Tiền hàng hiển thị - Giảm giá hiển thị + Phí ship
             const finalTotal = subtotal - discount + feeship;
             
-            // 3. Cập nhật UI (Sử dụng Intl.NumberFormat để hiển thị chuẩn tiếng Việt)
+            // 5. Ghi đè con số này vào thẻ .total-order
             const formatter = new Intl.NumberFormat('vi-VN');
-            $('.subtotal-cart').text(formatter.format(subtotal) + 'đ');
-            $('.sale-promotion').text('-' + formatter.format(discount) + 'đ');
-            $('.fee_ship').text(formatter.format(feeship) + 'đ');
             $('.total-order').text(formatter.format(finalTotal) + 'đ');
             
-            console.log(`[FINAL_FIX] Subtotal: ${subtotal}, Discount: ${discount}, Ship: ${feeship}, Total: ${finalTotal}`);
+            console.log(`[DOM_FORCE_FIX] UI_Subtotal: ${subtotal}, Discount: ${discount}, Ship: ${feeship}, Final: ${finalTotal}`);
             
             return finalTotal;
         }
