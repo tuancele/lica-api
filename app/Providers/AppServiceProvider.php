@@ -52,7 +52,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\Warehouse\OrderStockReceiptService::class,
             function ($app) {
                 return new \App\Services\Warehouse\OrderStockReceiptService(
-                    $app->make(\App\Services\Warehouse\StockReceiptService::class)
+                    $app->make(\App\Services\Warehouse\StockReceiptService::class),
+                    $app->make(\App\Services\Inventory\Contracts\InventoryServiceInterface::class)
                 );
             }
         );

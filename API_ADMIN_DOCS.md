@@ -5247,3 +5247,332 @@ Cập nhật phiếu xuất kho dựa trên thay đổi trạng thái đơn hàn
 
 **最后更新:** 2026-01-23
 **维护者:** AI Assistant
+
+---
+
+## Cart & Checkout V2 API
+
+### Overview
+Cart và Checkout V2 được xây dựng lại từ đầu với kiến trúc sạch, tích hợp đầy đủ voucher (Promotion) và vận chuyển (GHTK/Delivery).
+
+**Controllers:**
+- `App\Themes\Website\Controllers\CartControllerV2` - Xử lý giỏ hàng
+- `App\Themes\Website\Controllers\CheckoutControllerV2` - Xử lý thanh toán
+
+**Views:**
+- `app/Themes/Website/Views/cart/v2/index.blade.php` - Trang giỏ hàng
+- `app/Themes/Website/Views/cart/v2/checkout.blade.php` - Trang thanh toán
+- `app/Themes/Website/Views/cart/v2/result.blade.php` - Trang kết quả đặt hàng
+
+---
+
+### 1. GET /cart/gio-hang
+
+**Mục tiêu:** Hiển thị trang giỏ hàng V2
+
+**Phản hồi:** View với dữ liệu giỏ hàng từ CartService
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 2. GET /cart/gio-hang.json
+
+**Mục tiêu:** Lấy dữ liệu giỏ hàng dạng JSON
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "variant_id": 123,
+        "product_id": 10,
+        "product_name": "Sản phẩm A",
+        "variant_name": "Màu đỏ - Size M",
+        "quantity": 2,
+        "unit_price": 100000,
+        "subtotal": 200000,
+        "image": "https://cdn/..."
+      }
+    ],
+    "summary": {
+      "total_qty": 2,
+      "subtotal": 200000,
+      "discount": 0,
+      "shipping_fee": 0,
+      "total": 200000
+    }
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 3. POST /cart/items
+
+**Mục tiêu:** Thêm sản phẩm vào giỏ hàng
+
+**Body (JSON):**
+- `variant_id` (int, required): ID variant
+- `qty` (int, required, min:1): Số lượng
+- `is_deal` (bool, optional): Có phải Deal Sốc không
+
+**Phản hồi mẫu (201):**
+```json
+{
+  "success": true,
+  "message": "Thêm vào giỏ hàng thành công",
+  "data": {
+    "total_qty": 3
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 4. PUT /cart/items/{variant_id}
+
+**Mục tiêu:** Cập nhật số lượng sản phẩm trong giỏ hàng
+
+**Body (JSON):**
+- `qty` (int, required, min:0): Số lượng mới
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "summary": {
+      "total_qty": 2,
+      "subtotal": 200000
+    }
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 5. DELETE /cart/items/{variant_id}
+
+**Mục tiêu:** Xóa sản phẩm khỏi giỏ hàng
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "message": "Xóa sản phẩm thành công",
+  "data": {
+    "removed_variant_ids": [123],
+    "summary": {
+      "total_qty": 1,
+      "subtotal": 100000
+    }
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 6. GET /checkout/thanh-toan
+
+**Mục tiêu:** Hiển thị trang thanh toán V2
+
+**Phản hồi:** View với dữ liệu giỏ hàng, địa chỉ, danh sách promotion
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 7. POST /checkout/thanh-toan
+
+**Mục tiêu:** Xử lý đặt hàng
+
+**Body (Form Data):**
+- `token` (string, required): Security token
+- `full_name` (string, required): Tên người mua
+- `phone` (string, required): Số điện thoại
+- `email` (string, optional): Email
+- `address` (string, required): Địa chỉ chi tiết
+- `province_id` (int, required): ID tỉnh/thành
+- `district_id` (int, required): ID quận/huyện
+- `ward_id` (int, required): ID phường/xã
+- `remark` (string, optional): Ghi chú
+- `shipping_fee` (float, optional): Phí vận chuyển
+
+**Phản hồi mẫu (201):**
+```json
+{
+  "success": true,
+  "message": "Đặt hàng thành công",
+  "data": {
+    "order_id": 123,
+    "order_code": "1234567890",
+    "redirect_url": "/checkout/dat-hang-thanh-cong?code=1234567890"
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 8. POST /checkout/coupon/apply
+
+**Mục tiêu:** Áp dụng mã giảm giá (voucher)
+
+**Body (JSON):**
+- `code` (string, required): Mã giảm giá
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "message": "Áp dụng mã thành công",
+  "data": {
+    "coupon": {
+      "code": "GIAM10",
+      "discount": 10000
+    },
+    "summary": {
+      "subtotal": 200000,
+      "discount": 10000,
+      "total": 190000
+    }
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 9. POST /checkout/coupon/remove
+
+**Mục tiêu:** Hủy mã giảm giá
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "summary": {
+      "subtotal": 200000,
+      "discount": 0,
+      "total": 200000
+    }
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 10. POST /checkout/shipping-fee
+
+**Mục tiêu:** Tính phí vận chuyển (GHTK)
+
+**Body (JSON):**
+- `province_id` (int, required): ID tỉnh/thành
+- `district_id` (int, required): ID quận/huyện
+- `ward_id` (int, required): ID phường/xã
+- `address` (string, optional): Địa chỉ chi tiết
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "shipping_fee": 30000,
+    "free_ship": false,
+    "summary": {
+      "subtotal": 200000,
+      "discount": 0,
+      "shipping_fee": 30000,
+      "total": 230000
+    }
+  }
+}
+```
+
+**Logic:**
+- Kiểm tra free ship nếu tổng đơn >= `free_order` config
+- Gọi GHTK API để tính phí vận chuyển nếu `ghtk_status = 1`
+- Trả về phí vận chuyển và tổng đơn hàng đã cập nhật
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 11. GET /checkout/search-location
+
+**Mục tiêu:** Tìm kiếm địa chỉ (Xã, Huyện, Tỉnh)
+
+**Query Params:**
+- `q` (string, required): Từ khóa tìm kiếm
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "results": [
+    {
+      "id": 123,
+      "text": "Phường 1, Quận 1, TP. Hồ Chí Minh",
+      "ward_id": 123,
+      "ward_name": "Phường 1",
+      "district_id": 456,
+      "district_name": "Quận 1",
+      "province_id": 789,
+      "province_name": "TP. Hồ Chí Minh"
+    }
+  ]
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 12. GET /checkout/dat-hang-thanh-cong
+
+**Mục tiêu:** Hiển thị trang kết quả đặt hàng thành công
+
+**Query Params:**
+- `code` (string, required): Mã đơn hàng
+
+**Phản hồi:** View với thông tin đơn hàng
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### Tích hợp Voucher (Promotion)
+
+- Sử dụng model `App\Modules\Promotion\Models\Promotion`
+- Validation: Kiểm tra `status = 1`, `start <= today`, `end >= today`, `order_sale <= subtotal`
+- Áp dụng giảm giá: `unit = 0` (phần trăm) hoặc `unit = 1` (số tiền cố định)
+- Lưu vào session: `ss_counpon` với `id`, `sale`, `code`, `value`, `unit`
+
+---
+
+### Tích hợp Vận chuyển (GHTK)
+
+- Sử dụng service `CartService::calculateShippingFee()`
+- Kiểm tra free ship: `free_ship = 1` và `subtotal >= free_order`
+- Gọi GHTK API: `/services/shipment/fee` với thông tin pick address và delivery address
+- Config: `ghtk_status`, `ghtk_url`, `ghtk_token` từ Config model
+
+---
+
+**最后更新:** 2026-01-25
+**维护者:** AI Assistant

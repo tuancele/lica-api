@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\RequestException;
 use App\Modules\Config\Models\Config;
 
 /**
@@ -1311,65 +1312,209 @@ class CartService
      * @param int|null $userId Optional user ID
      * @return float Shipping fee in VND
      */
+    /**
+     * Parse location ID from string format (e.g., "01TTT" -> 1) or return integer as is
+     * 
+     * @param mixed $id
+     * @return int|null
+     */
+    private function parseLocationId($id): ?int
+    {
+        if (is_null($id)) {
+            return null;
+        }
+        
+        if (is_int($id)) {
+            return $id;
+        }
+        
+        if (is_string($id)) {
+            // Handle format like "01TTT", "008HH", "00328"
+            // Extract numeric part from beginning
+            if (preg_match('/^(\d+)/', $id, $matches)) {
+                return (int)$matches[1];
+            }
+            
+            // Try direct conversion
+            if (is_numeric($id)) {
+                return (int)$id;
+            }
+        }
+        
+        return null;
+    }
+
     public function calculateShippingFee(array $address, ?int $userId = null): float
     {
-        // Check free ship
-        $oldCart = Session::has('cart') ? Session::get('cart') : null;
-        $cart = new Cart($oldCart);
-        $subtotal = $cart->totalPrice;
-        $sale = Session::has('ss_counpon') ? Session::get('ss_counpon')['sale'] ?? 0 : 0;
+        try {
+            Log::info('[CartService] calculateShippingFee called', [
+                'address' => $address,
+                'user_id' => $userId,
+            ]);
+
+            // Use getCart() method to get cart data (Single Source of Truth)
+            $cartData = $this->getCart($userId);
+            $subtotal = $cartData['summary']['subtotal'] ?? 0;
+            $discount = $cartData['summary']['discount'] ?? 0;
+            $sale = $discount; // Use discount from summary
+            
+            Log::info('[CartService] calculateShippingFee cart data', [
+                'subtotal' => $subtotal,
+                'discount' => $discount,
+                'has_items' => !empty($cartData['items']),
+                'items_count' => count($cartData['items'] ?? []),
+            ]);
         
         // Check free ship config
         $freeShipEnabled = $this->getConfig('free_ship');
         $freeOrderAmount = $this->getConfig('free_order');
+            
+            Log::info('[CartService] calculateShippingFee free ship check', [
+                'free_ship_enabled' => $freeShipEnabled,
+                'free_order_amount' => $freeOrderAmount,
+                'subtotal' => $subtotal,
+                'will_apply_free_ship' => ($freeShipEnabled && $subtotal >= $freeOrderAmount),
+            ]);
         
         if ($freeShipEnabled && $subtotal >= $freeOrderAmount) {
+                Log::info('[CartService] calculateShippingFee free ship applied', [
+                    'subtotal' => $subtotal,
+                    'free_order_amount' => $freeOrderAmount,
+                ]);
             return 0;
         }
         
         // Check GHTK status
         $ghtkStatus = $this->getConfig('ghtk_status');
+            Log::info('[CartService] calculateShippingFee GHTK status check', [
+                'ghtk_status' => $ghtkStatus,
+                'ghtk_status_type' => gettype($ghtkStatus),
+                'is_enabled' => (bool)$ghtkStatus,
+            ]);
+            
         if (!$ghtkStatus) {
+                Log::info('[CartService] calculateShippingFee GHTK disabled');
             return 0;
         }
         
-        // Get pick address (warehouse)
+            // Get pick address (warehouse) with relationships
         $pick = Pick::where('status', '1')->orderBy('sort', 'asc')->first();
+            
         if (!$pick) {
-            Log::warning('GHTK: No pick address found');
+                Log::warning('[CartService] calculateShippingFee: No pick address found');
+                return 0;
+            }
+            
+            // Parse pick address IDs from string format to integer
+            $pickProvinceId = $this->parseLocationId($pick->province_id);
+            $pickDistrictId = $this->parseLocationId($pick->district_id);
+            $pickWardId = $this->parseLocationId($pick->ward_id);
+            
+            // Load relationships using parsed IDs
+            $pickProvince = $pickProvinceId ? Province::find($pickProvinceId) : null;
+            $pickDistrict = $pickDistrictId ? District::find($pickDistrictId) : null;
+            $pickWard = $pickWardId ? Ward::find($pickWardId) : null;
+            
+            Log::info('[CartService] calculateShippingFee pick address loaded', [
+                'pick_id' => $pick->id,
+                'pick_province_id_raw' => $pick->province_id,
+                'pick_province_id_parsed' => $pickProvinceId,
+                'pick_district_id_raw' => $pick->district_id,
+                'pick_district_id_parsed' => $pickDistrictId,
+                'pick_ward_id_raw' => $pick->ward_id,
+                'pick_ward_id_parsed' => $pickWardId,
+                'has_province' => $pickProvince !== null,
+                'has_district' => $pickDistrict !== null,
+                'has_ward' => $pickWard !== null,
+                'province_name' => $pickProvince->name ?? 'NULL',
+                'district_name' => $pickDistrict->name ?? 'NULL',
+                'ward_name' => $pickWard->name ?? 'NULL',
+            ]);
+            
+            if (!$pickProvince || !$pickDistrict || !$pickWard) {
+                Log::warning('[CartService] calculateShippingFee: Pick address relationships not found', [
+                    'pick_province_id' => $pickProvinceId,
+                    'pick_district_id' => $pickDistrictId,
+                    'pick_ward_id' => $pickWardId,
+                ]);
             return 0;
         }
         
         // Calculate total weight from cart items
         $weight = 0;
-        foreach ($cart->items as $variant) {
-            $item = $variant['item'];
+            $items = $cartData['items'] ?? [];
+            
+            foreach ($items as $item) {
+                $variantId = $item['variant_id'] ?? null;
+                $qty = $item['qty'] ?? 1;
             $itemWeight = 0;
             
-            if (is_object($item)) {
-                $itemWeight = $item->weight ?? 0;
-            } elseif (is_array($item)) {
-                $itemWeight = $item['weight'] ?? 0;
+                if ($variantId) {
+                    // Load variant with product to get weight
+                    $variant = Variant::with('product')->find($variantId);
+                    if ($variant) {
+                        // Try to get weight from variant first, then from product
+                        $itemWeight = $variant->weight ?? $variant->product->weight ?? 0;
+                    }
+                }
+                
+                // If weight is 0 or not set, use default weight (100g per item)
+                if ($itemWeight <= 0) {
+                    $itemWeight = 100; // Default 100g per item
             }
             
-            $weight += ($itemWeight * ($variant['qty'] ?? 1));
-        }
+                $weight += ($itemWeight * $qty);
+            }
+            
+            Log::info('[CartService] calculateShippingFee weight calculated', [
+                'total_weight' => $weight,
+                'items_count' => count($items),
+                'weight_per_item' => count($items) > 0 ? ($weight / array_sum(array_column($items, 'qty'))) : 0,
+            ]);
         
-        // Get delivery location names
-        $province = Province::find($address['province_id'] ?? null);
-        $district = District::find($address['district_id'] ?? null);
-        $ward = Ward::find($address['ward_id'] ?? null);
+            // Get delivery location names - parse from string format if needed
+            $provinceIdRaw = $address['province_id'] ?? null;
+            $districtIdRaw = $address['district_id'] ?? null;
+            $wardIdRaw = $address['ward_id'] ?? null;
+            
+            $provinceId = $this->parseLocationId($provinceIdRaw);
+            $districtId = $this->parseLocationId($districtIdRaw);
+            $wardId = $this->parseLocationId($wardIdRaw);
+            
+            if (!$provinceId || !$districtId || !$wardId) {
+                Log::warning('[CartService] calculateShippingFee: Missing or invalid address IDs', [
+                    'province_id_raw' => $provinceIdRaw,
+                    'province_id_parsed' => $provinceId,
+                    'district_id_raw' => $districtIdRaw,
+                    'district_id_parsed' => $districtId,
+                    'ward_id_raw' => $wardIdRaw,
+                    'ward_id_parsed' => $wardId,
+                ]);
+                return 0;
+            }
+            
+            // Models now have correct primary key defined, can use find()
+            $province = Province::find($provinceId);
+            $district = District::find($districtId);
+            $ward = Ward::find($wardId);
         
         if (!$province || !$district || !$ward) {
-            Log::warning('GHTK: Invalid delivery address', $address);
+                Log::warning('[CartService] calculateShippingFee: Invalid delivery address', [
+                    'province_id' => $provinceId,
+                    'district_id' => $districtId,
+                    'ward_id' => $wardId,
+                    'province_found' => $province !== null,
+                    'district_found' => $district !== null,
+                    'ward_found' => $ward !== null,
+                ]);
             return 0;
         }
         
         // Prepare GHTK API request data
         $info = [
-            "pick_province" => $pick->province->name ?? '',
-            "pick_district" => $pick->district->name ?? '',
-            "pick_ward" => $pick->ward->name ?? '',
+                "pick_province" => $pickProvince->name ?? '',
+                "pick_district" => $pickDistrict->name ?? '',
+                "pick_ward" => $pickWard->name ?? '',
             "pick_street" => $pick->street ?? '',
             "pick_address" => $pick->address ?? '',
             "province" => $province->name ?? '',
@@ -1377,24 +1522,43 @@ class CartService
             "ward" => $ward->name ?? '',
             "address" => $address['address'] ?? '',
             "weight" => $weight,
-            "value" => $subtotal - $sale,
+                "value" => max(0, $subtotal - $sale),
             "transport" => 'road',
             "deliver_option" => 'none',
             "tags" => [0],
         ];
+            
+            Log::info('[CartService] calculateShippingFee GHTK request prepared', [
+                'info' => $info,
+            ]);
         
         // Call GHTK API
-        try {
             $ghtkUrl = $this->getConfig('ghtk_url');
             $ghtkToken = $this->getConfig('ghtk_token');
             
+            Log::info('[CartService] calculateShippingFee GHTK config', [
+                'ghtk_url' => $ghtkUrl ? 'SET' : 'EMPTY',
+                'ghtk_token' => $ghtkToken ? 'SET' : 'EMPTY',
+            ]);
+            
             if (empty($ghtkUrl) || empty($ghtkToken)) {
-                Log::warning('GHTK: Missing URL or Token configuration');
+                Log::warning('[CartService] calculateShippingFee: Missing GHTK URL or Token configuration', [
+                    'ghtk_url_empty' => empty($ghtkUrl),
+                    'ghtk_token_empty' => empty($ghtkToken),
+                ]);
                 return 0;
             }
             
+            $apiUrl = rtrim($ghtkUrl, '/') . "/services/shipment/fee";
+            Log::info('[CartService] calculateShippingFee calling GHTK API', [
+                'url' => $apiUrl,
+                'method' => 'GET',
+                'query_params' => $info,
+            ]);
+            
+            try {
             $client = new Client();
-            $response = $client->request('GET', rtrim($ghtkUrl, '/') . "/services/shipment/fee", [
+                $response = $client->request('GET', $apiUrl, [
                 'headers' => [
                     'Token' => $ghtkToken,
                 ],
@@ -1402,18 +1566,52 @@ class CartService
                 'timeout' => 10, // 10 seconds timeout
             ]);
             
-            $result = json_decode($response->getBody()->getContents());
+                $statusCode = $response->getStatusCode();
+                $responseBody = $response->getBody()->getContents();
+                
+                Log::info('[CartService] calculateShippingFee GHTK API response', [
+                    'status_code' => $statusCode,
+                    'response_body' => $responseBody,
+                ]);
+                
+                $result = json_decode($responseBody);
+                
+                Log::info('[CartService] calculateShippingFee GHTK response parsed', [
+                    'result' => $result,
+                    'has_success' => isset($result->success),
+                    'success_value' => $result->success ?? null,
+                    'has_fee' => isset($result->fee),
+                    'fee_value' => $result->fee->fee ?? null,
+                ]);
             
             if ($result && isset($result->success) && $result->success && isset($result->fee->fee)) {
-                return (float)$result->fee->fee;
+                    $fee = (float)$result->fee->fee;
+                    Log::info('[CartService] calculateShippingFee GHTK success', [
+                        'fee' => $fee,
+                    ]);
+                    return $fee;
             }
             
-            Log::warning('GHTK: Invalid response', ['response' => $result]);
+                Log::warning('[CartService] calculateShippingFee: GHTK invalid response', [
+                    'response' => $result,
+                    'response_body' => $responseBody,
+                ]);
             return 0;
+            } catch (\GuzzleHttp\Exception\RequestException $e) {
+                Log::error('[CartService] calculateShippingFee GHTK API request exception', [
+                    'message' => $e->getMessage(),
+                    'code' => $e->getCode(),
+                    'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null,
+                ]);
+                return 0;
+            }
         } catch (\Exception $e) {
-            Log::error('GHTK getFee Error: ' . $e->getMessage(), [
+            Log::error('[CartService] calculateShippingFee exception', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
                 'address' => $address,
-                'info' => $info,
             ]);
             return 0;
         }
@@ -1446,7 +1644,15 @@ class CartService
      */
     public function checkout(array $data, ?int $userId = null): array
     {
+        try {
+            Log::info('[CartService] checkout called', [
+                'user_id' => $userId,
+                'data_keys' => array_keys($data),
+                'has_cart' => Session::has('cart'),
+            ]);
+            
         if (!Session::has('cart')) {
+                Log::warning('[CartService] checkout empty cart');
             throw new \Exception('Giỏ hàng trống');
         }
         
@@ -1454,8 +1660,25 @@ class CartService
         $cart = new Cart($oldCart);
         
         if (count($cart->items) === 0) {
+                Log::warning('[CartService] checkout cart has no items');
             throw new \Exception('Giỏ hàng trống');
         }
+            
+            // Get accurate cart summary from getCart() (Single Source of Truth)
+            $cartData = $this->getCart($userId);
+            $subtotal = $cartData['summary']['subtotal'] ?? $cart->totalPrice;
+            $discount = $cartData['summary']['discount'] ?? 0;
+            $shippingFee = (float)($data['shipping_fee'] ?? 0);
+            $total = $subtotal - $discount + $shippingFee;
+            
+            Log::info('[CartService] checkout cart summary', [
+                'subtotal' => $subtotal,
+                'discount' => $discount,
+                'shipping_fee' => $shippingFee,
+                'total' => $total,
+                'cart_totalPrice' => $cart->totalPrice,
+                'items_count' => count($cart->items),
+            ]);
         
         // Re-validate coupon
         $sale = 0;
@@ -1466,7 +1689,7 @@ class CartService
                 ['status', '1'],
                 ['start', '<=', date('Y-m-d')],
                 ['end', '>=', date('Y-m-d')],
-                ['order_sale', '<=', $cart->totalPrice],
+                    ['order_sale', '<=', $subtotal],
                 ['id', $couponData['id']],
             ])->first();
             
@@ -1474,15 +1697,29 @@ class CartService
                 $count = Order::where('promotion_id', $promotion->id)->count();
                 if ($count < $promotion->number) {
                     $sale = ($promotion->unit == 0) 
-                        ? round(($cart->totalPrice / 100) * $promotion->value) 
+                            ? round(($subtotal / 100) * $promotion->value) 
                         : $promotion->value;
                     $promotionId = $promotion->id;
+                        
+                        Log::info('[CartService] checkout coupon applied', [
+                            'promotion_id' => $promotionId,
+                            'sale' => $sale,
+                        ]);
                 }
             }
         }
         
         // Create order
         $code = time();
+            
+            Log::info('[CartService] checkout creating order', [
+                'code' => $code,
+                'total' => $total,
+                'subtotal' => $subtotal,
+                'sale' => $sale,
+                'shipping_fee' => $shippingFee,
+            ]);
+            
         $orderId = Order::insertGetId([
             'code' => $code,
             'name' => $data['full_name'],
@@ -1496,33 +1733,148 @@ class CartService
             'member_id' => $userId ?? 0,
             'ship' => '0',
             'sale' => $sale,
-            'total' => $cart->totalPrice,
+                'total' => $total,
             'promotion_id' => $promotionId,
-            'fee_ship' => $data['shipping_fee'] ?? 0,
+                'fee_ship' => $shippingFee,
             'status' => '0',
             'created_at' => date('Y-m-d H:i:s'),
         ]);
         
         if ($orderId <= 0) {
+                Log::error('[CartService] checkout order creation failed', [
+                    'code' => $code,
+                ]);
             throw new \Exception('Lỗi tạo đơn hàng');
         }
+            
+            Log::info('[CartService] checkout order created', [
+                'order_id' => $orderId,
+                'code' => $code,
+            ]);
         
         // Create order details
         $date = strtotime(date('Y-m-d H:i:s'));
         $flash = FlashSale::where([['status', '1'], ['start', '<=', $date], ['end', '>=', $date]])->first();
+            
+            Log::info('[CartService] checkout processing order details', [
+                'order_id' => $orderId,
+                'items_count' => count($cart->items),
+                'has_flash_sale' => $flash !== null,
+                'flash_sale_id' => $flash->id ?? null,
+            ]);
         
         foreach ($cart->items as $variantId => $item) {
             $variant = Variant::with('product')->find($variantId);
             if (!$variant || !$variant->product) {
+                    Log::warning('[CartService] checkout variant not found', [
+                        'variant_id' => $variantId,
+                    ]);
                 continue;
             }
             
             $product = $variant->product;
             $productName = $product->name;
-            if (isset($item['is_deal']) && $item['is_deal'] == 1) {
+            
+            // Initialize IDs for tracking stock source
+            $productsaleId = null;
+            $dealsaleId = null;
+            $dealId = null;
+            
+            // Check if item is from Deal FIRST (Deal has priority over Flash Sale)
+            // If item is from Deal (is_deal = 1), it should NOT be counted as Flash Sale
+            $isDealItem = isset($item['is_deal']) && $item['is_deal'] == 1;
+            
+            if ($isDealItem) {
                 $productName = '[DEAL SỐC] ' . $productName;
+                
+                // Find SaleDeal for this product/variant
+                $now = time();
+                $saleDealQuery = SaleDeal::where('product_id', $product->id)
+                    ->whereHas('deal', function ($q) use ($now) {
+                        $q->where('status', '1')
+                            ->where('start', '<=', $now)
+                            ->where('end', '>=', $now);
+                    });
+                
+                if ($variant->id) {
+                    $saleDealQuery->where(function ($q) use ($variant) {
+                        $q->where('variant_id', $variant->id)
+                            ->orWhereNull('variant_id');
+                    });
+                } else {
+                    $saleDealQuery->whereNull('variant_id');
+                }
+                
+                $saleDeal = $saleDealQuery->first();
+                if ($saleDeal) {
+                    $dealsaleId = $saleDeal->id;
+                    $dealId = $saleDeal->deal_id;
+                    
+                    Log::info('[CartService] Item identified as Deal', [
+                        'order_id' => $orderId,
+                        'variant_id' => $variant->id,
+                        'dealsale_id' => $dealsaleId,
+                        'deal_id' => $dealId,
+                    ]);
+                }
             }
             
+            // Check if item is from Flash Sale (ONLY if NOT a Deal item)
+            // Deal items should NOT be counted as Flash Sale even if they participate in Flash Sale
+            if ($flash && !$isDealItem) {
+                try {
+                    // Find ProductSale - check variant-specific first, then product-level
+                    $productSale = ProductSale::where([
+                        ['flashsale_id', $flash->id],
+                        ['product_id', $product->id],
+                        ['variant_id', $variant->id],
+                    ])->first();
+                    
+                    // If no variant-specific, try product-level (variant_id is null)
+                    if (!$productSale) {
+                        $productSale = ProductSale::where([
+                            ['flashsale_id', $flash->id],
+                            ['product_id', $product->id],
+                            ['variant_id', null],
+                        ])->first();
+                    }
+                    
+                    if ($productSale) {
+                        $productsaleId = $productSale->id;
+                        // NOTE: Do NOT increment ProductSale.buy here
+                        // Stock deduction and buy count increment will be handled by OrderStockReceiptService
+                        // when creating export receipt. This ensures stock is only deducted once.
+                        
+                        Log::info('[CartService] Flash Sale ProductSale found (buy will be incremented when export receipt is created)', [
+                            'flash_sale_id' => $flash->id,
+                            'product_sale_id' => $productSale->id,
+                            'product_id' => $product->id,
+                            'variant_id' => $variant->id,
+                            'qty' => $item['qty'],
+                        ]);
+                    } else {
+                        Log::warning('[CartService] ProductSale not found for Flash Sale', [
+                            'flash_sale_id' => $flash->id,
+                            'product_id' => $product->id,
+                            'variant_id' => $variant->id,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    // Log error but don't fail the order creation
+                    Log::error('[CartService] Failed to update Flash Sale stock during checkout', [
+                        'flash_sale_id' => $flash->id,
+                        'product_id' => $product->id,
+                        'variant_id' => $variant->id,
+                        'qty' => $item['qty'],
+                        'error' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                }
+            }
+            
+            // Create order detail with stock source tracking
             OrderDetail::insert([
                 'order_id' => $orderId,
                 'product_id' => $product->id,
@@ -1535,42 +1887,25 @@ class CartService
                 'image' => $product->image ?? '',
                 'weight' => ($variant->weight ?? 0) * $item['qty'],
                 'subtotal' => $item['price'] * $item['qty'],
+                'productsale_id' => $productsaleId,
+                'dealsale_id' => $dealsaleId,
+                'deal_id' => $dealId,
                 'created_at' => date('Y-m-d H:i:s'),
             ]);
             
-            // Update Flash Sale stock with race condition protection
-            if ($flash) {
-                try {
-                    // Check if this is variant-specific Flash Sale first
-                    $variantProductSale = ProductSale::where([
-                        ['flashsale_id', $flash->id],
-                        ['product_id', $product->id],
-                        ['variant_id', $variant->id],
-                    ])->first();
-                    
-                    $variantId = $variantProductSale ? $variant->id : null;
-                    
-                    // Use FlashSaleStockService to safely increment buy count
-                    $this->flashSaleStockService->incrementBuy(
-                        $flash->id,
-                        $product->id,
-                        $variantId,
-                        $item['qty']
-                    );
-                } catch (\Exception $e) {
-                    // Log error but don't fail the order creation
-                    // The order is already created, but Flash Sale stock wasn't updated
-                    Log::error('Failed to update Flash Sale stock during checkout', [
-                        'flash_sale_id' => $flash->id,
-                        'product_id' => $product->id,
-                        'variant_id' => $variant->id,
-                        'qty' => $item['qty'],
-                        'error' => $e->getMessage(),
-                    ]);
-                    // Note: In production, you might want to rollback the order or handle this differently
-                }
-            }
+            Log::info('[CartService] OrderDetail created with stock source tracking', [
+                'order_id' => $orderId,
+                'variant_id' => $variant->id,
+                'productsale_id' => $productsaleId,
+                'dealsale_id' => $dealsaleId,
+                'deal_id' => $dealId,
+            ]);
         }
+        
+            Log::info('[CartService] checkout order details created', [
+                'order_id' => $orderId,
+                'items_processed' => count($cart->items),
+            ]);
         
         // Clear cart and coupon
         Session::forget('cart');
@@ -1578,27 +1913,96 @@ class CartService
         // Force save session to ensure persistence
         session()->save();
         Session::save(); // Force save session
+            
+            Log::info('[CartService] checkout cart cleared', [
+                'order_id' => $orderId,
+            ]);
         
         // Auto create export receipt for order (status = '0' means chờ xác nhận -> receipt status = completed)
         try {
-            $order = Order::find($orderId);
-            if ($order && $order->status === '0') {
-                $orderStockReceiptService = app(\App\Services\Warehouse\OrderStockReceiptService::class);
-                $orderStockReceiptService->createExportReceiptFromOrder($order, \App\Models\StockReceipt::STATUS_COMPLETED);
+            Log::info('[CartService] Attempting to create export receipt', [
+                'order_id' => $orderId,
+            ]);
+            
+            $order = Order::with(['ward', 'district', 'province'])->find($orderId);
+            
+            if (!$order) {
+                Log::warning('[CartService] Order not found for export receipt creation', [
+                    'order_id' => $orderId,
+                ]);
+            } else {
+                Log::info('[CartService] Order found, checking status', [
+                    'order_id' => $orderId,
+                    'order_code' => $order->code,
+                    'order_status' => $order->status,
+                    'order_status_type' => gettype($order->status),
+                    'status_is_zero_string' => ($order->status === '0'),
+                    'status_is_zero_int' => ($order->status === 0),
+                    'status_equals_zero' => ($order->status == 0),
+                ]);
+                
+                // Check if status is '0' (string) or 0 (int)
+                if ($order->status === '0' || $order->status === 0 || $order->status == 0) {
+                    Log::info('[CartService] Order status is 0, creating export receipt', [
+                        'order_id' => $orderId,
+                        'order_code' => $order->code,
+                    ]);
+                    
+                    $orderStockReceiptService = app(\App\Services\Warehouse\OrderStockReceiptService::class);
+                    $receipt = $orderStockReceiptService->createExportReceiptFromOrder($order, \App\Models\StockReceipt::STATUS_COMPLETED);
+                    
+                    if ($receipt) {
+                        Log::info('[CartService] checkout export receipt created successfully', [
+                            'order_id' => $orderId,
+                            'order_code' => $order->code,
+                            'receipt_id' => $receipt->id,
+                            'receipt_code' => $receipt->receipt_code,
+                        ]);
+                    } else {
+                        Log::warning('[CartService] createExportReceiptFromOrder returned null', [
+                            'order_id' => $orderId,
+                            'order_code' => $order->code,
+                        ]);
+                    }
+                } else {
+                    Log::info('[CartService] Order status is not 0, skipping export receipt creation', [
+                        'order_id' => $orderId,
+                        'order_status' => $order->status,
+                    ]);
+                }
             }
         } catch (\Exception $e) {
             // Log error but don't fail order creation
-            Log::error('Failed to auto-create export receipt for order', [
+            Log::error('[CartService] Failed to auto-create export receipt for order', [
                 'order_id' => $orderId,
                 'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
             ]);
         }
+            
+            Log::info('[CartService] checkout completed successfully', [
+                'order_id' => $orderId,
+                'order_code' => $code,
+            ]);
         
         return [
             'order_code' => (string)$code,
             'order_id' => $orderId,
             'redirect_url' => '/cart/dat-hang-thanh-cong?code=' . $code,
         ];
+        } catch (\Exception $e) {
+            Log::error('[CartService] checkout exception', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $userId,
+                'data' => $data,
+            ]);
+            throw $e;
+        }
     }
 
     /**

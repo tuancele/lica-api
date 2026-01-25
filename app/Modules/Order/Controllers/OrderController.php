@@ -103,7 +103,12 @@ class OrderController extends Controller
                 ];
                 
                 $getFee = json_decode($this->getFee($info));
-                $data['fee'] = ($getFee && $getFee->success) ? $getFee->fee : '';
+                // Ensure fee is always an object or null, never a string
+                if ($getFee && is_object($getFee) && isset($getFee->success) && $getFee->success && isset($getFee->fee)) {
+                    $data['fee'] = $getFee;
+                } else {
+                    $data['fee'] = null;
+                }
             }
         }
         
@@ -191,31 +196,35 @@ class OrderController extends Controller
                 // Cancel-like statuses (config dependent): treat both 2 and 4 as "cancel/failed"
                 $cancelStatuses = [2, 4];
 
-                // Nếu đơn bị hủy/thất bại lần đầu (trước đó không nằm trong nhóm cancel) => hoàn quỹ Deal + trả kho
+                // Nếu đơn bị hủy/thất bại lần đầu (trước đó không nằm trong nhóm cancel)
+                // NOTE: OrderController only sends information to warehouse, does NOT directly modify stock
+                // All stock operations (deduct/restore) are handled by OrderStockReceiptService
                 if (in_array((int) $req->status, $cancelStatuses, true)
                     && !in_array((int) $oldStatus, $cancelStatuses, true)) {
                     try {
-                        // Centralized stock rollback via WarehouseService
-                        // This handles all stock rollback logic: Normal, Flash Sale, and Deal
-                        $warehouseService = app(\App\Services\Warehouse\WarehouseServiceInterface::class);
-                        $warehouseService->rollbackOrderStock($order->id);
+                        // NOTE: Stock restoration and Deal quota rollback are handled by OrderStockReceiptService::cancelExportReceiptFromOrder
+                        // which is called via updateExportReceiptFromOrderStatus above
+                        // OrderStockReceiptService::restoreStockFromOrderDetails already handles:
+                        // - Restore physical_stock
+                        // - Restore flash_sale_hold/deal_hold
+                        // - Decrement ProductSale.buy / SaleDeal.buy
+                        // - Increment SaleDeal.qty
+                        // Do NOT call WarehouseService::rollbackOrderStock or rollbackDealQuota here to avoid duplicate operations
                         
-                        Log::info('[Order_Cancel] Stock rolled back successfully via WarehouseService', [
+                        Log::info('[Order_Cancel] Stock restoration handled by OrderStockReceiptService', [
                             'order_id' => $order->id,
                             'order_code' => $order->code,
                         ]);
-
-                        // Rollback Deal quota (separate from stock rollback)
-                        $this->rollbackDealQuota($order);
-
+                        
                         // Tạo phiếu nhập lại kho (tương tự luồng hủy/hoàn)
+                        // This is for accounting purposes, stock is already restored by OrderStockReceiptService
                         $this->createImportReceiptFromOrder($order);
                     } catch (\Exception $e) {
                         DB::rollBack();
-                        Log::error("Rollback stock error for order {$order->code}: " . $e->getMessage());
+                        Log::error("Create import receipt error for order {$order->code}: " . $e->getMessage());
                         return response()->json([
                             'status' => 'error',
-                            'errors' => ['alert' => ['0' => 'Hoàn kho thất bại: ' . $e->getMessage()]]
+                            'errors' => ['alert' => ['0' => 'Tạo phiếu nhập kho thất bại: ' . $e->getMessage()]]
                         ]);
                     }
                 }

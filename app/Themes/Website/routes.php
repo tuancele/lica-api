@@ -66,23 +66,36 @@
 			Route::post('tracking/postTracking', 'HomeController@postTracking')->name('postTracking');
 			
 			Route::group(['prefix' => 'cart'],function(){
-				Route::get('get', 'CartController@get')->name('cart.get');
-				Route::get('gio-hang', 'CartController@index')->name('cart.index');
-				Route::get('gio-hang.json', 'CartController@indexJson')->name('cart.index.json');
-				Route::get('thanh-toan', 'CartController@checkout')->name('cart.payment');
-				Route::post('thanh-toan', 'CartController@postCheckout')->name('cart.checkout');
-				Route::get('dat-hang-thanh-cong', 'CartController@result')->name('cart.success');
-			    Route::post('add-to-cart', 'CartController@addCart')->name('cart.add');
-			    Route::post('del-item-cart', 'CartController@delCart')->name('cart.del');
-			    Route::post('update-cart', 'CartController@updateCart')->name('cart.update');
-			    Route::post('fee-ship', 'CartController@feeShip')->name('cart.feeship');
-			    Route::post('choseAddress', 'CartController@choseAddress')->name('cart.choseAddress');
-			    Route::get('search-location', 'CartController@searchLocation')->name('cart.searchLocation');
-			    Route::get('loadPromotion', 'CartController@loadPromotion')->name('cart.loadPromotion');
-			    Route::post('applyCoupon', 'CartController@applyCoupon')->name('cart.applyCoupon');
-			    Route::post('cancelCoupon', 'CartController@cancelCoupon')->name('cart.cancelCoupon');
-			    Route::get('load-district/{id}', 'CartController@loadDistrict');
-			    Route::get('load-ward/{id}', 'CartController@loadWard');
+				Route::get('get', 'CartControllerV2@get')->name('cart.get');
+				Route::get('gio-hang', 'CartControllerV2@index')->name('cart.index');
+				Route::get('gio-hang.json', 'CartControllerV2@getCartJson')->name('cart.v2.json');
+				Route::post('items', 'CartControllerV2@addItem')->name('cart.v2.add');
+				Route::post('add-to-cart', 'CartControllerV2@addCart')->name('cart.add');
+				Route::put('items/{variant_id}', 'CartControllerV2@updateItem')->name('cart.v2.update');
+				Route::post('update-cart', 'CartControllerV2@updateCart')->name('cart.update');
+				Route::delete('items/{variant_id}', 'CartControllerV2@removeItem')->name('cart.v2.remove');
+				Route::post('del-item-cart', 'CartControllerV2@delCart')->name('cart.del');
+			});
+			
+			Route::group(['prefix' => 'cart'],function(){
+				Route::get('thanh-toan', 'CheckoutControllerV2@index')->name('cart.payment');
+				Route::post('thanh-toan', 'CheckoutControllerV2@checkout')->name('cart.checkout');
+				Route::get('dat-hang-thanh-cong', 'CheckoutControllerV2@result')->name('cart.success');
+				Route::get('loadPromotion', 'CheckoutControllerV2@loadPromotion')->name('cart.loadPromotion');
+				Route::post('applyCoupon', 'CheckoutControllerV2@applyCoupon')->name('cart.applyCoupon');
+				Route::post('cancelCoupon', 'CheckoutControllerV2@removeCoupon')->name('cart.cancelCoupon');
+				Route::post('fee-ship', 'CheckoutControllerV2@calculateShippingFee')->name('cart.feeship');
+				Route::get('search-location', 'CheckoutControllerV2@searchLocation')->name('cart.searchLocation');
+			});
+			
+			Route::group(['prefix' => 'checkout'],function(){
+				Route::get('thanh-toan', 'CheckoutControllerV2@index')->name('checkout.v2.index');
+				Route::post('thanh-toan', 'CheckoutControllerV2@checkout')->name('checkout.v2.checkout');
+				Route::get('dat-hang-thanh-cong', 'CheckoutControllerV2@result')->name('checkout.v2.result');
+				Route::post('coupon/apply', 'CheckoutControllerV2@applyCoupon')->name('checkout.v2.applyCoupon');
+				Route::post('coupon/remove', 'CheckoutControllerV2@removeCoupon')->name('checkout.v2.removeCoupon');
+				Route::post('shipping-fee', 'CheckoutControllerV2@calculateShippingFee')->name('checkout.v2.shippingFee');
+				Route::get('search-location', 'CheckoutControllerV2@searchLocation')->name('checkout.v2.searchLocation');
 			});
 
 			Route::get('redirect/{provider}', 'LoginController@redirect')->name('login.social');
@@ -126,8 +139,6 @@
 				Route::post('contact', 'ContactController@contact');
 			});
 
-			Route::get('district/{id}', 'CartController@district');
-			Route::get('ward/{id}', 'CartController@ward');
 
 			// Route chi tiết sản phẩm (ưu tiên bắt slug sản phẩm trước)
             Route::get('{slug}', 'ProductController@show')->name('product.show');

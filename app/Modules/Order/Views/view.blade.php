@@ -135,16 +135,27 @@
                                 </td>
                             </tr>
                             @else
-                            @php $feeship = $fee->fee; @endphp
+                            @php
+                                $feeship = 0;
+                                if (isset($fee) && !empty($fee)) {
+                                    if (is_object($fee) && isset($fee->fee)) {
+                                        $feeship = $fee->fee;
+                                    } elseif (is_numeric($fee)) {
+                                        $feeship = (float)$fee;
+                                    }
+                                }
+                            @endphp
+                            @if($feeship > 0)
                             <tr>
                                 <td><i class="fa fa-truck" aria-hidden="true"></i></td>
                                 <td colspan="4">
                                     <span><strong>GHTK đường bộ</strong></span>
                                 </td>
                                 <td>
-                                    {{number_format($fee->fee)}}đ
+                                    {{number_format($feeship)}}đ
                                 </td>
                             </tr>
+                            @endif
                             @endif
                             @endif
                             <tr>

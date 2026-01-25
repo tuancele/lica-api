@@ -1857,15 +1857,20 @@
             $('.addCartDetail .icon').html('<svg width="22" height="19" viewBox="0 0 22 19" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 6.99953H16.21L11.83 0.439531C11.64 0.159531 11.32 0.0195312 11 0.0195312C10.68 0.0195312 10.36 0.159531 10.17 0.449531L5.79 6.99953H1C0.45 6.99953 0 7.44953 0 7.99953C0 8.08953 0.00999996 8.17953 0.04 8.26953L2.58 17.5395C2.81 18.3795 3.58 18.9995 4.5 18.9995H17.5C18.42 18.9995 19.19 18.3795 19.43 17.5395L21.97 8.26953L22 7.99953C22 7.44953 21.55 6.99953 21 6.99953ZM11 2.79953L13.8 6.99953H8.2L11 2.79953ZM17.5 16.9995L4.51 17.0095L2.31 8.99953H19.7L17.5 16.9995ZM11 10.9995C9.9 10.9995 9 11.8995 9 12.9995C9 14.0995 9.9 14.9995 11 14.9995C12.1 14.9995 13 14.0995 13 12.9995C13 11.8995 12.1 10.9995 11 10.9995Z" fill="white"></path></svg>');
           if(res.status == 'success'){
             $('.count-cart').html(res.total);
-            // Removed getCart() - sidebar cart is disabled, redirect to cart page instead
             alert("Đã thêm vào giỏ hàng");
           }else{
-            alert("Có lỗi xảy ra trong quá trình xử lý, xin vui lòng thử lại");
+            var errorMsg = res.message || "Có lỗi xảy ra trong quá trình xử lý, xin vui lòng thử lại";
+            alert(errorMsg);
           }
         },
         error: function(xhr, status, error){
-            alert('Có lỗi xảy ra, xin vui lòng thử lại');
-            window.location = window.location.href;
+            $('.addCartDetail').prop('disabled',false);
+            $('.addCartDetail .icon').html('<svg width="22" height="19" viewBox="0 0 22 19" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 6.99953H16.21L11.83 0.439531C11.64 0.159531 11.32 0.0195312 11 0.0195312C10.68 0.0195312 10.36 0.159531 10.17 0.449531L5.79 6.99953H1C0.45 6.99953 0 7.44953 0 7.99953C0 8.08953 0.00999996 8.17953 0.04 8.26953L2.58 17.5395C2.81 18.3795 3.58 18.9995 4.5 18.9995H17.5C18.42 18.9995 19.19 18.3795 19.43 17.5395L21.97 8.26953L22 7.99953C22 7.44953 21.55 6.99953 21 6.99953ZM11 2.79953L13.8 6.99953H8.2L11 2.79953ZM17.5 16.9995L4.51 17.0095L2.31 8.99953H19.7L17.5 16.9995ZM11 10.9995C9.9 10.9995 9 11.8995 9 12.9995C9 14.0995 9.9 14.9995 11 14.9995C12.1 14.9995 13 14.0995 13 12.9995C13 11.8995 12.1 10.9995 11 10.9995Z" fill="white"></path></svg>');
+            var errorMsg = 'Có lỗi xảy ra, xin vui lòng thử lại';
+            if(xhr.responseJSON && xhr.responseJSON.message){
+                errorMsg = xhr.responseJSON.message;
+            }
+            alert(errorMsg);
         }
       })
     });
@@ -1945,9 +1950,21 @@
                     $('.btnBuyDealSốc').prop('disabled',true).html('<span class="spinner-border spinner-border-sm"></span>');
                 },
                 success: function (res) {
+                    $('.btnBuyDealSốc').prop('disabled',false).html('Mua ngay');
                     if(res.status == 'success'){
                         window.location = '{{route("cart.index")}}';
+                    }else{
+                        var errorMsg = res.message || "Có lỗi xảy ra trong quá trình xử lý, xin vui lòng thử lại";
+                        alert(errorMsg);
                     }
+                },
+                error: function(xhr, status, error){
+                    $('.btnBuyDealSốc').prop('disabled',false).html('Mua ngay');
+                    var errorMsg = 'Có lỗi xảy ra, xin vui lòng thử lại';
+                    if(xhr.responseJSON && xhr.responseJSON.message){
+                        errorMsg = xhr.responseJSON.message;
+                    }
+                    alert(errorMsg);
                 }
             });
             return;
@@ -1972,12 +1989,18 @@
           if(res.status == 'success'){
             window.location = '{{route("cart.payment")}}';
           }else{
-            alert("Có lỗi xảy ra trong quá trình xử lý, xin vui lòng thử lại");
+            var errorMsg = res.message || "Có lỗi xảy ra trong quá trình xử lý, xin vui lòng thử lại";
+            alert(errorMsg);
           }
         },
         error: function(xhr, status, error){
-            alert('Có lỗi xảy ra, xin vui lòng thử lại');
-            window.location = window.location.href;
+            $('.buyNowDetail').prop('disabled',false);
+            $('.buyNowDetail').html('Mua ngay');
+            var errorMsg = 'Có lỗi xảy ra, xin vui lòng thử lại';
+            if(xhr.responseJSON && xhr.responseJSON.message){
+                errorMsg = xhr.responseJSON.message;
+            }
+            alert(errorMsg);
         }
       })
     });

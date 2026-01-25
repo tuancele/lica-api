@@ -741,4 +741,82 @@ class InventoryService implements InventoryV2ServiceInterface, LegacyInventorySe
             return ['success' => true, 'message' => 'OK', 'before' => $before, 'after' => $after];
         });
     }
+
+    /**
+     * Deduct stock from correct source (Flash Sale/Deal/Available) for order fulfillment
+     * 
+     * @param int $variantId
+     * @param int $quantity
+     * @param string $type 'flash_sale', 'deal', or 'available'
+     * @param string $reason
+     * @return array
+     */
+    public function deductStockForOrderFulfillment(int $variantId, int $quantity, string $type = 'available', string $reason = 'order_fulfillment'): array
+    {
+        if ($quantity <= 0) {
+            return ['success' => false, 'message' => 'Invalid quantity'];
+        }
+
+        $warehouseId = $this->getDefaultWarehouseId();
+
+        return DB::transaction(function () use ($variantId, $quantity, $type, $reason, $warehouseId) {
+            $stock = $this->lockStock($variantId, $warehouseId);
+            $dto = $this->getStock($variantId, $warehouseId);
+            
+            // Check available stock
+            if ($dto->sellableStock < $quantity) {
+                throw new InsufficientStockException("Insufficient sellable stock. Available: {$dto->sellableStock}");
+            }
+
+            $physicalBefore = $stock->physical_stock;
+            $flashSaleHoldBefore = $stock->flash_sale_hold;
+            $dealHoldBefore = $stock->deal_hold;
+            
+            // Always deduct from physical_stock
+            $stock->decrement('physical_stock', $quantity);
+            
+            // Also reduce hold if from Flash Sale or Deal
+            if ($type === 'flash_sale') {
+                $newFlashSaleHold = max(0, $flashSaleHoldBefore - $quantity);
+                $stock->update(['flash_sale_hold' => $newFlashSaleHold]);
+            } elseif ($type === 'deal') {
+                $newDealHold = max(0, $dealHoldBefore - $quantity);
+                $stock->update(['deal_hold' => $newDealHold]);
+            }
+            
+            $stock->update(['last_movement_at' => now()]);
+            
+            $physicalAfter = $stock->fresh()->physical_stock;
+            $flashSaleHoldAfter = $stock->fresh()->flash_sale_hold;
+            $dealHoldAfter = $stock->fresh()->deal_hold;
+
+            $this->recordMovement([
+                'warehouse_id' => $warehouseId,
+                'variant_id' => $variantId,
+                'movement_type' => 'order_fulfillment',
+                'quantity' => -$quantity,
+                'physical_before' => $physicalBefore,
+                'physical_after' => $physicalAfter,
+                'reserved_before' => $stock->reserved_stock,
+                'reserved_after' => $stock->reserved_stock,
+                'available_before' => $dto->availableStock,
+                'available_after' => $this->getStock($variantId, $warehouseId)->availableStock,
+                'reason' => "{$reason} ({$type})",
+            ]);
+
+            $this->clearStockCache($variantId, $warehouseId);
+            $this->checkAndCreateAlerts($stock->fresh());
+
+            return [
+                'success' => true,
+                'message' => 'OK',
+                'physical_before' => $physicalBefore,
+                'physical_after' => $physicalAfter,
+                'flash_sale_hold_before' => $flashSaleHoldBefore,
+                'flash_sale_hold_after' => $flashSaleHoldAfter,
+                'deal_hold_before' => $dealHoldBefore,
+                'deal_hold_after' => $dealHoldAfter,
+            ];
+        });
+    }
 }
