@@ -1223,7 +1223,9 @@ document.addEventListener('DOMContentLoaded', function() {
             $('body .total-price').html(res.price+'đ');
             $('#page_checkout .subtotal-cart').html(res.price+'đ');
             // CRITICAL: Sau khi cập nhật subtotal-cart, gọi lại hàm tính tổng từ DOM
-            if (typeof updateTotalOrderPriceCheckout === 'function') {
+            if (typeof window.forceUpdateTotalCheckout === 'function') {
+                window.forceUpdateTotalCheckout();
+            } else if (typeof updateTotalOrderPriceCheckout === 'function') {
                 updateTotalOrderPriceCheckout();
             } else {
                 // Fallback: Cập nhật trực tiếp nếu hàm chưa có
@@ -1263,7 +1265,9 @@ document.addEventListener('DOMContentLoaded', function() {
             $('body .total-price').html(res.price+'đ');
             $('#page_checkout .subtotal-cart').html(res.price+'đ');
             // CRITICAL: Sau khi cập nhật subtotal-cart, gọi lại hàm tính tổng từ DOM
-            if (typeof updateTotalOrderPriceCheckout === 'function') {
+            if (typeof window.forceUpdateTotalCheckout === 'function') {
+                window.forceUpdateTotalCheckout();
+            } else if (typeof updateTotalOrderPriceCheckout === 'function') {
                 updateTotalOrderPriceCheckout();
             } else {
                 // Fallback: Cập nhật trực tiếp nếu hàm chưa có
