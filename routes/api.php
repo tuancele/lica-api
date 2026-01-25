@@ -99,6 +99,7 @@ Route::prefix('v1/deals')->namespace('Api\V1')->group(function () {
 // This ensures session sharing between web and API routes
 Route::prefix('v1/cart')->namespace('Api\V1')->middleware('web')->group(function () {
     Route::get('/', 'CartController@index'); // GET /api/v1/cart
+    Route::get('/gio-hang', 'CartController@getCartPage'); // GET /api/v1/cart/gio-hang - Full cart page data
     Route::post('/items', 'CartController@addItem'); // POST /api/v1/cart/items
     Route::put('/items/{variant_id}', 'CartController@updateItem'); // PUT /api/v1/cart/items/{variant_id}
     Route::delete('/items/{variant_id}', 'CartController@removeItem'); // DELETE /api/v1/cart/items/{variant_id}

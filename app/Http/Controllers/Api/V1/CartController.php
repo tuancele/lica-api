@@ -53,6 +53,66 @@ class CartController extends Controller
     }
 
     /**
+     * Get cart page data (gio-hang)
+     * 
+     * GET /api/v1/cart/gio-hang
+     * Returns full cart page data including sidebar, items, deals, etc.
+     */
+    public function getCartPage(Request $request): JsonResponse
+    {
+        try {
+            $userId = auth('member')->id();
+            $cart = $this->cartService->getCart($userId);
+            
+            // Build response similar to cart page structure
+            $response = [
+                'success' => true,
+                'data' => [
+                    'items' => $cart['items'] ?? [],
+                    'summary' => $cart['summary'] ?? [
+                        'total_qty' => 0,
+                        'subtotal' => 0,
+                        'discount' => 0,
+                        'shipping_fee' => 0,
+                        'total' => 0,
+                    ],
+                    'coupon' => $cart['coupon'] ?? null,
+                    'available_deals' => $cart['available_deals'] ?? [],
+                    'products_with_price' => $cart['products_with_price'] ?? [],
+                    'deal_counts' => $cart['deal_counts'] ?? [],
+                    'sidebar' => [
+                        'title' => 'CỘNG GIỎ HÀNG',
+                        'total_price_label' => 'Tổng giá trị đơn hàng',
+                        'total_price' => $cart['summary']['subtotal'] ?? 0,
+                        'total_price_formatted' => number_format($cart['summary']['subtotal'] ?? 0) . 'đ',
+                        'discount' => $cart['summary']['discount'] ?? 0,
+                        'discount_formatted' => $cart['summary']['discount'] > 0 
+                            ? '-' . number_format($cart['summary']['discount']) . 'đ' 
+                            : '0đ',
+                        'shipping_fee' => $cart['summary']['shipping_fee'] ?? 0,
+                        'shipping_fee_formatted' => number_format($cart['summary']['shipping_fee'] ?? 0) . 'đ',
+                        'total' => $cart['summary']['total'] ?? 0,
+                        'total_formatted' => number_format($cart['summary']['total'] ?? 0) . 'đ',
+                        'checkout_url' => '/cart/thanh-toan',
+                        'checkout_button_text' => 'Tiến hành thanh toán',
+                    ],
+                    'checkout_url' => '/cart/thanh-toan',
+                    'is_empty' => empty($cart['items']) || count($cart['items']) === 0,
+                ],
+            ];
+            
+            return response()->json($response);
+        } catch (\Exception $e) {
+            Log::error('Get cart page failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Lấy thông tin giỏ hàng thất bại',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+    }
+
+    /**
      * Add item to cart
      * 
      * POST /api/v1/cart/items

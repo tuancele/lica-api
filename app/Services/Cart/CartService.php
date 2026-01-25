@@ -160,6 +160,9 @@ class CartService
                             $newPrice = $dealPrice;
                             $newSubtotal = $dealPrice * $quantity;
                             
+                            // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
+                            $priceWithQuantity['total_price'] = $newSubtotal;
+                            
                             // Ghi đè breakdown để FE hiển thị đúng
                             $priceWithQuantity['price_breakdown'] = [
                                 [
@@ -181,6 +184,13 @@ class CartService
                             // Nếu lỗi khi lấy Deal price, vẫn giữ giá 0đ cho Deal Sốc
                             $newPrice = 0.0;
                             $newSubtotal = 0.0;
+                            
+                            // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
+                            $priceWithQuantity['total_price'] = 0.0;
+                            
+                            // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
+                            $priceWithQuantity['total_price'] = 0.0;
+                            
                             Log::warning('[CartService] getDealPrice failed for Deal Sốc, keeping 0đ', [
                                 'product_id' => $product->id,
                                 'variant_id' => $variantId,
@@ -193,6 +203,10 @@ class CartService
                         if ($dealPricing !== null) {
                             $newPrice = $dealPricing['unit_price'];
                             $newSubtotal = $dealPricing['total_price'];
+                            
+                            // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
+                            $priceWithQuantity['total_price'] = $newSubtotal;
+                            
                             // Ghi đè breakdown để FE hiển thị đúng
                             if (isset($dealPricing['price_breakdown'])) {
                                 $priceWithQuantity['price_breakdown'] = $dealPricing['price_breakdown'];
@@ -205,6 +219,10 @@ class CartService
                                 $basePrice = (float)$variant->price;
                                 $newPrice = $basePrice;
                                 $newSubtotal = $basePrice * $quantity;
+                                
+                                // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
+                                $priceWithQuantity['total_price'] = $newSubtotal;
+                                
                                 Log::warning('[CartService] Fallback to variant price (not a Deal)', [
                                     'product_id' => $product->id,
                                     'variant_id' => $variantId,
@@ -215,6 +233,12 @@ class CartService
                     }
                 }
             }
+            
+            // CRITICAL: Đảm bảo $newSubtotal và $priceWithQuantity['total_price'] đồng bộ
+            // Sau khi xử lý Deal, $priceWithQuantity['total_price'] đã được cập nhật
+            // Cần đọc lại để đảm bảo $newSubtotal chính xác
+            $newSubtotal = (float)$priceWithQuantity['total_price'];
+            $newPrice = $quantity > 0 ? ($newSubtotal / $quantity) : 0; // Giá trung bình
             
             // ===== CẬP NHẬT LOG DEBUG với thông tin Deal =====
             Log::info('[DEBUG_CHECKOUT] Item price calculation (after Deal)', [
@@ -327,13 +351,16 @@ class CartService
         $availableDeals = $this->getAvailableDeals($cart);
         
         // ===== BƯỚC 1: Tính lại tổng tiền dựa trên items (kể cả Deal Sốc) =====
+        // CRITICAL: Phải dùng $it['subtotal'] thay vì $it['price'] * $qty
+        // Vì $it['price'] là giá trung bình, không chính xác với mixed pricing (Flash Sale + Promotion)
+        // Ví dụ: 1x350k (Flash Sale) + 1x525k (Promotion) = 875k
+        // Giá trung bình = 437.5k, nhưng subtotal = 875k (đúng)
         $total = 0.0;
         foreach ($items as $it) {
-            $unitPrice = (float)($it['price'] ?? 0);
-            $qty = (int)($it['qty'] ?? 0);
-            // Kể cả is_deal = 1 (quà tặng, mua kèm) vẫn phải nhân giá * số lượng
-            // Nếu Deal 0đ thì unitPrice = 0, không làm âm tổng
-            $total += ($unitPrice * $qty);
+            $itemSubtotal = (float)($it['subtotal'] ?? 0);
+            // Kể cả is_deal = 1 (quà tặng, mua kèm) vẫn phải cộng subtotal
+            // Nếu Deal 0đ thì subtotal = 0, không làm âm tổng
+            $total += $itemSubtotal;
         }
         $summaryTotal = (float)max(0, $total - $discount);
 
@@ -358,24 +385,60 @@ class CartService
         Log::info('[DEBUG_CHECKOUT] Final cart summary', [
             'total_items' => count($items),
             'total_qty' => $totalQty,
-            'subtotal' => $subtotal,
-            'recalculated_items_total' => $total,
+            'subtotal_from_items' => $subtotal, // Tính từ newSubtotal (đúng)
+            'recalculated_from_price_qty' => $total, // Tính từ price * qty (có thể sai với mixed pricing)
             'discount' => $discount,
             'final_total' => $summaryTotal,
         ]);
         // ===== END LOG =====
         
+        // CRITICAL: Sử dụng $subtotal (tính từ newSubtotal) thay vì $total (tính từ price * qty)
+        // Vì $total có thể sai với mixed pricing (Flash Sale + Promotion)
+        // $subtotal đã được tính đúng từ $newSubtotal ở dòng 302
+        $finalSubtotal = (float)$subtotal;
+        $finalTotal = (float)max(0, $finalSubtotal - $discount);
+        
+        // Build productsWithPrice array (for cart page display)
+        $productsWithPrice = [];
+        foreach ($items as $item) {
+            $variantId = $item['variant_id'];
+            $productsWithPrice[$variantId] = [
+                'total_price' => (float)($item['subtotal'] ?? 0),
+                'price_breakdown' => $item['price_breakdown'] ?? null,
+                'warning' => $item['warning'] ?? null,
+                'deal_warning' => $item['deal_warning'] ?? null,
+                'flash_sale_remaining' => $item['flash_sale_remaining'] ?? 0,
+            ];
+        }
+        
+        // Calculate deal_counts (for cart page)
+        $deal_counts = [];
+        foreach ($cart->items as $item) {
+            if (isset($item['is_deal']) && $item['is_deal'] == 1) {
+                $now = strtotime(date('Y-m-d H:i:s'));
+                $saledeal = SaleDeal::where('product_id', $item['item']['product_id'])
+                    ->whereHas('deal', function($query) use ($now) {
+                        $query->where([['status', '1'], ['start', '<=', $now], ['end', '>=', $now]]);
+                    })->where('status', '1')->first();
+                if ($saledeal) {
+                    $deal_counts[$saledeal->deal_id] = ($deal_counts[$saledeal->deal_id] ?? 0) + 1;
+                }
+            }
+        }
+        
         return [
             'items' => $items,
             'summary' => [
                 'total_qty' => $totalQty,
-                'subtotal' => (float)$subtotal,
+                'subtotal' => $finalSubtotal, // Dùng subtotal tính từ newSubtotal (đúng)
                 'discount' => $discount,
                 'shipping_fee' => 0,
-                'total' => $summaryTotal,
+                'total' => $finalTotal, // Dùng finalTotal tính từ finalSubtotal (đúng)
             ],
             'coupon' => $coupon,
             'available_deals' => $availableDeals,
+            'products_with_price' => $productsWithPrice, // For cart page display
+            'deal_counts' => $deal_counts, // For cart page deal tracking
         ];
     }
 
@@ -871,36 +934,17 @@ class CartService
                     
                     // Check if variant already in cart (from currentCartItems read from session)
                     $alreadyInCart = isset($currentCartItems[$variantId]) && !empty($currentCartItems[$variantId]['is_deal']);
-                    $remaining = $dealLimit - $currentDealQty;
-
-                    // Nếu variant đã có trong giỏ: không throw cứng, chỉ clamp hoặc no-op
-                    if ($alreadyInCart && ($currentDealQty + $qty) > $dealLimit) {
+                    
+                    // CRITICAL: Chặn hoàn toàn việc mua vượt mức deal
+                    // Không cho phép clamp hoặc điều chỉnh số lượng
+                    // Nếu vượt limit thì throw exception ngay lập tức
+                    if (($currentDealQty + $qty) > $dealLimit) {
+                        $remaining = $dealLimit - $currentDealQty;
                         if ($remaining <= 0) {
-                            // No-op: đã đạt giới hạn, không tăng thêm
-                            Log::info('[CartService] Deal limit reached (noop for existing variant)', [
-                                'variant_id' => $variantId,
-                                'deal_id' => $saledeal->deal_id,
-                                'limit' => $dealLimit,
-                                'current' => $currentDealQty,
-                            ]);
-                            $qty = 0;
+                            throw new \Exception('Bạn đã đạt giới hạn tối đa ' . $dealLimit . ' sản phẩm cho chương trình Deal này. Không thể thêm nữa.');
                         } else {
-                            // Clamp qty add
-                            Log::info('[CartService] Deal qty clamped for existing variant', [
-                                'variant_id' => $variantId,
-                                'deal_id' => $saledeal->deal_id,
-                                'limit' => $dealLimit,
-                                'current' => $currentDealQty,
-                                'requested_add' => $qty,
-                                'allowed_add' => $remaining,
-                            ]);
-                            $qty = $remaining;
+                            throw new \Exception('Bạn chỉ có thể thêm tối đa ' . $remaining . ' sản phẩm nữa cho chương trình Deal này (giới hạn: ' . $dealLimit . ' sản phẩm).');
                         }
-                    }
-
-                    // Nếu là thêm mới vượt limit: chặn
-                    if (!$alreadyInCart && ($currentDealQty + $qty) > $dealLimit) {
-                        throw new \Exception('Bạn đã đạt giới hạn số lượng quà tặng cho ưu đãi này');
                     }
                 }
                 $variant->price = $saledeal->price;
@@ -955,6 +999,51 @@ class CartService
         
         if (!isset($cart->items[$variantId])) {
             throw new \Exception('Sản phẩm không tồn tại trong giỏ hàng');
+        }
+        
+        $item = $cart->items[$variantId];
+        
+        // CRITICAL: Chặn hoàn toàn việc thay đổi số lượng deal items
+        // Deal items phải có số lượng cố định, không thể tăng/giảm
+        if (!empty($item['is_deal']) && (int)$item['is_deal'] === 1) {
+            throw new \Exception('Không thể thay đổi số lượng sản phẩm Deal Sốc. Sản phẩm Deal Sốc có số lượng cố định.');
+        }
+        
+        // CRITICAL: Kiểm tra deal limit nếu là deal item
+        if (!empty($item['is_deal']) && isset($item['deal_id'])) {
+            $now = strtotime(date('Y-m-d H:i:s'));
+            $saledeal = SaleDeal::with('deal')->where('product_id', $item['item']['product_id'])
+                ->whereHas('deal', function($query) use ($now) {
+                    $query->where([['status', '1'], ['start', '<=', $now], ['end', '>=', $now]]);
+                })->where('status', '1')->first();
+            
+            if ($saledeal && $saledeal->deal) {
+                $dealLimit = (int)($saledeal->deal->limited ?? 0);
+                if ($dealLimit > 0) {
+                    // Đếm số lượng deal items hiện có trong giỏ (trừ item đang update)
+                    $currentDealQty = 0;
+                    foreach ($cart->items as $cartVariantId => $cartItem) {
+                        if ($cartVariantId === $variantId) {
+                            continue; // Bỏ qua item đang update
+                        }
+                        if (!empty($cartItem['is_deal']) && isset($cartItem['deal_id'])) {
+                            if ((int)$cartItem['deal_id'] === (int)$saledeal->deal_id) {
+                                $currentDealQty += (int)($cartItem['qty'] ?? 0);
+                            }
+                        }
+                    }
+                    
+                    // Kiểm tra nếu số lượng mới vượt limit
+                    if (($currentDealQty + $qty) > $dealLimit) {
+                        $remaining = $dealLimit - $currentDealQty;
+                        if ($remaining <= 0) {
+                            throw new \Exception('Bạn đã đạt giới hạn tối đa ' . $dealLimit . ' sản phẩm cho chương trình Deal này. Không thể tăng số lượng.');
+                        } else {
+                            throw new \Exception('Bạn chỉ có thể tăng tối đa ' . $remaining . ' sản phẩm nữa cho chương trình Deal này (giới hạn: ' . $dealLimit . ' sản phẩm).');
+                        }
+                    }
+                }
+            }
         }
         
         // QUAN TRỌNG: Kiểm tra tồn kho thực tế từ Warehouse API

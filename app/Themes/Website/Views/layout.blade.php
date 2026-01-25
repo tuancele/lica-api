@@ -1229,7 +1229,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 updateTotalOrderPriceCheckout();
             } else {
                 // Fallback: Cập nhật trực tiếp nếu hàm chưa có
-                $('#page_checkout .total-order').html(res.totalPrice+'đ');
+            $('#page_checkout .total-order').html(res.totalPrice+'đ');
             }
             if(window.location.href == '{{asset("cart/thanh-toan")}}'){
                 loadPromotion();
@@ -1271,7 +1271,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 updateTotalOrderPriceCheckout();
             } else {
                 // Fallback: Cập nhật trực tiếp nếu hàm chưa có
-                $('#page_checkout .total-order').html(res.totalPrice+'đ');
+            $('#page_checkout .total-order').html(res.totalPrice+'đ');
             }
             if(window.location.href == '{{asset("cart/thanh-toan")}}'){
                 loadPromotion();

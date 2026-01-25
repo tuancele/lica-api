@@ -68,6 +68,7 @@
 			Route::group(['prefix' => 'cart'],function(){
 				Route::get('get', 'CartController@get')->name('cart.get');
 				Route::get('gio-hang', 'CartController@index')->name('cart.index');
+				Route::get('gio-hang.json', 'CartController@indexJson')->name('cart.index.json');
 				Route::get('thanh-toan', 'CartController@checkout')->name('cart.payment');
 				Route::post('thanh-toan', 'CartController@postCheckout')->name('cart.checkout');
 				Route::get('dat-hang-thanh-cong', 'CartController@result')->name('cart.success');

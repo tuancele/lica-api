@@ -240,6 +240,153 @@ class CartController extends Controller
         return view('Website::cart.index', $data);
     }
 
+    /**
+     * Get cart page data as JSON
+     * 
+     * GET /cart/gio-hang.json
+     * Returns cart page data in JSON format
+     */
+    public function indexJson()
+    {
+        try {
+            $data = [];
+            $data['products'] = null;
+            $data['totalPrice'] = 0;
+            $data['productsWithPrice'] = [];
+            $data['deal_counts'] = [];
+            $data['available_deals'] = [];
+
+            if (Session::has('cart')) {
+                $oldCart = Session::get('cart');
+                $cart = new Cart($oldCart);
+                $data['products'] = $cart->items;
+                
+                // Calculate prices for all items
+                $recalculatedTotal = 0;
+                foreach ($cart->items as $variantId => $item) {
+                    $variant = Variant::with('product')->find($variantId);
+                    if (!$variant || !$variant->product) {
+                        continue;
+                    }
+                    
+                    $quantity = (int)($item['qty'] ?? 1);
+                    
+                    // Calculate price with PriceEngineService
+                    $priceWithQuantity = $this->priceEngine->calculatePriceWithQuantity(
+                        $variant->product->id,
+                        $variantId,
+                        $quantity
+                    );
+                    
+                    // Apply Deal Sốc price if applicable
+                    if (!empty($item['is_deal'])) {
+                        $dealPricing = $this->applyDealPriceForCartItem(
+                            $variant->product->id,
+                            $variantId,
+                            $quantity,
+                            $priceWithQuantity
+                        );
+                        if ($dealPricing !== null) {
+                            $priceWithQuantity['total_price'] = $dealPricing['total_price'];
+                        }
+                    }
+                    
+                    $recalculatedTotal += $priceWithQuantity['total_price'];
+                    
+                    // Store price data
+                    $data['productsWithPrice'][$variantId] = [
+                        'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
+                        'total_price' => $priceWithQuantity['total_price'],
+                        'warning' => $priceWithQuantity['warning'] ?? null,
+                        'deal_warning' => null,
+                        'flash_sale_remaining' => $priceWithQuantity['flash_sale_remaining'] ?? 0,
+                    ];
+                }
+                
+                $data['totalPrice'] = $recalculatedTotal;
+                
+                // Calculate deal_counts
+                $deal_counts = [];
+                foreach($cart->items as $item) {
+                    if(isset($item['is_deal']) && $item['is_deal'] == 1) {
+                        $now = strtotime(date('Y-m-d H:i:s'));
+                        $saledeal = SaleDeal::where('product_id', $item['item']['product_id'])
+                            ->whereHas('deal', function($query) use ($now) {
+                                $query->where([['status', '1'], ['start', '<=', $now], ['end', '>=', $now]]);
+                            })->where('status', '1')->first();
+                        if($saledeal) {
+                            $deal_counts[$saledeal->deal_id] = ($deal_counts[$saledeal->deal_id] ?? 0) + 1;
+                        }
+                    }
+                }
+                $data['deal_counts'] = $deal_counts;
+                
+                // Get available deals
+                $main_product_ids = [];
+                foreach($cart->items as $item) {
+                    if(!isset($item['is_deal']) || $item['is_deal'] == 0) {
+                        $main_product_ids[] = $item['item']['product_id'];
+                    }
+                }
+                
+                if(!empty($main_product_ids)) {
+                    $now = strtotime(date('Y-m-d H:i:s'));
+                    $deals = Deal::whereHas('products', function($q) use ($main_product_ids) {
+                        $q->whereIn('product_id', $main_product_ids)->where('status', '1');
+                    })->where([['status', '1'], ['start', '<=', $now], ['end', '>=', $now]])->with('sales.product')->get();
+                    
+                    $data['available_deals'] = $deals->map(function($deal) {
+                        return [
+                            'id' => $deal->id,
+                            'name' => $deal->name,
+                            'limited' => $deal->limited,
+                            'sales' => $deal->sales->map(function($sale) {
+                                return [
+                                    'id' => $sale->id,
+                                    'product_id' => $sale->product_id,
+                                    'product_name' => $sale->product->name ?? '',
+                                    'variant_id' => $sale->variant_id,
+                                    'price' => (float)$sale->price,
+                                ];
+                            }),
+                        ];
+                    })->toArray();
+                }
+            }
+            
+            // Build JSON response
+            $response = [
+                'success' => true,
+                'data' => [
+                    'items' => $data['products'] ?? [],
+                    'total_price' => $data['totalPrice'] ?? 0,
+                    'total_price_formatted' => number_format($data['totalPrice'] ?? 0) . 'đ',
+                    'products_with_price' => $data['productsWithPrice'] ?? [],
+                    'deal_counts' => $data['deal_counts'] ?? [],
+                    'available_deals' => $data['available_deals'] ?? [],
+                    'sidebar' => [
+                        'title' => 'CỘNG GIỎ HÀNG',
+                        'total_price_label' => 'Tổng giá trị đơn hàng',
+                        'total_price' => $data['totalPrice'] ?? 0,
+                        'total_price_formatted' => number_format($data['totalPrice'] ?? 0) . 'đ',
+                        'checkout_url' => '/cart/thanh-toan',
+                        'checkout_button_text' => 'Tiến hành thanh toán',
+                    ],
+                    'is_empty' => empty($data['products']) || count($data['products']) === 0,
+                ],
+            ];
+            
+            return response()->json($response);
+        } catch (\Exception $e) {
+            Log::error('Get cart JSON failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Lấy thông tin giỏ hàng thất bại',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+    }
+
     public function loadDistrict($id)
     {
         $districts = District::select('districtid', 'name')->where('provinceid', $id)->orderBy('name', 'asc')->get();
@@ -452,6 +599,39 @@ class CartController extends Controller
         }
         $feeship = $feeShip;
         
+        // ===== TẠO MẢNG finalCartJSON - Giá chốt của từng item =====
+        // CRITICAL: Mảng này chứa giá cuối cùng đã bao gồm Deal sốc, Flash sale, Khuyến mãi
+        // Đảm bảo Deal sốc có giá 0 trong JSON (tuyệt đối không để giá gốc 500k)
+        $finalCartJSON = [];
+        foreach ($productsWithPrice as $variantId => $priceData) {
+            $finalPrice = (float)($priceData['total_price'] ?? 0);
+            
+            // CRITICAL: Kiểm tra nếu là Deal sốc, giá PHẢI LÀ 0
+            // Tuyệt đối không để Backend gửi giá gốc 500k sang Checkout
+            if (isset($cart->items[$variantId]) && !empty($cart->items[$variantId]['is_deal'])) {
+                // Deal sốc: giá PHẢI LÀ 0 (quà tặng)
+                // Giá đã được tính đúng trong PriceEngine, nhưng đảm bảo chắc chắn là 0
+                $finalPrice = 0.0;
+                
+                Log::info('[CHECKOUT_DEAL] Deal sốc detected, forcing price to 0', [
+                    'variant_id' => $variantId,
+                    'original_price_from_engine' => $priceData['total_price'] ?? 0,
+                    'final_price_set' => 0.0,
+                ]);
+            }
+            
+            $finalCartJSON[] = [
+                'variant_id' => (int)$variantId,
+                'final_price' => $finalPrice,
+            ];
+        }
+        
+        // Log để debug
+        Log::info('[CHECKOUT_FINAL_JSON] finalCartJSON created', [
+            'items_count' => count($finalCartJSON),
+            'json' => $finalCartJSON,
+        ]);
+        
         // ===== PHẦN 6: Lấy province và promotions =====
         $province = $this->getProvince();
         $promotions = Promotion::where([
@@ -480,6 +660,7 @@ class CartController extends Controller
             'province' => $province,
             'promotions' => $promotions,
             'token' => $token,
+            'finalCartJSON' => $finalCartJSON, // ← CRITICAL: JSON chứa giá chốt của từng item
         ]);
     }
 
