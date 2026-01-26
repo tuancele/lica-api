@@ -20,16 +20,16 @@
 #### Quá Trình Nâng Cấp
 
 - [x] Update `composer.json`: `"laravel/framework": "^11.0"` - ✅ Đã update
-- [ ] Chạy `composer update`
+- [ ] Chạy `composer update` - ⏳ Chờ PHP 8.3 verification
 - [ ] Xử lý breaking changes:
-  - [ ] Exception handling changes
-  - [ ] Route model binding changes
-  - [ ] Middleware changes
-  - [ ] Service provider changes
-  - [ ] Config file changes
-- [ ] Update `bootstrap/app.php` (Laravel 11 structure)
-- [ ] Update route files
-- [ ] Update middleware registration
+  - [ ] Exception handling changes - ✅ Đã chuẩn bị trong bootstrap/app.php
+  - [ ] Route model binding changes - ⏳ Chờ composer update
+  - [x] Middleware changes - ✅ Đã migrate sang bootstrap/app.php
+  - [ ] Service provider changes - ⏳ Cần review sau composer update
+  - [ ] Config file changes - ⏳ Cần review sau composer update
+- [x] Update `bootstrap/app.php` (Laravel 11 structure) - ✅ Đã tạo mới
+- [x] Update route files - ✅ Routes load trong bootstrap/app.php
+- [x] Update middleware registration - ✅ Đã migrate sang bootstrap/app.php
 
 #### Sau Khi Nâng Cấp
 
@@ -46,20 +46,20 @@
 
 ### 1.2 Nâng Cấp PHP 8.1 → 8.3+
 
-- [x] **Kiểm tra compatibility:**
-  - [x] Tất cả extensions cần thiết - ⚠️ Cần enable zip extension
+- [ ] **Kiểm tra compatibility:**
+  - [ ] Tất cả extensions cần thiết
   - [ ] Server configuration
-  - [x] Composer packages compatibility - ✅ Đã check
+  - [ ] Composer packages compatibility
 
 - [x] **Nâng cấp:**
-  - [x] Update PHP version trên server - ✅ PHP 8.3.28 đã cài
+  - [x] Update PHP version trên server - ✅ User đã nâng cấp (cần verify)
   - [x] Update `composer.json` PHP requirement - ✅ Đã update `"php": "^8.3"`
-  - [ ] Test với PHP 8.3 features - ⏳ Chờ enable extensions
+  - [ ] Test với PHP 8.3 features - ⏳ Chờ verify PHP version
 
 - [ ] **Verify:**
-  - [x] `php -v` shows 8.3+ - ✅ PHP 8.3.28 detected
-  - [ ] `composer install` works - ⏳ Chờ enable zip extension
-  - [ ] All tests pass
+  - [ ] `php -v` shows 8.3+ - ⚠️ Terminal vẫn show 8.1.32, cần restart terminal/Laragon
+  - [ ] `composer install` works - ⏳ Chờ PHP verify
+  - [ ] All tests pass - ⏳ Chờ composer update
 
 ---
 
@@ -103,16 +103,18 @@
 ### Đã Phát Hiện
 
 1. **bootstrap/app.php Structure:**
-   - Laravel 11 sử dụng cấu trúc mới với `Application::configure()` method
-   - Hiện tại: Laravel 10 structure (old style)
+   - ✅ Đã tạo Laravel 11 structure với `Application::configure()` method
+   - ✅ Middleware configuration đã migrate
+   - ✅ Route configuration đã migrate
 
 2. **Service Providers:**
    - AppServiceProvider hiện tại có nhiều bindings - cần review
    - Có thể cần di chuyển sang Laravel 11 structure
 
 3. **Middleware:**
-   - Http/Kernel.php sử dụng `$routeMiddleware` (Laravel 10)
-   - Laravel 11 sử dụng `$middlewareAliases`
+   - ✅ Đã migrate từ `$routeMiddleware` sang `alias()` trong bootstrap/app.php
+   - ✅ Middleware groups đã migrate
+   - ✅ Custom middleware (AdminMiddleware, MemberLogin, NoCacheApiResponse) đã migrate
 
 4. **Config Files:**
    - Một số config files có thể đã thay đổi trong Laravel 11
