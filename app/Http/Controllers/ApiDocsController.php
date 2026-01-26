@@ -179,12 +179,16 @@ class ApiDocsController extends Controller
         
         $html = implode("\n", $result);
         
-        // Tables
+        // Tables with mobile responsive wrapper
         $html = preg_replace_callback('/\|(.+)\|\n\|[-\|:\s]+\|\n((?:\|.+\|\n?)+)/', function($matches) {
             $headers = array_map('trim', explode('|', trim($matches[1], '|')));
             $rows = array_filter(explode("\n", trim($matches[2])));
             
-            $table = '<table><thead><tr>';
+            // Filter empty headers
+            $headers = array_filter($headers, function($h) { return !empty(trim($h)); });
+            $headers = array_values($headers);
+            
+            $table = '<div class="docs-table-wrapper"><table><thead><tr>';
             foreach ($headers as $header) {
                 if ($header) {
                     $table .= '<th>' . htmlspecialchars($header) . '</th>';
@@ -195,16 +199,20 @@ class ApiDocsController extends Controller
             foreach ($rows as $row) {
                 if (trim($row)) {
                     $cells = array_map('trim', explode('|', trim($row, '|')));
+                    // Filter empty cells and align with headers
+                    $cells = array_filter($cells, function($c) { return $c !== ''; });
+                    $cells = array_values($cells);
+                    
                     $table .= '<tr>';
-                    foreach ($cells as $cell) {
-                        if ($cell !== '') {
-                            $table .= '<td>' . htmlspecialchars($cell) . '</td>';
-                        }
+                    foreach ($headers as $index => $header) {
+                        $cellValue = isset($cells[$index]) ? $cells[$index] : '';
+                        $dataLabel = htmlspecialchars($header);
+                        $table .= '<td data-label="' . $dataLabel . '">' . htmlspecialchars($cellValue) . '</td>';
                     }
                     $table .= '</tr>';
                 }
             }
-            $table .= '</tbody></table>';
+            $table .= '</tbody></table></div>';
             
             return $table;
         }, $html);

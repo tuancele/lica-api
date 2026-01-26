@@ -8,8 +8,20 @@ use Illuminate\Notifications\Notifiable;
 
 class Member extends Authenticatable
 {
+    protected $table = "members";
+    
     protected $fillable = [
-        'name', 'email', 'password',
+        'name',
+        'email',
+        'phone',
+        'address',
+        'password',
+        'status',
+    ];
+    
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'status' => 'integer',
     ];
 
     /**

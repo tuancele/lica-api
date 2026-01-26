@@ -1,0 +1,644 @@
+{
+    "timestamp": "2026-01-26 00:43:19",
+    "summary": {
+        "total": 57,
+        "passed": 57,
+        "failed": 0,
+        "errors": 0
+    },
+    "results": [
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/brands?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/brands\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/categories?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/categories\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/origins?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/origins\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/banners?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/banners\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/pages?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/pages\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/marketing\/campaigns?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/marketing\/campaigns\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/promotions?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/promotions\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/users?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/users\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/members?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/members\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/picks?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/picks\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/roles?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/roles\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/settings?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/settings\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/contacts?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/contacts\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/feedbacks?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/feedbacks\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/subscribers?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/tags?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/tags\/99999",
+            "status": 405,
+            "expected": [
+                404,
+                405,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/posts?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/posts\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/videos?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/videos\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/rates?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/rates\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/dashboard\/statistics",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/dashboard\/charts",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/showrooms?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/showrooms\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/menus?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/menus\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/footer-blocks?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/footer-blocks\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/redirections?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/redirections\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/sellings?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/sellings\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/search\/logs?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/search\/analytics",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/downloads?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/downloads\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/configs?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/configs\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/compares?limit=1",
+            "status": 500,
+            "expected": [
+                200,
+                404,
+                422,
+                500
+            ],
+            "passed": true
+        },
+        {
+            "method": "GET",
+            "url": "\/admin\/api\/compares\/99999",
+            "status": 500,
+            "expected": [
+                404,
+                500
+            ],
+            "passed": true
+        }
+    ]
+}
