@@ -118,7 +118,7 @@ jobs:
           
           if [ "$TEST_COUNT" -gt 0 ]; then
             echo "Running tests..."
-            php artisan test --env=testing 2>&1 | tee test_output.log
+            php artisan test --env=testing 2>&1 | tee test_output.log || true
             TEST_EXIT_CODE=${PIPESTATUS[0]}
             echo "test_exit_code=$TEST_EXIT_CODE" >> $GITHUB_OUTPUT
             
@@ -132,9 +132,6 @@ jobs:
             echo "ℹ️ No tests found, skipping test execution"
             echo "test_exit_code=0" >> $GITHUB_OUTPUT
           fi
-          
-          # Always exit with 0 to prevent job failure
-          exit 0
         continue-on-error: true
         env:
           DB_CONNECTION: mysql
@@ -177,7 +174,7 @@ jobs:
           set +e
           if [ -f "vendor/bin/pint" ]; then
             echo "Running Pint..."
-            vendor/bin/pint --test 2>&1 | tee pint_output.log
+            vendor/bin/pint --test 2>&1 | tee pint_output.log || true
             PINT_EXIT_CODE=${PIPESTATUS[0]}
             echo "pint_exit_code=$PINT_EXIT_CODE" >> $GITHUB_OUTPUT
             
@@ -191,9 +188,6 @@ jobs:
             echo "ℹ️ Pint not found, skipping"
             echo "pint_exit_code=0" >> $GITHUB_OUTPUT
           fi
-          
-          # Always exit with 0 to prevent job failure
-          exit 0
         continue-on-error: true
 
       - name: Run PHPStan
@@ -202,7 +196,7 @@ jobs:
           set +e
           if [ -f "vendor/bin/phpstan" ]; then
             echo "Running PHPStan..."
-            vendor/bin/phpstan analyse --level=8 --error-format=github 2>&1 | tee phpstan_output.log
+            vendor/bin/phpstan analyse --level=8 --error-format=github 2>&1 | tee phpstan_output.log || true
             PHPSTAN_EXIT_CODE=${PIPESTATUS[0]}
             echo "phpstan_exit_code=$PHPSTAN_EXIT_CODE" >> $GITHUB_OUTPUT
             
@@ -217,9 +211,6 @@ jobs:
             echo "ℹ️ PHPStan not found, skipping"
             echo "phpstan_exit_code=0" >> $GITHUB_OUTPUT
           fi
-          
-          # Always exit with 0 to prevent job failure
-          exit 0
         continue-on-error: true
 
       - name: Upload code quality results
@@ -247,7 +238,7 @@ jobs:
       - name: Build Docker image
         run: |
           set +e
-          docker build -t lica-backend:latest . 2>&1 | tee docker_build.log
+          docker build -t lica-backend:latest . 2>&1 | tee docker_build.log || true
           BUILD_EXIT_CODE=${PIPESTATUS[0]}
           
           if [ $BUILD_EXIT_CODE -ne 0 ]; then
@@ -256,9 +247,6 @@ jobs:
           else
             echo "✅ Docker build successful"
           fi
-          
-          # Always exit with 0 to prevent job failure
-          exit 0
         continue-on-error: true
 
       - name: Upload Docker build log
