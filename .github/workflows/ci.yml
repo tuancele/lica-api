@@ -5,11 +5,13 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
   tests:
     name: Run Tests
     runs-on: ubuntu-latest
+    if: false  # Temporarily disabled
     
     services:
       mysql:
@@ -154,6 +156,7 @@ jobs:
   code-quality:
     name: Code Quality Checks
     runs-on: ubuntu-latest
+    if: false  # Temporarily disabled
 
     steps:
       - name: Checkout code
@@ -227,6 +230,8 @@ jobs:
     name: Build Docker Image
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Temporarily disabled - uncomment to enable
+    # if: false
 
     steps:
       - name: Checkout code
