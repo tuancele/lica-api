@@ -46,19 +46,19 @@
 
 ### 1.2 Nâng Cấp PHP 8.1 → 8.3+
 
-- [ ] **Kiểm tra compatibility:**
-  - [ ] Tất cả extensions cần thiết
+- [x] **Kiểm tra compatibility:**
+  - [x] Tất cả extensions cần thiết - ⚠️ Cần enable zip extension
   - [ ] Server configuration
-  - [ ] Composer packages compatibility
+  - [x] Composer packages compatibility - ✅ Đã check
 
-- [ ] **Nâng cấp:**
-  - [ ] Update PHP version trên server
-  - [ ] Update `composer.json` PHP requirement
-  - [ ] Test với PHP 8.3 features
+- [x] **Nâng cấp:**
+  - [x] Update PHP version trên server - ✅ PHP 8.3.28 đã cài
+  - [x] Update `composer.json` PHP requirement - ✅ Đã update `"php": "^8.3"`
+  - [ ] Test với PHP 8.3 features - ⏳ Chờ enable extensions
 
 - [ ] **Verify:**
-  - [ ] `php -v` shows 8.3+
-  - [ ] `composer install` works
+  - [x] `php -v` shows 8.3+ - ✅ PHP 8.3.28 detected
+  - [ ] `composer install` works - ⏳ Chờ enable zip extension
   - [ ] All tests pass
 
 ---
