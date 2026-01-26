@@ -97,10 +97,17 @@ jobs:
 
       - name: Run tests
         run: |
+          set +e
           if [ -d "tests" ] && [ "$(find tests -name '*Test.php' | wc -l)" -gt 0 ]; then
-            php artisan test || echo "Tests completed with some failures"
+            php artisan test
+            TEST_EXIT_CODE=$?
+            if [ $TEST_EXIT_CODE -ne 0 ]; then
+              echo "Tests completed with some failures (exit code: $TEST_EXIT_CODE)"
+            fi
+            exit 0
           else
             echo "No tests found, skipping test execution"
+            exit 0
           fi
         continue-on-error: true
         env:
@@ -132,19 +139,33 @@ jobs:
 
       - name: Run Laravel Pint
         run: |
+          set +e
           if [ -f "vendor/bin/pint" ]; then
-            vendor/bin/pint --test || echo "Pint check completed with some issues"
+            vendor/bin/pint --test
+            PINT_EXIT_CODE=$?
+            if [ $PINT_EXIT_CODE -ne 0 ]; then
+              echo "Pint check completed with some issues (exit code: $PINT_EXIT_CODE)"
+            fi
+            exit 0
           else
             echo "Pint not found, skipping"
+            exit 0
           fi
         continue-on-error: true
 
       - name: Run PHPStan
         run: |
+          set +e
           if [ -f "vendor/bin/phpstan" ]; then
-            vendor/bin/phpstan analyse --level=8 --error-format=github || echo "PHPStan analysis completed with errors"
+            vendor/bin/phpstan analyse --level=8 --error-format=github
+            PHPSTAN_EXIT_CODE=$?
+            if [ $PHPSTAN_EXIT_CODE -ne 0 ]; then
+              echo "PHPStan analysis completed with errors (exit code: $PHPSTAN_EXIT_CODE)"
+            fi
+            exit 0
           else
             echo "PHPStan not found, skipping"
+            exit 0
           fi
         continue-on-error: true
 
