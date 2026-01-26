@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 namespace App\Events\Inventory;
 use App\Models\StockReceipt;
 use Illuminate\Foundation\Events\Dispatchable;

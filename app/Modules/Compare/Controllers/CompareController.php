@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 namespace App\Modules\Compare\Controllers;
 use Illuminate\Http\Request;
 use App\Modules\Compare\Models\Compare;

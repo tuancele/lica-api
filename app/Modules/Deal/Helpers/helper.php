@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 if (! function_exists('countProductWarehouse')) {
     function countProductWarehouse($id,$type){
         $total = 0;

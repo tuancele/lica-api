@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 Route::group(['middleware' => 'web'], function () {
 	Route::group(['prefix' => 'admin','middleware' => 'admin','namespace' => 'App\Modules\FooterBlock\Controllers'],function() {
 		Route::group(['prefix' => 'footer-block'],function(){

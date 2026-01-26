@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Repositories\Product;
 
 use App\Modules\Product\Models\Product;

@@ -1,0 +1,18 @@
+parameters:
+    level: 8
+    paths:
+        - app
+        - routes
+    excludePaths:
+        - app/Modules/*/Routes/*
+        - app/Themes/*
+    ignoreErrors:
+        # Laravel specific
+        - '#Call to an undefined method Illuminate\\Database\\Eloquent\\Builder::.*#'
+        - '#Access to an undefined property Illuminate\\Database\\Eloquent\\Builder::\$.*#'
+        # Dynamic properties
+        - '#Access to an undefined property.*::\$.*#'
+    checkMissingIterableValueType: false
+    checkGenericClassInNonGenericObjectType: false
+    reportUnmatchedIgnoredErrors: false
+

@@ -1,4 +1,6 @@
-<?php 
+<?php
+
+declare(strict_types=1);
 if (! function_exists('listTaxonomy')) {
     function listTaxonomy($data,$parent, $str = "",$type){
 	     if(isset($data) && !empty($data)){

@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Modules\Redirection\Models;
 
 use Illuminate\Database\Eloquent\Model;

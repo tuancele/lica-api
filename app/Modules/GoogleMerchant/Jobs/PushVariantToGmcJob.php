@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Modules\GoogleMerchant\Jobs;
 
 use App\Modules\GoogleMerchant\Services\GoogleMerchantService;

@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 Route::group(['middleware' => 'web'], function () {
 	Route::group(['prefix' => 'admin','middleware' => 'admin','namespace' => 'App\Modules\R2\Controllers'],function() {
         Route::post('r2/upload', 'R2Controller@upload')->name('r2.upload');

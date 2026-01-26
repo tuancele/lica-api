@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 Route::group(['middleware' => 'web'], function () {
 	// Public route to view receipt (no auth required)
 	Route::get('receipt/{receiptCode}', 'App\Modules\Warehouse\Controllers\WarehouseAccountingController@publicView')

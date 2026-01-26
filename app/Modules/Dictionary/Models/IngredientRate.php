@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Modules\Dictionary\Models;
 
 use Illuminate\Database\Eloquent\Model;

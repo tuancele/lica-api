@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Modules\Subcriber\Controllers;
 
 use Illuminate\Http\Request;

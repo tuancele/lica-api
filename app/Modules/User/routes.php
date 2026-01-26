@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 Route::group(['middleware' => 'web'], function () {
 	Route::group(['prefix' => 'admin','namespace' => 'App\Modules\User\Controllers'],function(){
 		Route::get('login', 'LoginController@index');

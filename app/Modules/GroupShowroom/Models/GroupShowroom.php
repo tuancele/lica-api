@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Modules\GroupShowroom\Models;
 
 use Illuminate\Database\Eloquent\Model;

@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 Route::group(['middleware' => 'web'], function () {
 	Route::group(['prefix' => 'admin/dictionary','middleware' => 'admin','namespace' => 'App\Modules\Dictionary\Controllers'],function() {
 	Route::group(['prefix' => 'category'],function(){

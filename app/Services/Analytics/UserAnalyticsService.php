@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Services\Analytics;
 
 use Illuminate\Support\Facades\Cache;

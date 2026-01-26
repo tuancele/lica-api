@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 	Route::group(['middleware' => 'web'], function () {
 		Route::group(['namespace' => 'App\Themes\Website\Controllers'],function() {
 			try {

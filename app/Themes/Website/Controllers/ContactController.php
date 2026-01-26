@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Themes\Website\Controllers;
 
 use Illuminate\Http\Request;

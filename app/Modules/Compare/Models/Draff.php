@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 namespace App\Modules\Compare\Models;
 use Illuminate\Database\Eloquent\Model;
 class Draff extends Model

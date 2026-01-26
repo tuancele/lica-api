@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Modules\Marketing\Observers;
 
 use App\Modules\Marketing\Models\MarketingCampaignProduct;

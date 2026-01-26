@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Modules\Deal\Models\Deal;

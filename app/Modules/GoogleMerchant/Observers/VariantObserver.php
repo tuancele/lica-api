@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Modules\GoogleMerchant\Observers;
 
 use App\Modules\GoogleMerchant\Jobs\PushVariantToGmcJob;

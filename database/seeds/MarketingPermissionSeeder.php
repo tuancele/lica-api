@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 use Illuminate\Database\Seeder;
 use App\Modules\Permission\Models\Permission;
 

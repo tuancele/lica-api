@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Services\Pricing;
 
 use App\Modules\Product\Models\Product;

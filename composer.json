@@ -17,16 +17,18 @@
         "laravel/socialite": "^5.0",
         "laravel/tinker": "^2.8",
         "league/flysystem-aws-s3-v3": "^3.0",
-        "milon/barcode": "^10.0",
         "phpmailer/phpmailer": "^6.4",
         "phpoffice/phpspreadsheet": "^1.12",
+        "predis/predis": "^3.3",
         "simplesoftwareio/simple-qrcode": "^4.2",
         "unisharp/laravel-filemanager": "^2.12"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
+        "laravel/pint": "^1.13",
         "mockery/mockery": "^1.6.0",
         "nunomaduro/collision": "^8.0",
+        "phpstan/phpstan": "^1.10",
         "phpunit/phpunit": "^11.0",
         "spatie/laravel-ignition": "^2.0"
     },
@@ -68,6 +70,21 @@
         ],
         "post-create-project-cmd": [
             "@php artisan key:generate --ansi"
+        ],
+        "pint": [
+            "vendor/bin/pint"
+        ],
+        "pint:test": [
+            "vendor/bin/pint --test"
+        ],
+        "phpstan": [
+            "vendor/bin/phpstan analyse --level=8"
+        ],
+        "test": [
+            "php artisan test"
+        ],
+        "test:coverage": [
+            "php artisan test --coverage"
         ]
     }
 }
