@@ -2,12 +2,12 @@
 
 namespace App\Services\Inventory;
 
-use App\Exceptions\InsufficientStockException;
-use App\Exceptions\InvalidReservationException;
-use App\Events\Inventory\StockImported;
-use App\Events\Inventory\StockExported;
 use App\Events\Inventory\LowStockDetected;
 use App\Events\Inventory\OutOfStockDetected;
+use App\Events\Inventory\StockExported;
+use App\Events\Inventory\StockImported;
+use App\Exceptions\InsufficientStockException;
+use App\Exceptions\InvalidReservationException;
 use App\Models\InventoryStock;
 use App\Models\StockAlert;
 use App\Models\StockMovement;
@@ -33,12 +33,13 @@ class InventoryService implements InventoryServiceInterface
     {
         $warehouseId = $warehouseId ?? $this->getDefaultWarehouseId();
         $cacheKey = $this->getCacheKey($variantId, $warehouseId);
-        
+
         if (config('inventory.cache.enabled', true)) {
             return Cache::remember($cacheKey, config('inventory.cache.ttl_seconds', 60), function () use ($variantId, $warehouseId) {
                 return $this->fetchStock($variantId, $warehouseId);
             });
         }
+
         return $this->fetchStock($variantId, $warehouseId);
     }
 
@@ -46,6 +47,7 @@ class InventoryService implements InventoryServiceInterface
     {
         $stock = InventoryStock::where('warehouse_id', $warehouseId)
             ->where('variant_id', $variantId)->first();
+
         return $stock ? StockDTO::fromModel($stock) : StockDTO::empty($variantId, $warehouseId);
     }
 
@@ -54,15 +56,16 @@ class InventoryService implements InventoryServiceInterface
         $warehouseId = $warehouseId ?? $this->getDefaultWarehouseId();
         $stocks = InventoryStock::where('warehouse_id', $warehouseId)
             ->whereIn('variant_id', $variantIds)->get()->keyBy('variant_id');
-        
-        return collect($variantIds)->map(fn($id) => 
-            $stocks->has($id) ? StockDTO::fromModel($stocks->get($id)) : StockDTO::empty($id, $warehouseId)
+
+        return collect($variantIds)->map(
+            fn ($id) => $stocks->has($id) ? StockDTO::fromModel($stocks->get($id)) : StockDTO::empty($id, $warehouseId)
         );
     }
 
     public function isAvailable(int $variantId, int $quantity, ?int $warehouseId = null): bool
     {
         $stock = $this->getStock($variantId, $warehouseId);
+
         return $stock->sellableStock >= $quantity;
     }
 
@@ -70,8 +73,8 @@ class InventoryService implements InventoryServiceInterface
     {
         $variantIds = array_column($items, 'variant_id');
         $stocks = $this->getStockBatch($variantIds, $warehouseId)->keyBy('variantId');
-        
-        return array_map(fn($item) => [
+
+        return array_map(fn ($item) => [
             'variant_id' => $item['variant_id'],
             'requested' => $item['quantity'],
             'available' => $stocks->get($item['variant_id'])?->sellableStock ?? 0,
@@ -82,14 +85,20 @@ class InventoryService implements InventoryServiceInterface
     public function getLowStockItems(?int $warehouseId = null): Collection
     {
         $query = InventoryStock::with(['variant.product', 'warehouse'])->lowStock();
-        if ($warehouseId) $query->forWarehouse($warehouseId);
+        if ($warehouseId) {
+            $query->forWarehouse($warehouseId);
+        }
+
         return $query->get();
     }
 
     public function getOutOfStockItems(?int $warehouseId = null): Collection
     {
         $query = InventoryStock::with(['variant.product', 'warehouse'])->outOfStock();
-        if ($warehouseId) $query->forWarehouse($warehouseId);
+        if ($warehouseId) {
+            $query->forWarehouse($warehouseId);
+        }
+
         return $query->get();
     }
 
@@ -106,16 +115,20 @@ class InventoryService implements InventoryServiceInterface
                 'completed_at' => now(), 'completed_by' => $data->createdBy,
             ]);
 
-            $totalItems = 0; $totalQuantity = 0; $totalValue = 0;
+            $totalItems = 0;
+            $totalQuantity = 0;
+            $totalValue = 0;
 
             foreach ($data->items as $item) {
                 $stock = $this->lockStock($item['variant_id'], $data->warehouseId);
                 $stockBefore = $stock->physical_stock;
-                $quantity = (int)$item['quantity'];
-                $unitPrice = (float)($item['unit_price'] ?? 0);
-                
+                $quantity = (int) $item['quantity'];
+                $unitPrice = (float) ($item['unit_price'] ?? 0);
+
                 $stock->increment('physical_stock', $quantity);
-                if ($unitPrice > 0) $stock->updateAverageCost($quantity, $unitPrice);
+                if ($unitPrice > 0) {
+                    $stock->updateAverageCost($quantity, $unitPrice);
+                }
                 $stock->update(['last_movement_at' => now()]);
                 $stockAfter = $stock->fresh()->physical_stock;
 
@@ -141,11 +154,14 @@ class InventoryService implements InventoryServiceInterface
                 $this->clearStockCache($item['variant_id'], $data->warehouseId);
                 StockAlert::autoResolve($data->warehouseId, $item['variant_id'], $stockAfter, $stock->low_stock_threshold);
 
-                $totalItems++; $totalQuantity += $quantity; $totalValue += ($quantity * $unitPrice);
+                $totalItems++;
+                $totalQuantity += $quantity;
+                $totalValue += ($quantity * $unitPrice);
             }
 
             $receipt->update(['total_items' => $totalItems, 'total_quantity' => $totalQuantity, 'total_value' => $totalValue]);
             event(new StockImported($receipt));
+
             return $receipt->fresh(['items.variant.product', 'toWarehouse', 'creator']);
         });
     }
@@ -171,14 +187,16 @@ class InventoryService implements InventoryServiceInterface
                 'completed_at' => now(), 'completed_by' => $data->createdBy,
             ]);
 
-            $totalItems = 0; $totalQuantity = 0; $totalValue = 0;
+            $totalItems = 0;
+            $totalQuantity = 0;
+            $totalValue = 0;
 
             foreach ($data->items as $item) {
                 $stock = $this->lockStock($item['variant_id'], $data->warehouseId);
                 $stockBefore = $stock->physical_stock;
-                $quantity = (int)$item['quantity'];
-                $unitPrice = (float)($item['unit_price'] ?? 0);
-                
+                $quantity = (int) $item['quantity'];
+                $unitPrice = (float) ($item['unit_price'] ?? 0);
+
                 $stock->decrement('physical_stock', $quantity);
                 $stock->update(['last_movement_at' => now()]);
                 $stockAfter = $stock->fresh()->physical_stock;
@@ -203,11 +221,14 @@ class InventoryService implements InventoryServiceInterface
                 $this->clearStockCache($item['variant_id'], $data->warehouseId);
                 $this->checkAndCreateAlerts($stock->fresh());
 
-                $totalItems++; $totalQuantity += $quantity; $totalValue += ($quantity * $unitPrice);
+                $totalItems++;
+                $totalQuantity += $quantity;
+                $totalValue += ($quantity * $unitPrice);
             }
 
             $receipt->update(['total_items' => $totalItems, 'total_quantity' => $totalQuantity, 'total_value' => $totalValue]);
             event(new StockExported($receipt));
+
             return $receipt->fresh(['items.variant.product', 'fromWarehouse', 'creator']);
         });
     }
@@ -218,7 +239,7 @@ class InventoryService implements InventoryServiceInterface
             foreach ($data->items as $item) {
                 $stock = $this->getStock($item['variant_id'], $data->fromWarehouseId);
                 if ($stock->availableStock < $item['quantity']) {
-                    throw new InsufficientStockException("Insufficient stock in source warehouse");
+                    throw new InsufficientStockException('Insufficient stock in source warehouse');
                 }
             }
 
@@ -232,12 +253,12 @@ class InventoryService implements InventoryServiceInterface
             ]);
 
             foreach ($data->items as $item) {
-                $quantity = (int)$item['quantity'];
+                $quantity = (int) $item['quantity'];
 
                 // Deduct from source
                 $source = $this->lockStock($item['variant_id'], $data->fromWarehouseId);
                 $source->decrement('physical_stock', $quantity);
-                
+
                 // Add to destination
                 $dest = $this->lockStock($item['variant_id'], $data->toWarehouseId);
                 $dest->increment('physical_stock', $quantity);
@@ -269,8 +290,8 @@ class InventoryService implements InventoryServiceInterface
             foreach ($data->items as $item) {
                 $stock = $this->lockStock($item['variant_id'], $data->warehouseId);
                 $stockBefore = $stock->physical_stock;
-                $newQuantity = (int)$item['new_quantity'];
-                
+                $newQuantity = (int) $item['new_quantity'];
+
                 $stock->update(['physical_stock' => $newQuantity, 'last_stock_check' => now()]);
 
                 StockReceiptItem::create([
@@ -291,22 +312,23 @@ class InventoryService implements InventoryServiceInterface
         return DB::transaction(function () use ($data) {
             $warehouseId = $data->warehouseId ?? $this->getDefaultWarehouseId();
             $stock = $this->lockStock($data->variantId, $warehouseId);
-            
+
             $available = $stock->physical_stock - $stock->reserved_stock - $stock->flash_sale_hold - $stock->deal_hold;
             if ($available < $data->quantity) {
                 throw new InsufficientStockException("Cannot reserve {$data->quantity} units. Available: {$available}");
             }
-            
+
             $stock->increment('reserved_stock', $data->quantity);
-            
+
             $reservation = StockReservation::create([
                 'warehouse_id' => $warehouseId, 'variant_id' => $data->variantId,
                 'quantity' => $data->quantity, 'reference_type' => $data->referenceType,
                 'reference_id' => $data->referenceId, 'reference_code' => $data->referenceCode,
                 'status' => 'active', 'expires_at' => $data->expiresAt,
             ]);
-            
+
             $this->clearStockCache($data->variantId, $warehouseId);
+
             return $reservation;
         });
     }
@@ -320,6 +342,7 @@ class InventoryService implements InventoryServiceInterface
                 $reservations->push($this->reserve($dto));
             }
         });
+
         return $reservations;
     }
 
@@ -328,17 +351,17 @@ class InventoryService implements InventoryServiceInterface
         return DB::transaction(function () use ($reservationId) {
             $reservation = StockReservation::lockForUpdate()->findOrFail($reservationId);
             if ($reservation->status !== 'active') {
-                throw new InvalidReservationException("Reservation is not active");
+                throw new InvalidReservationException('Reservation is not active');
             }
-            
+
             $stock = $this->lockStock($reservation->variant_id, $reservation->warehouse_id);
             $stock->decrement('physical_stock', $reservation->quantity);
             $stock->decrement('reserved_stock', $reservation->quantity);
-            
+
             $reservation->update(['status' => 'confirmed', 'confirmed_at' => now()]);
             $this->clearStockCache($reservation->variant_id, $reservation->warehouse_id);
             $this->checkAndCreateAlerts($stock->fresh());
-            
+
             return true;
         });
     }
@@ -347,17 +370,20 @@ class InventoryService implements InventoryServiceInterface
     {
         return DB::transaction(function () use ($reservationId, $userId, $reason) {
             $reservation = StockReservation::lockForUpdate()->findOrFail($reservationId);
-            if ($reservation->status !== 'active') return false;
-            
+            if ($reservation->status !== 'active') {
+                return false;
+            }
+
             $stock = $this->lockStock($reservation->variant_id, $reservation->warehouse_id);
             $stock->decrement('reserved_stock', $reservation->quantity);
-            
+
             $reservation->update([
                 'status' => 'released', 'released_at' => now(),
                 'released_by' => $userId, 'release_reason' => $reason,
             ]);
-            
+
             $this->clearStockCache($reservation->variant_id, $reservation->warehouse_id);
+
             return true;
         });
     }
@@ -367,8 +393,11 @@ class InventoryService implements InventoryServiceInterface
         $reservations = StockReservation::active()->forReference($referenceType, $referenceId)->get();
         $count = 0;
         foreach ($reservations as $r) {
-            if ($this->releaseReservation($r->id)) $count++;
+            if ($this->releaseReservation($r->id)) {
+                $count++;
+            }
         }
+
         return $count;
     }
 
@@ -376,7 +405,7 @@ class InventoryService implements InventoryServiceInterface
     {
         $expired = StockReservation::expired()->get();
         $count = 0;
-        
+
         foreach ($expired as $reservation) {
             try {
                 DB::transaction(function () use ($reservation) {
@@ -387,16 +416,20 @@ class InventoryService implements InventoryServiceInterface
                 });
                 $count++;
             } catch (\Exception $e) {
-                Log::error("Failed to release expired reservation #{$reservation->id}: " . $e->getMessage());
+                Log::error("Failed to release expired reservation #{$reservation->id}: ".$e->getMessage());
             }
         }
+
         return $count;
     }
 
     public function deductForOrder(int $orderId): bool
     {
         $reservations = StockReservation::active()->forReference('order', $orderId)->get();
-        foreach ($reservations as $r) $this->confirmReservation($r->id);
+        foreach ($reservations as $r) {
+            $this->confirmReservation($r->id);
+        }
+
         return true;
     }
 
@@ -404,8 +437,9 @@ class InventoryService implements InventoryServiceInterface
     {
         $reservations = StockReservation::forReference('order', $orderId)->get();
         foreach ($reservations as $r) {
-            if ($r->status === 'active') $this->releaseReservation($r->id);
-            elseif ($r->status === 'confirmed') {
+            if ($r->status === 'active') {
+                $this->releaseReservation($r->id);
+            } elseif ($r->status === 'confirmed') {
                 DB::transaction(function () use ($r) {
                     $stock = $this->lockStock($r->variant_id, $r->warehouse_id);
                     $stock->increment('physical_stock', $r->quantity);
@@ -414,6 +448,7 @@ class InventoryService implements InventoryServiceInterface
                 });
             }
         }
+
         return true;
     }
 
@@ -431,18 +466,26 @@ class InventoryService implements InventoryServiceInterface
     public function getMovementHistory(int $variantId, array $filters = []): Collection
     {
         $query = StockMovement::with(['warehouse', 'creator'])->forVariant($variantId)->orderBy('created_at', 'desc');
-        if (isset($filters['warehouse_id'])) $query->forWarehouse($filters['warehouse_id']);
-        if (isset($filters['limit'])) $query->limit($filters['limit']);
+        if (isset($filters['warehouse_id'])) {
+            $query->forWarehouse($filters['warehouse_id']);
+        }
+        if (isset($filters['limit'])) {
+            $query->limit($filters['limit']);
+        }
+
         return $query->get();
     }
 
     public function getInventoryValuation(?int $warehouseId = null): array
     {
         $query = InventoryStock::with(['variant.product', 'warehouse']);
-        if ($warehouseId) $query->forWarehouse($warehouseId);
+        if ($warehouseId) {
+            $query->forWarehouse($warehouseId);
+        }
         $stocks = $query->get();
-        
-        $totalValue = $stocks->sum(fn($s) => $s->physical_stock * $s->average_cost);
+
+        $totalValue = $stocks->sum(fn ($s) => $s->physical_stock * $s->average_cost);
+
         return [
             'total_value' => $totalValue,
             'total_items' => $stocks->sum('physical_stock'),
@@ -458,7 +501,7 @@ class InventoryService implements InventoryServiceInterface
     // Helper methods
     private function getDefaultWarehouseId(): int
     {
-        return Cache::remember('default_warehouse_id', 3600, fn() => WarehouseV2::where('is_default', true)->value('id') ?? 1);
+        return Cache::remember('default_warehouse_id', 3600, fn () => WarehouseV2::where('is_default', true)->value('id') ?? 1);
     }
 
     private function lockStock(int $variantId, int $warehouseId): InventoryStock
@@ -474,6 +517,7 @@ class InventoryService implements InventoryServiceInterface
         $data['created_at'] = now();
         $data['ip_address'] = request()->ip();
         $data['created_by'] = $data['created_by'] ?? auth()->id();
+
         return StockMovement::create($data);
     }
 

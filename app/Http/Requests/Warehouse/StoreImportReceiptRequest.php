@@ -1,13 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Requests\Warehouse;
 
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
- * Form Request for storing a new import receipt
- * 
+ * Form Request for storing a new import receipt.
+ *
  * This class handles validation and authorization
  * for import receipt creation requests.
  */
@@ -15,8 +16,6 @@ class StoreImportReceiptRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
-     * 
-     * @return bool
      */
     public function authorize(): bool
     {
@@ -25,7 +24,7 @@ class StoreImportReceiptRequest extends FormRequest
 
     /**
      * Get the validation rules that apply to the request.
-     * 
+     *
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array|string>
      */
     public function rules(): array
@@ -35,49 +34,47 @@ class StoreImportReceiptRequest extends FormRequest
                 'required',
                 'string',
                 'max:100',
-                'unique:warehouse,code'
+                'unique:warehouse,code',
             ],
             'subject' => [
                 'required',
                 'string',
-                'max:255'
+                'max:255',
             ],
             'content' => [
                 'nullable',
-                'string'
+                'string',
             ],
             'vat_invoice' => [
                 'nullable',
                 'string',
-                'max:100'
+                'max:100',
             ],
             'items' => [
                 'required',
                 'array',
-                'min:1'
+                'min:1',
             ],
             'items.*.variant_id' => [
                 'required',
                 'integer',
-                'exists:variants,id'
+                'exists:variants,id',
             ],
             'items.*.price' => [
                 'required',
                 'numeric',
-                'min:0'
+                'min:0',
             ],
             'items.*.quantity' => [
                 'required',
                 'integer',
-                'min:1'
-            ]
+                'min:1',
+            ],
         ];
     }
 
     /**
      * Get custom messages for validator errors.
-     * 
-     * @return array
      */
     public function messages(): array
     {

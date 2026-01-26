@@ -1,15 +1,16 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
-use App\Models\WarehouseV2;
 use App\Models\InventoryStock;
+use App\Models\StockMovement;
 use App\Models\StockReceipt;
 use App\Models\StockReceiptItem;
-use App\Models\StockMovement;
+use App\Models\WarehouseV2;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 class MigrateLegacyInventoryData extends Command
 {
@@ -18,8 +19,9 @@ class MigrateLegacyInventoryData extends Command
 
     public function handle(): int
     {
-        if (!$this->option('force') && WarehouseV2::count() > 0) {
+        if (! $this->option('force') && WarehouseV2::count() > 0) {
             $this->error('Data already exists. Use --force to overwrite.');
+
             return 1;
         }
 
@@ -95,7 +97,7 @@ class MigrateLegacyInventoryData extends Command
 
             foreach ($oldReceipts as $old) {
                 $receipt = StockReceipt::create([
-                    'receipt_code' => ($old->type === 'import' ? 'IMP' : 'EXP') . '-LEGACY-' . str_pad($old->id, 6, '0', STR_PAD_LEFT),
+                    'receipt_code' => ($old->type === 'import' ? 'IMP' : 'EXP').'-LEGACY-'.str_pad($old->id, 6, '0', STR_PAD_LEFT),
                     'type' => $old->type,
                     'status' => 'completed',
                     'to_warehouse_id' => $old->type === 'import' ? $warehouse->id : null,
@@ -125,8 +127,8 @@ class MigrateLegacyInventoryData extends Command
         });
 
         $this->info('Migration completed successfully!');
-        $this->info('Stock records: ' . InventoryStock::count());
-        $this->info('Receipts: ' . StockReceipt::count());
+        $this->info('Stock records: '.InventoryStock::count());
+        $this->info('Receipts: '.StockReceipt::count());
 
         return 0;
     }

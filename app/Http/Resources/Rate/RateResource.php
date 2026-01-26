@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Rate;
 
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -10,15 +11,15 @@ class RateResource extends JsonResource
     public function toArray($request): array
     {
         $images = [];
-        if (!empty($this->images)) {
+        if (! empty($this->images)) {
             $imageData = is_string($this->images) ? json_decode($this->images, true) : $this->images;
             if (is_array($imageData)) {
-                $images = array_map(function($url) {
+                $images = array_map(function ($url) {
                     return getImage($url);
                 }, $imageData);
             }
         }
-        
+
         return [
             'id' => $this->id,
             'product_id' => $this->product_id,
@@ -45,4 +46,3 @@ class RateResource extends JsonResource
         ];
     }
 }
-

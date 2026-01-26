@@ -12,10 +12,10 @@ return new class extends Migration
         // posts table (products)
         if (Schema::hasTable('posts')) {
             Schema::table('posts', function (Blueprint $table) {
-                if (!Schema::hasColumn('posts', 'has_variants')) {
+                if (! Schema::hasColumn('posts', 'has_variants')) {
                     $table->boolean('has_variants')->default(false)->after('type');
                 }
-                if (!Schema::hasColumn('posts', 'option1_name')) {
+                if (! Schema::hasColumn('posts', 'option1_name')) {
                     $table->string('option1_name', 50)->nullable()->after('has_variants');
                 }
             });
@@ -24,13 +24,13 @@ return new class extends Migration
         // variants table (product variants)
         if (Schema::hasTable('variants')) {
             Schema::table('variants', function (Blueprint $table) {
-                if (!Schema::hasColumn('variants', 'option1_value')) {
+                if (! Schema::hasColumn('variants', 'option1_value')) {
                     $table->string('option1_value', 50)->nullable()->after('product_id');
                 }
-                if (!Schema::hasColumn('variants', 'stock')) {
+                if (! Schema::hasColumn('variants', 'stock')) {
                     $table->integer('stock')->default(0)->after('sale');
                 }
-                if (!Schema::hasColumn('variants', 'position')) {
+                if (! Schema::hasColumn('variants', 'position')) {
                     $table->integer('position')->default(0)->after('stock');
                 }
             });
@@ -65,4 +65,3 @@ return new class extends Migration
         }
     }
 };
-

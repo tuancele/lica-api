@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Deal;
 
 use App\Http\Resources\Product\VariantResource;
@@ -8,17 +9,14 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Sale Deal Resource for API responses
- * 
+ * Sale Deal Resource for API responses.
+ *
  * Formats SaleDeal data with product, variant, and savings calculation
  */
 class SaleDealResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return array
      */
     public function toArray(Request $request): array
     {
@@ -45,7 +43,7 @@ class SaleDealResource extends JsonResource
             'id' => $this->id,
             'product_id' => $this->product_id,
             'variant_id' => $this->variant_id,
-            'product' => $this->whenLoaded('product', function() use ($originalPrice) {
+            'product' => $this->whenLoaded('product', function () use ($originalPrice) {
                 return [
                     'id' => $this->product->id,
                     'name' => $this->product->name,
@@ -55,7 +53,7 @@ class SaleDealResource extends JsonResource
                     'stock' => (int) ($this->product->stock ?? 0),
                 ];
             }),
-            'variant' => $this->whenLoaded('variant', function() {
+            'variant' => $this->whenLoaded('variant', function () {
                 return $this->variant ? new VariantResource($this->variant) : null;
             }),
             'deal_price' => $dealPrice,

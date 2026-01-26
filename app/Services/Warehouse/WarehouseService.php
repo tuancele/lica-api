@@ -1,39 +1,34 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Warehouse;
 
-use App\Modules\Warehouse\Models\Warehouse;
-use App\Modules\Warehouse\Models\ProductWarehouse;
+use App\Modules\Deal\Models\SaleDeal;
+use App\Modules\FlashSale\Models\ProductSale;
 use App\Modules\Product\Models\Product;
 use App\Modules\Product\Models\Variant;
-use App\Modules\FlashSale\Models\ProductSale;
-use App\Modules\Deal\Models\SaleDeal;
+use App\Modules\Warehouse\Models\ProductWarehouse;
+use App\Modules\Warehouse\Models\Warehouse;
 use App\Services\Inventory\Contracts\InventoryServiceInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Service class for Warehouse business logic
- * 
+ * Service class for Warehouse business logic.
+ *
  * This service handles all warehouse-related business operations,
  * separating business logic from controllers and data access.
  */
 class WarehouseService implements WarehouseServiceInterface
 {
-    public function __construct(private InventoryServiceInterface $inventory)
-    {
-    }
+    public function __construct(private InventoryServiceInterface $inventory) {}
+
     /**
-     * Get inventory list with filters
-     * 
-     * @param array $filters
-     * @param int $perPage
-     * @return LengthAwarePaginator
+     * Get inventory list with filters.
      */
     public function getInventory(array $filters = [], int $perPage = 10): LengthAwarePaginator
     {
@@ -46,7 +41,7 @@ class WarehouseService implements WarehouseServiceInterface
             // Only consider rows that actually carry snapshot columns (physical_stock not null)
             $latestPwSub = '(select max(pw2.id) from product_warehouse as pw2 where pw2.variant_id = variants.id and pw2.physical_stock is not null)';
             $activeFlashSaleQtySub = '(select COALESCE(sum(ps.number - ps.buy),0) from productsales ps join flashsales fs on fs.id = ps.flashsale_id where ps.variant_id = variants.id and fs.status = 1 and fs.start <= UNIX_TIMESTAMP() and fs.end >= UNIX_TIMESTAMP())';
-            $activeDealQtySub = "(select COALESCE(sum(ds.qty - COALESCE(ds.buy, 0)),0) from deal_sales ds join deals d on d.id = ds.deal_id where d.status = 1 and d.start <= UNIX_TIMESTAMP() and d.end >= UNIX_TIMESTAMP() and ds.status = 1 and ds.product_id = posts.id and ((ds.variant_id is not null and ds.variant_id = variants.id) or (ds.variant_id is null)))";
+            $activeDealQtySub = '(select COALESCE(sum(ds.qty - COALESCE(ds.buy, 0)),0) from deal_sales ds join deals d on d.id = ds.deal_id where d.status = 1 and d.start <= UNIX_TIMESTAMP() and d.end >= UNIX_TIMESTAMP() and ds.status = 1 and ds.product_id = posts.id and ((ds.variant_id is not null and ds.variant_id = variants.id) or (ds.variant_id is null)))';
 
             $query = Variant::select(
                 'variants.id as variant_id',
@@ -60,13 +55,13 @@ class WarehouseService implements WarehouseServiceInterface
                 DB::raw("({$activeDealQtySub}) as deal_stock_val"),
                 DB::raw("GREATEST(COALESCE(pw.physical_stock, variants.stock, 0) - ({$activeFlashSaleQtySub}) - ({$activeDealQtySub}), 0) as available_stock_val")
             )
-            ->join('posts', 'posts.id', '=', 'variants.product_id')
-            ->leftJoin('product_warehouse as pw', function ($join) use ($latestPwSub) {
-                $join->on('pw.variant_id', '=', 'variants.id')
-                    ->whereRaw("pw.id = ({$latestPwSub})");
-            })
-            ->where('posts.type', 'product')
-            ->where('posts.status', 1);
+                ->join('posts', 'posts.id', '=', 'variants.product_id')
+                ->leftJoin('product_warehouse as pw', function ($join) use ($latestPwSub) {
+                    $join->on('pw.variant_id', '=', 'variants.id')
+                        ->whereRaw("pw.id = ({$latestPwSub})");
+                })
+                ->where('posts.type', 'product')
+                ->where('posts.status', 1);
         } else {
             // Fallback for environments where migration hasn't been executed yet.
             // Keep API stable (no 500), and return stock based on legacy import-export totals.
@@ -78,9 +73,9 @@ class WarehouseService implements WarehouseServiceInterface
                 'posts.name as product_name',
                 'posts.image as product_image'
             )
-            ->join('posts', 'posts.id', '=', 'variants.product_id')
-            ->where('posts.type', 'product')
-            ->where('posts.status', 1);
+                ->join('posts', 'posts.id', '=', 'variants.product_id')
+                ->where('posts.type', 'product')
+                ->where('posts.status', 1);
 
             $query->selectRaw('
                 COALESCE(SUM(CASE WHEN pw_import.qty IS NOT NULL THEN pw_import.qty ELSE 0 END), 0) as import_total,
@@ -92,33 +87,33 @@ class WarehouseService implements WarehouseServiceInterface
                 0 as flash_sale_stock,
                 0 as deal_stock
             ')
-            ->leftJoin('product_warehouse as pw_import', function($join) {
-                $join->on('pw_import.variant_id', '=', 'variants.id')
-                     ->where('pw_import.type', '=', 'import');
-            })
-            ->leftJoin('product_warehouse as pw_export', function($join) {
-                $join->on('pw_export.variant_id', '=', 'variants.id')
-                     ->where('pw_export.type', '=', 'export');
-            })
-            ->groupBy('variants.id', 'variants.sku', 'variants.option1_value', 'posts.id', 'posts.name', 'posts.image');
+                ->leftJoin('product_warehouse as pw_import', function ($join) {
+                    $join->on('pw_import.variant_id', '=', 'variants.id')
+                        ->where('pw_import.type', '=', 'import');
+                })
+                ->leftJoin('product_warehouse as pw_export', function ($join) {
+                    $join->on('pw_export.variant_id', '=', 'variants.id')
+                        ->where('pw_export.type', '=', 'export');
+                })
+                ->groupBy('variants.id', 'variants.sku', 'variants.option1_value', 'posts.id', 'posts.name', 'posts.image');
         }
 
         // Filter by keyword
-        if (isset($filters['keyword']) && !empty($filters['keyword'])) {
+        if (isset($filters['keyword']) && ! empty($filters['keyword'])) {
             $keyword = $filters['keyword'];
-            $query->where(function($q) use ($keyword) {
+            $query->where(function ($q) use ($keyword) {
                 $q->where('posts.name', 'like', "%{$keyword}%")
-                  ->orWhere('variants.sku', 'like', "%{$keyword}%");
+                    ->orWhere('variants.sku', 'like', "%{$keyword}%");
             });
         }
 
         // Filter by variant_id
-        if (isset($filters['variant_id']) && !empty($filters['variant_id'])) {
+        if (isset($filters['variant_id']) && ! empty($filters['variant_id'])) {
             $query->where('variants.id', $filters['variant_id']);
         }
 
         // Filter by product_id
-        if (isset($filters['product_id']) && !empty($filters['product_id'])) {
+        if (isset($filters['product_id']) && ! empty($filters['product_id'])) {
             $query->where('posts.id', $filters['product_id']);
         }
 
@@ -141,7 +136,7 @@ class WarehouseService implements WarehouseServiceInterface
         // Sort
         $sortBy = $filters['sort_by'] ?? 'product_name';
         $sortOrder = $filters['sort_order'] ?? 'asc';
-        
+
         if ($sortBy === 'stock') {
             if ($hasNewStockColumns) {
                 $query->orderByRaw("COALESCE(pw.qty, 0) {$sortOrder}");
@@ -158,15 +153,12 @@ class WarehouseService implements WarehouseServiceInterface
     }
 
     /**
-     * Get inventory detail for a variant
-     * 
-     * @param int $variantId
-     * @return array
+     * Get inventory detail for a variant.
      */
     public function getVariantInventory(int $variantId): array
     {
         $variant = Variant::with(['product'])->findOrFail($variantId);
-        
+
         $stockSnapshot = $this->getStockSnapshot($variantId);
         $importTotal = $stockSnapshot['import_total'];
         $exportTotal = $stockSnapshot['export_total'];
@@ -179,7 +171,7 @@ class WarehouseService implements WarehouseServiceInterface
             ->orderBy('created_at', 'desc')
             ->limit(10)
             ->get()
-            ->map(function($item) {
+            ->map(function ($item) {
                 return [
                     'receipt_id' => $item->warehouse_id,
                     'receipt_code' => $item->warehouse?->code ?? '',
@@ -196,7 +188,7 @@ class WarehouseService implements WarehouseServiceInterface
             ->orderBy('created_at', 'desc')
             ->limit(10)
             ->get()
-            ->map(function($item) {
+            ->map(function ($item) {
                 return [
                     'receipt_id' => $item->warehouse_id,
                     'receipt_code' => $item->warehouse?->code ?? '',
@@ -228,11 +220,7 @@ class WarehouseService implements WarehouseServiceInterface
     }
 
     /**
-     * Get import receipts list with filters
-     * 
-     * @param array $filters
-     * @param int $perPage
-     * @return LengthAwarePaginator
+     * Get import receipts list with filters.
      */
     public function getImportReceipts(array $filters = [], int $perPage = 10): LengthAwarePaginator
     {
@@ -240,29 +228,29 @@ class WarehouseService implements WarehouseServiceInterface
             ->where('type', 'import');
 
         // Filter by keyword
-        if (isset($filters['keyword']) && !empty($filters['keyword'])) {
+        if (isset($filters['keyword']) && ! empty($filters['keyword'])) {
             $keyword = $filters['keyword'];
-            $query->where(function($q) use ($keyword) {
+            $query->where(function ($q) use ($keyword) {
                 $q->where('code', 'like', "%{$keyword}%")
-                  ->orWhere('subject', 'like', "%{$keyword}%");
+                    ->orWhere('subject', 'like', "%{$keyword}%");
             });
         }
 
         // Filter by code
-        if (isset($filters['code']) && !empty($filters['code'])) {
+        if (isset($filters['code']) && ! empty($filters['code'])) {
             $query->where('code', $filters['code']);
         }
 
         // Filter by user_id
-        if (isset($filters['user_id']) && !empty($filters['user_id'])) {
+        if (isset($filters['user_id']) && ! empty($filters['user_id'])) {
             $query->where('user_id', $filters['user_id']);
         }
 
         // Filter by date range
-        if (isset($filters['date_from']) && !empty($filters['date_from'])) {
+        if (isset($filters['date_from']) && ! empty($filters['date_from'])) {
             $query->whereDate('created_at', '>=', $filters['date_from']);
         }
-        if (isset($filters['date_to']) && !empty($filters['date_to'])) {
+        if (isset($filters['date_to']) && ! empty($filters['date_to'])) {
             $query->whereDate('created_at', '<=', $filters['date_to']);
         }
 
@@ -275,10 +263,7 @@ class WarehouseService implements WarehouseServiceInterface
     }
 
     /**
-     * Get import receipt detail with items
-     * 
-     * @param int $id
-     * @return Warehouse
+     * Get import receipt detail with items.
      */
     public function getImportReceipt(int $id): Warehouse
     {
@@ -288,20 +273,17 @@ class WarehouseService implements WarehouseServiceInterface
     }
 
     /**
-     * Create a new import receipt
-     * 
-     * @param array $data
-     * @return Warehouse
+     * Create a new import receipt.
      */
     public function createImportReceipt(array $data): Warehouse
     {
         DB::beginTransaction();
-        
+
         try {
             // Combine VAT invoice and content
             $content = $data['content'] ?? '';
-            if (isset($data['vat_invoice']) && !empty($data['vat_invoice'])) {
-                $content = ($content ? $content . "\n" : '') . 'Số hóa đơn VAT: ' . $data['vat_invoice'];
+            if (isset($data['vat_invoice']) && ! empty($data['vat_invoice'])) {
+                $content = ($content ? $content."\n" : '').'Số hóa đơn VAT: '.$data['vat_invoice'];
             }
 
             // Create warehouse record
@@ -316,9 +298,9 @@ class WarehouseService implements WarehouseServiceInterface
             // Create product warehouse items
             if (isset($data['items']) && is_array($data['items'])) {
                 foreach ($data['items'] as $item) {
-                    $variantId = (int)$item['variant_id'];
-                    $qty = (int)($item['quantity'] ?? 0);
-                    $price = (float)($item['price'] ?? 0);
+                    $variantId = (int) $item['variant_id'];
+                    $qty = (int) ($item['quantity'] ?? 0);
+                    $price = (float) ($item['price'] ?? 0);
 
                     // 1. Tạo bản ghi nhật ký nhập kho
                     ProductWarehouse::create([
@@ -332,43 +314,38 @@ class WarehouseService implements WarehouseServiceInterface
 
                     // 2. Cập nhật physical_stock thông qua InventoryService
                     // Hệ thống mới cần snapshot tồn kho thực tế
-                    app(\App\Services\Inventory\InventoryServiceInterface::class)->importStock($variantId, $qty, 'warehouse_import: ' . $warehouse->code);
+                    app(\App\Services\Inventory\InventoryServiceInterface::class)->importStock($variantId, $qty, 'warehouse_import: '.$warehouse->code);
                 }
             }
 
             DB::commit();
-            
+
             // Reload with relations
             return $warehouse->load(['user', 'items.variant.product']);
-            
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Create import receipt failed: ' . $e->getMessage());
+            Log::error('Create import receipt failed: '.$e->getMessage());
             throw $e;
         }
     }
 
     /**
-     * Update an existing import receipt
-     * 
-     * @param int $id
-     * @param array $data
-     * @return Warehouse
+     * Update an existing import receipt.
      */
     public function updateImportReceipt(int $id, array $data): Warehouse
     {
         DB::beginTransaction();
-        
+
         try {
             $warehouse = Warehouse::where('type', 'import')->findOrFail($id);
 
             // Combine VAT invoice and content
             $content = $data['content'] ?? $warehouse->content;
-            if (isset($data['vat_invoice']) && !empty($data['vat_invoice'])) {
+            if (isset($data['vat_invoice']) && ! empty($data['vat_invoice'])) {
                 // Remove old VAT invoice if exists
                 $content = preg_replace('/Số hóa đơn VAT:\s*.+/i', '', $content);
                 $content = trim($content);
-                $content = ($content ? $content . "\n" : '') . 'Số hóa đơn VAT: ' . $data['vat_invoice'];
+                $content = ($content ? $content."\n" : '').'Số hóa đơn VAT: '.$data['vat_invoice'];
             }
 
             // Update warehouse record
@@ -385,7 +362,7 @@ class WarehouseService implements WarehouseServiceInterface
             if (isset($data['items']) && is_array($data['items'])) {
                 // Delete old items
                 ProductWarehouse::where('warehouse_id', $warehouse->id)->delete();
-                
+
                 // Create new items
                 foreach ($data['items'] as $item) {
                     ProductWarehouse::create([
@@ -399,52 +376,44 @@ class WarehouseService implements WarehouseServiceInterface
             }
 
             DB::commit();
-            
+
             // Reload with relations
             return $warehouse->load(['user', 'items.variant.product']);
-            
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Update import receipt failed: ' . $e->getMessage());
+            Log::error('Update import receipt failed: '.$e->getMessage());
             throw $e;
         }
     }
 
     /**
-     * Delete an import receipt
-     * 
-     * @param int $id
-     * @return bool
+     * Delete an import receipt.
      */
     public function deleteImportReceipt(int $id): bool
     {
         DB::beginTransaction();
-        
+
         try {
             $warehouse = Warehouse::where('type', 'import')->findOrFail($id);
-            
+
             // Delete items first
             ProductWarehouse::where('warehouse_id', $warehouse->id)->delete();
-            
+
             // Delete warehouse record
             $warehouse->delete();
-            
+
             DB::commit();
+
             return true;
-            
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Delete import receipt failed: ' . $e->getMessage());
+            Log::error('Delete import receipt failed: '.$e->getMessage());
             throw $e;
         }
     }
 
     /**
-     * Get export receipts list with filters
-     * 
-     * @param array $filters
-     * @param int $perPage
-     * @return LengthAwarePaginator
+     * Get export receipts list with filters.
      */
     public function getExportReceipts(array $filters = [], int $perPage = 10): LengthAwarePaginator
     {
@@ -452,29 +421,29 @@ class WarehouseService implements WarehouseServiceInterface
             ->where('type', 'export');
 
         // Filter by keyword
-        if (isset($filters['keyword']) && !empty($filters['keyword'])) {
+        if (isset($filters['keyword']) && ! empty($filters['keyword'])) {
             $keyword = $filters['keyword'];
-            $query->where(function($q) use ($keyword) {
+            $query->where(function ($q) use ($keyword) {
                 $q->where('code', 'like', "%{$keyword}%")
-                  ->orWhere('subject', 'like', "%{$keyword}%");
+                    ->orWhere('subject', 'like', "%{$keyword}%");
             });
         }
 
         // Filter by code
-        if (isset($filters['code']) && !empty($filters['code'])) {
+        if (isset($filters['code']) && ! empty($filters['code'])) {
             $query->where('code', $filters['code']);
         }
 
         // Filter by user_id
-        if (isset($filters['user_id']) && !empty($filters['user_id'])) {
+        if (isset($filters['user_id']) && ! empty($filters['user_id'])) {
             $query->where('user_id', $filters['user_id']);
         }
 
         // Filter by date range
-        if (isset($filters['date_from']) && !empty($filters['date_from'])) {
+        if (isset($filters['date_from']) && ! empty($filters['date_from'])) {
             $query->whereDate('created_at', '>=', $filters['date_from']);
         }
-        if (isset($filters['date_to']) && !empty($filters['date_to'])) {
+        if (isset($filters['date_to']) && ! empty($filters['date_to'])) {
             $query->whereDate('created_at', '<=', $filters['date_to']);
         }
 
@@ -487,10 +456,7 @@ class WarehouseService implements WarehouseServiceInterface
     }
 
     /**
-     * Get export receipt detail with items
-     * 
-     * @param int $id
-     * @return Warehouse
+     * Get export receipt detail with items.
      */
     public function getExportReceipt(int $id): Warehouse
     {
@@ -500,44 +466,42 @@ class WarehouseService implements WarehouseServiceInterface
     }
 
     /**
-     * Create a new export receipt
-     * 
-     * @param array $data
-     * @return Warehouse
+     * Create a new export receipt.
+     *
      * @throws \Exception
      */
     public function createExportReceipt(array $data): Warehouse
     {
         DB::beginTransaction();
-        
+
         try {
             // Validate stock availability
             $stockErrors = [];
             foreach ($data['items'] ?? [] as $index => $item) {
                 $variantId = $item['variant_id'] ?? null;
                 $quantity = $item['quantity'] ?? 0;
-                
+
                 if ($variantId) {
                     $stockSnapshot = $this->getStockSnapshot($variantId);
                     $availableStock = $stockSnapshot['sellable'];
-                    
+
                     if ($quantity > $availableStock) {
                         $stockErrors["items.{$index}.quantity"] = [
-                            "Số lượng vượt quá tồn kho. Tồn kho hiện tại: {$availableStock}"
+                            "Số lượng vượt quá tồn kho. Tồn kho hiện tại: {$availableStock}",
                         ];
                     }
                 }
             }
-            
-            if (!empty($stockErrors)) {
+
+            if (! empty($stockErrors)) {
                 DB::rollBack();
                 throw new \Exception(json_encode(['errors' => $stockErrors]));
             }
 
             // Combine VAT invoice and content
             $content = $data['content'] ?? '';
-            if (isset($data['vat_invoice']) && !empty($data['vat_invoice'])) {
-                $content = ($content ? $content . "\n" : '') . 'Số hóa đơn VAT: ' . $data['vat_invoice'];
+            if (isset($data['vat_invoice']) && ! empty($data['vat_invoice'])) {
+                $content = ($content ? $content."\n" : '').'Số hóa đơn VAT: '.$data['vat_invoice'];
             }
 
             // Create warehouse record
@@ -563,29 +527,25 @@ class WarehouseService implements WarehouseServiceInterface
             }
 
             DB::commit();
-            
+
             // Reload with relations
             return $warehouse->load(['user', 'items.variant.product']);
-            
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Create export receipt failed: ' . $e->getMessage());
+            Log::error('Create export receipt failed: '.$e->getMessage());
             throw $e;
         }
     }
 
     /**
-     * Update an existing export receipt
-     * 
-     * @param int $id
-     * @param array $data
-     * @return Warehouse
+     * Update an existing export receipt.
+     *
      * @throws \Exception
      */
     public function updateExportReceipt(int $id, array $data): Warehouse
     {
         DB::beginTransaction();
-        
+
         try {
             $warehouse = Warehouse::where('type', 'export')->findOrFail($id);
 
@@ -595,27 +555,27 @@ class WarehouseService implements WarehouseServiceInterface
                 foreach ($data['items'] as $index => $item) {
                     $variantId = $item['variant_id'] ?? null;
                     $quantity = $item['quantity'] ?? 0;
-                    
+
                     if ($variantId) {
                         $stockSnapshot = $this->getStockSnapshot($variantId);
-                        
+
                         // Subtract current receipt's export quantity
                         $currentReceiptExport = ProductWarehouse::where('warehouse_id', $warehouse->id)
                             ->where('variant_id', $variantId)
                             ->where('type', 'export')
                             ->sum('qty');
-                        
+
                         $availableStock = max(0, $stockSnapshot['sellable'] + $currentReceiptExport);
-                        
+
                         if ($quantity > $availableStock) {
                             $stockErrors["items.{$index}.quantity"] = [
-                                "Số lượng vượt quá tồn kho. Tồn kho hiện tại: {$availableStock}"
+                                "Số lượng vượt quá tồn kho. Tồn kho hiện tại: {$availableStock}",
                             ];
                         }
                     }
                 }
-                
-                if (!empty($stockErrors)) {
+
+                if (! empty($stockErrors)) {
                     DB::rollBack();
                     throw new \Exception(json_encode(['errors' => $stockErrors]));
                 }
@@ -623,11 +583,11 @@ class WarehouseService implements WarehouseServiceInterface
 
             // Combine VAT invoice and content
             $content = $data['content'] ?? $warehouse->content;
-            if (isset($data['vat_invoice']) && !empty($data['vat_invoice'])) {
+            if (isset($data['vat_invoice']) && ! empty($data['vat_invoice'])) {
                 // Remove old VAT invoice if exists
                 $content = preg_replace('/Số hóa đơn VAT:\s*.+/i', '', $content);
                 $content = trim($content);
-                $content = ($content ? $content . "\n" : '') . 'Số hóa đơn VAT: ' . $data['vat_invoice'];
+                $content = ($content ? $content."\n" : '').'Số hóa đơn VAT: '.$data['vat_invoice'];
             }
 
             // Update warehouse record
@@ -644,7 +604,7 @@ class WarehouseService implements WarehouseServiceInterface
             if (isset($data['items']) && is_array($data['items'])) {
                 // Delete old items
                 ProductWarehouse::where('warehouse_id', $warehouse->id)->delete();
-                
+
                 // Create new items
                 foreach ($data['items'] as $item) {
                     ProductWarehouse::create([
@@ -658,52 +618,44 @@ class WarehouseService implements WarehouseServiceInterface
             }
 
             DB::commit();
-            
+
             // Reload with relations
             return $warehouse->load(['user', 'items.variant.product']);
-            
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Update export receipt failed: ' . $e->getMessage());
+            Log::error('Update export receipt failed: '.$e->getMessage());
             throw $e;
         }
     }
 
     /**
-     * Delete an export receipt
-     * 
-     * @param int $id
-     * @return bool
+     * Delete an export receipt.
      */
     public function deleteExportReceipt(int $id): bool
     {
         DB::beginTransaction();
-        
+
         try {
             $warehouse = Warehouse::where('type', 'export')->findOrFail($id);
-            
+
             // Delete items first
             ProductWarehouse::where('warehouse_id', $warehouse->id)->delete();
-            
+
             // Delete warehouse record
             $warehouse->delete();
-            
+
             DB::commit();
+
             return true;
-            
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Delete export receipt failed: ' . $e->getMessage());
+            Log::error('Delete export receipt failed: '.$e->getMessage());
             throw $e;
         }
     }
 
     /**
-     * Search products by keyword
-     * 
-     * @param string $keyword
-     * @param int $limit
-     * @return array
+     * Search products by keyword.
      */
     public function searchProducts(string $keyword, int $limit = 50): array
     {
@@ -719,7 +671,7 @@ class WarehouseService implements WarehouseServiceInterface
             ->limit($limit)
             ->get();
 
-        return $products->map(function($product) {
+        return $products->map(function ($product) {
             return [
                 'id' => $product->id,
                 'name' => $product->name,
@@ -730,10 +682,7 @@ class WarehouseService implements WarehouseServiceInterface
     }
 
     /**
-     * Get variants for a product
-     * 
-     * @param int $productId
-     * @return array
+     * Get variants for a product.
      */
     public function getProductVariants(int $productId): array
     {
@@ -747,8 +696,8 @@ class WarehouseService implements WarehouseServiceInterface
         // Auto-create a fallback variant for single products so warehouse import/export can work.
         if ($variants->isEmpty() && (int) $product->has_variants === 0) {
             $fallbackSku = $product->slug
-                ? 'SKU-' . strtoupper(str_replace(' ', '-', $product->slug))
-                : 'PROD-' . $productId . '-DEFAULT';
+                ? 'SKU-'.strtoupper(str_replace(' ', '-', $product->slug))
+                : 'PROD-'.$productId.'-DEFAULT';
 
             $fallbackVariant = Variant::firstOrCreate(
                 ['product_id' => $productId],
@@ -771,7 +720,7 @@ class WarehouseService implements WarehouseServiceInterface
             Schema::hasColumn('product_warehouse', 'flash_sale_stock') &&
             Schema::hasColumn('product_warehouse', 'deal_stock');
 
-        return $variants->map(function($variant) use ($hasNewStockColumns) {
+        return $variants->map(function ($variant) use ($hasNewStockColumns) {
             $isDefault = (bool) $variant->getAttribute('is_default_variant');
 
             if ($hasNewStockColumns) {
@@ -790,7 +739,7 @@ class WarehouseService implements WarehouseServiceInterface
                 $dealStock = $stockSnapshot['deal'];
                 $availableStock = $stockSnapshot['available'];
             }
-            
+
             return [
                 'id' => $variant->id,
                 'product_id' => $variant->product_id,
@@ -806,10 +755,7 @@ class WarehouseService implements WarehouseServiceInterface
     }
 
     /**
-     * Get stock information for a variant
-     * 
-     * @param int $variantId
-     * @return array
+     * Get stock information for a variant.
      */
     public function getVariantStock(int $variantId): array
     {
@@ -858,11 +804,11 @@ class WarehouseService implements WarehouseServiceInterface
                 $flashSaleStock = (int) ($inventoryStock->flash_sale_hold ?? 0);
                 $dealStock = (int) ($inventoryStock->deal_hold ?? 0);
                 $availableStock = (int) ($inventoryStock->available_stock ?? 0);
-                
+
                 // Auto cleanup: Clear invalid promotion holds
                 $needsUpdate = false;
                 $now = time();
-                
+
                 // Check Flash Sale hold: Clear if no active Flash Sale or all sold
                 if ($flashSaleStock > 0) {
                     $activeFlashSale = ProductSale::query()
@@ -873,20 +819,20 @@ class WarehouseService implements WarehouseServiceInterface
                         ->where('fs.end', '>=', $now)
                         ->select('productsales.*')
                         ->first();
-                    
+
                     // Check if all sold (buy >= number) or no active Flash Sale
-                    $shouldClearFlashSale = !$activeFlashSale;
+                    $shouldClearFlashSale = ! $activeFlashSale;
                     if ($activeFlashSale) {
                         $registered = (int) ($activeFlashSale->number ?? 0);
                         $sold = (int) ($activeFlashSale->buy ?? 0);
                         $shouldClearFlashSale = ($sold >= $registered);
                     }
-                    
+
                     if ($shouldClearFlashSale) {
                         $inventoryStock->flash_sale_hold = 0;
                         $flashSaleStock = 0;
                         $needsUpdate = true;
-                        
+
                         Log::info('WarehouseService: Auto-cleared invalid flash_sale_hold', [
                             'variant_id' => $variantId,
                             'variant_sku' => $variantSku,
@@ -895,7 +841,7 @@ class WarehouseService implements WarehouseServiceInterface
                         ]);
                     }
                 }
-                
+
                 // Check Deal hold: Clear if no active Deal or all sold
                 if ($dealStock > 0) {
                     $activeDeal = \App\Modules\Deal\Models\SaleDeal::query()
@@ -916,20 +862,20 @@ class WarehouseService implements WarehouseServiceInterface
                         ->where('deal_sales.status', '1')
                         ->select('deal_sales.*')
                         ->first();
-                    
+
                     // Check if all sold (buy >= qty) or no active Deal
-                    $shouldClearDeal = !$activeDeal;
+                    $shouldClearDeal = ! $activeDeal;
                     if ($activeDeal) {
                         $registered = (int) ($activeDeal->qty ?? 0);
                         $sold = (int) ($activeDeal->buy ?? 0);
                         $shouldClearDeal = ($sold >= $registered);
                     }
-                    
+
                     if ($shouldClearDeal) {
                         $inventoryStock->deal_hold = 0;
                         $dealStock = 0;
                         $needsUpdate = true;
-                        
+
                         Log::info('WarehouseService: Auto-cleared invalid deal_hold', [
                             'variant_id' => $variantId,
                             'variant_sku' => $variantSku,
@@ -938,7 +884,7 @@ class WarehouseService implements WarehouseServiceInterface
                         ]);
                     }
                 }
-                
+
                 // Save if cleanup was performed (Model boot() will ensure no negative values)
                 if ($needsUpdate) {
                     $inventoryStock->save();
@@ -948,7 +894,7 @@ class WarehouseService implements WarehouseServiceInterface
                 }
             } else {
                 // If not found, try SKU fallback
-                if (!empty($variantSku)) {
+                if (! empty($variantSku)) {
                     $inventoryStockBySku = \App\Models\InventoryStock::query()
                         ->join('variants', 'variants.id', '=', 'inventory_stocks.variant_id')
                         ->where('variants.sku', $variantSku)
@@ -961,11 +907,11 @@ class WarehouseService implements WarehouseServiceInterface
                         $flashSaleStock = (int) ($inventoryStockBySku->flash_sale_hold ?? 0);
                         $dealStock = (int) ($inventoryStockBySku->deal_hold ?? 0);
                         $availableStock = (int) ($inventoryStockBySku->available_stock ?? 0);
-                        
+
                         // Auto cleanup for SKU fallback (same logic as above)
                         $needsUpdate = false;
                         $now = time();
-                        
+
                         // Check Flash Sale hold
                         if ($flashSaleStock > 0) {
                             $activeFlashSale = ProductSale::query()
@@ -976,21 +922,21 @@ class WarehouseService implements WarehouseServiceInterface
                                 ->where('fs.end', '>=', $now)
                                 ->select('productsales.*')
                                 ->first();
-                            
-                            $shouldClearFlashSale = !$activeFlashSale;
+
+                            $shouldClearFlashSale = ! $activeFlashSale;
                             if ($activeFlashSale) {
                                 $registered = (int) ($activeFlashSale->number ?? 0);
                                 $sold = (int) ($activeFlashSale->buy ?? 0);
                                 $shouldClearFlashSale = ($sold >= $registered);
                             }
-                            
+
                             if ($shouldClearFlashSale) {
                                 $inventoryStockBySku->flash_sale_hold = 0;
                                 $flashSaleStock = 0;
                                 $needsUpdate = true;
                             }
                         }
-                        
+
                         // Check Deal hold
                         if ($dealStock > 0) {
                             $activeDeal = \App\Modules\Deal\Models\SaleDeal::query()
@@ -1011,21 +957,21 @@ class WarehouseService implements WarehouseServiceInterface
                                 ->where('deal_sales.status', '1')
                                 ->select('deal_sales.*')
                                 ->first();
-                            
-                            $shouldClearDeal = !$activeDeal;
+
+                            $shouldClearDeal = ! $activeDeal;
                             if ($activeDeal) {
                                 $registered = (int) ($activeDeal->qty ?? 0);
                                 $sold = (int) ($activeDeal->buy ?? 0);
                                 $shouldClearDeal = ($sold >= $registered);
                             }
-                            
+
                             if ($shouldClearDeal) {
                                 $inventoryStockBySku->deal_hold = 0;
                                 $dealStock = 0;
                                 $needsUpdate = true;
                             }
                         }
-                        
+
                         if ($needsUpdate) {
                             $inventoryStockBySku->save();
                             $inventoryStockBySku->refresh();
@@ -1047,7 +993,7 @@ class WarehouseService implements WarehouseServiceInterface
             ]);
 
             // W2 TRUTH: Log raw physical_stock value for verification
-            Log::info('W2 TRUTH: SKU=' . $variantSku . ' | Physical=' . $physicalStock, [
+            Log::info('W2 TRUTH: SKU='.$variantSku.' | Physical='.$physicalStock, [
                 'variant_id' => $variantId,
                 'variant_sku' => $variantSku,
                 'physical_stock' => $physicalStock,
@@ -1101,30 +1047,26 @@ class WarehouseService implements WarehouseServiceInterface
     }
 
     /**
-     * Get suggested price for a variant
-     * 
-     * @param int $variantId
-     * @param string $type
-     * @return array
+     * Get suggested price for a variant.
      */
     public function getVariantPrice(int $variantId, string $type = 'export'): array
     {
         $variant = Variant::findOrFail($variantId);
-        
+
         $suggestedPrice = null;
         $lastPrice = null;
-        
+
         if ($type === 'export') {
             // For export, use base price only (do not use legacy "sale" field)
             $suggestedPrice = $variant->price;
-            
+
             // Get last export price
             $lastExport = ProductWarehouse::where('variant_id', $variantId)
                 ->where('type', 'export')
                 ->where('price', '>', 0)
                 ->orderBy('created_at', 'desc')
                 ->first();
-            
+
             $lastPrice = $lastExport?->price;
         } else {
             // For import, use last import price
@@ -1133,7 +1075,7 @@ class WarehouseService implements WarehouseServiceInterface
                 ->where('price', '>', 0)
                 ->orderBy('created_at', 'desc')
                 ->first();
-            
+
             $suggestedPrice = $lastImport?->price ?? $variant->price;
             $lastPrice = $lastImport?->price;
         }
@@ -1149,11 +1091,7 @@ class WarehouseService implements WarehouseServiceInterface
     }
 
     /**
-     * Get quantity statistics
-     * 
-     * @param array $filters
-     * @param int $perPage
-     * @return LengthAwarePaginator
+     * Get quantity statistics.
      */
     public function getQuantityStatistics(array $filters = [], int $perPage = 10): LengthAwarePaginator
     {
@@ -1164,15 +1102,15 @@ class WarehouseService implements WarehouseServiceInterface
             'posts.id as product_id',
             'posts.name as product_name'
         )
-        ->join('posts', 'posts.id', '=', 'variants.product_id')
-        ->where('posts.type', 'product');
+            ->join('posts', 'posts.id', '=', 'variants.product_id')
+            ->where('posts.type', 'product');
 
         // Filter by keyword
-        if (isset($filters['keyword']) && !empty($filters['keyword'])) {
+        if (isset($filters['keyword']) && ! empty($filters['keyword'])) {
             $keyword = $filters['keyword'];
-            $query->where(function($q) use ($keyword) {
+            $query->where(function ($q) use ($keyword) {
                 $q->where('posts.name', 'like', "%{$keyword}%")
-                  ->orWhere('variants.sku', 'like', "%{$keyword}%");
+                    ->orWhere('variants.sku', 'like', "%{$keyword}%");
             });
         }
 
@@ -1181,20 +1119,20 @@ class WarehouseService implements WarehouseServiceInterface
             COALESCE(SUM(CASE WHEN pw_import.qty IS NOT NULL THEN pw_import.qty ELSE 0 END), 0) as import_total,
             COALESCE(SUM(CASE WHEN pw_export.qty IS NOT NULL THEN pw_export.qty ELSE 0 END), 0) as export_total
         ')
-        ->leftJoin('product_warehouse as pw_import', function($join) {
-            $join->on('pw_import.variant_id', '=', 'variants.id')
-                 ->where('pw_import.type', '=', 'import');
-        })
-        ->leftJoin('product_warehouse as pw_export', function($join) {
-            $join->on('pw_export.variant_id', '=', 'variants.id')
-                 ->where('pw_export.type', '=', 'export');
-        })
-        ->groupBy('variants.id', 'variants.sku', 'variants.option1_value', 'posts.id', 'posts.name');
+            ->leftJoin('product_warehouse as pw_import', function ($join) {
+                $join->on('pw_import.variant_id', '=', 'variants.id')
+                    ->where('pw_import.type', '=', 'import');
+            })
+            ->leftJoin('product_warehouse as pw_export', function ($join) {
+                $join->on('pw_export.variant_id', '=', 'variants.id')
+                    ->where('pw_export.type', '=', 'export');
+            })
+            ->groupBy('variants.id', 'variants.sku', 'variants.option1_value', 'posts.id', 'posts.name');
 
         // Sort
         $sortBy = $filters['sort_by'] ?? 'product_name';
         $sortOrder = $filters['sort_order'] ?? 'asc';
-        
+
         if ($sortBy === 'stock') {
             $query->orderByRaw("(import_total - export_total) {$sortOrder}");
         } else {
@@ -1205,11 +1143,7 @@ class WarehouseService implements WarehouseServiceInterface
     }
 
     /**
-     * Get revenue statistics
-     * 
-     * @param array $filters
-     * @param int $perPage
-     * @return LengthAwarePaginator
+     * Get revenue statistics.
      */
     public function getRevenueStatistics(array $filters = [], int $perPage = 10): LengthAwarePaginator
     {
@@ -1220,15 +1154,15 @@ class WarehouseService implements WarehouseServiceInterface
             'posts.id as product_id',
             'posts.name as product_name'
         )
-        ->join('posts', 'posts.id', '=', 'variants.product_id')
-        ->where('posts.type', 'product');
+            ->join('posts', 'posts.id', '=', 'variants.product_id')
+            ->where('posts.type', 'product');
 
         // Filter by keyword
-        if (isset($filters['keyword']) && !empty($filters['keyword'])) {
+        if (isset($filters['keyword']) && ! empty($filters['keyword'])) {
             $keyword = $filters['keyword'];
-            $query->where(function($q) use ($keyword) {
+            $query->where(function ($q) use ($keyword) {
                 $q->where('posts.name', 'like', "%{$keyword}%")
-                  ->orWhere('variants.sku', 'like', "%{$keyword}%");
+                    ->orWhere('variants.sku', 'like', "%{$keyword}%");
             });
         }
 
@@ -1239,15 +1173,15 @@ class WarehouseService implements WarehouseServiceInterface
             COALESCE(SUM(CASE WHEN pw_import.qty IS NOT NULL THEN pw_import.qty ELSE 0 END), 0) as import_quantity,
             COALESCE(SUM(CASE WHEN pw_export.qty IS NOT NULL THEN pw_export.qty ELSE 0 END), 0) as export_quantity
         ')
-        ->leftJoin('product_warehouse as pw_import', function($join) {
-            $join->on('pw_import.variant_id', '=', 'variants.id')
-                 ->where('pw_import.type', '=', 'import');
-        })
-        ->leftJoin('product_warehouse as pw_export', function($join) {
-            $join->on('pw_export.variant_id', '=', 'variants.id')
-                 ->where('pw_export.type', '=', 'export');
-        })
-        ->groupBy('variants.id', 'variants.sku', 'variants.option1_value', 'posts.id', 'posts.name');
+            ->leftJoin('product_warehouse as pw_import', function ($join) {
+                $join->on('pw_import.variant_id', '=', 'variants.id')
+                    ->where('pw_import.type', '=', 'import');
+            })
+            ->leftJoin('product_warehouse as pw_export', function ($join) {
+                $join->on('pw_export.variant_id', '=', 'variants.id')
+                    ->where('pw_export.type', '=', 'export');
+            })
+            ->groupBy('variants.id', 'variants.sku', 'variants.option1_value', 'posts.id', 'posts.name');
 
         // Sort
         $sortBy = $filters['sort_by'] ?? 'product_name';
@@ -1258,10 +1192,7 @@ class WarehouseService implements WarehouseServiceInterface
     }
 
     /**
-     * Get warehouse summary statistics
-     * 
-     * @param array $filters
-     * @return array
+     * Get warehouse summary statistics.
      */
     public function getSummaryStatistics(array $filters = []): array
     {
@@ -1278,7 +1209,7 @@ class WarehouseService implements WarehouseServiceInterface
         // Receipt counts
         $importReceiptsQuery = Warehouse::where('type', 'import');
         $exportReceiptsQuery = Warehouse::where('type', 'export');
-        
+
         if ($dateFrom) {
             $importReceiptsQuery->whereDate('created_at', '>=', $dateFrom);
             $exportReceiptsQuery->whereDate('created_at', '>=', $dateFrom);
@@ -1287,7 +1218,7 @@ class WarehouseService implements WarehouseServiceInterface
             $importReceiptsQuery->whereDate('created_at', '<=', $dateTo);
             $exportReceiptsQuery->whereDate('created_at', '<=', $dateTo);
         }
-        
+
         $totalImportReceipts = $importReceiptsQuery->count();
         $totalExportReceipts = $exportReceiptsQuery->count();
 
@@ -1296,7 +1227,7 @@ class WarehouseService implements WarehouseServiceInterface
             ->selectRaw('SUM(price * qty) as total');
         $exportValueQuery = ProductWarehouse::where('type', 'export')
             ->selectRaw('SUM(price * qty) as total');
-        
+
         if ($dateFrom) {
             $importValueQuery->whereDate('created_at', '>=', $dateFrom);
             $exportValueQuery->whereDate('created_at', '>=', $dateFrom);
@@ -1305,7 +1236,7 @@ class WarehouseService implements WarehouseServiceInterface
             $importValueQuery->whereDate('created_at', '<=', $dateTo);
             $exportValueQuery->whereDate('created_at', '<=', $dateTo);
         }
-        
+
         $totalImportValue = $importValueQuery->first()->total ?? 0;
         $totalExportValue = $exportValueQuery->first()->total ?? 0;
         $totalProfit = $totalExportValue - $totalImportValue;
@@ -1315,7 +1246,7 @@ class WarehouseService implements WarehouseServiceInterface
             ->selectRaw('SUM(qty) as total');
         $exportQuantityQuery = ProductWarehouse::where('type', 'export')
             ->selectRaw('SUM(qty) as total');
-        
+
         if ($dateFrom) {
             $importQuantityQuery->whereDate('created_at', '>=', $dateFrom);
             $exportQuantityQuery->whereDate('created_at', '>=', $dateFrom);
@@ -1324,7 +1255,7 @@ class WarehouseService implements WarehouseServiceInterface
             $importQuantityQuery->whereDate('created_at', '<=', $dateTo);
             $exportQuantityQuery->whereDate('created_at', '<=', $dateTo);
         }
-        
+
         $totalImportQuantity = $importQuantityQuery->first()->total ?? 0;
         $totalExportQuantity = $exportQuantityQuery->first()->total ?? 0;
 
@@ -1334,17 +1265,17 @@ class WarehouseService implements WarehouseServiceInterface
             ->where('posts.type', 'product')
             ->where('posts.status', 1)
             ->get();
-        
+
         foreach ($variants as $variant) {
             $stockSnapshot = $this->getStockSnapshot($variant->id);
             $currentStock = $stockSnapshot['available'];
-            
+
             // Use average import price for stock value calculation
             $avgPrice = ProductWarehouse::where('variant_id', $variant->id)
                 ->where('type', 'import')
                 ->where('price', '>', 0)
                 ->avg('price');
-            
+
             if ($avgPrice) {
                 $currentStockValue += $currentStock * $avgPrice;
             }
@@ -1353,11 +1284,11 @@ class WarehouseService implements WarehouseServiceInterface
         // Low stock items (stock < 10)
         $lowStockItems = 0;
         $outOfStockItems = 0;
-        
+
         foreach ($variants as $variant) {
             $stockSnapshot = $this->getStockSnapshot($variant->id);
             $currentStock = $stockSnapshot['available'];
-            
+
             if ($currentStock === 0) {
                 $outOfStockItems++;
             } elseif ($currentStock < 10) {
@@ -1382,43 +1313,42 @@ class WarehouseService implements WarehouseServiceInterface
     }
 
     /**
-     * Deduct stock for a variant (create export receipt automatically)
-     * 
-     * @param int $variantId Variant ID (or Product ID if no variant)
-     * @param int $quantity Quantity to deduct
-     * @param string $reason Reason for deduction (e.g., 'flashsale_order', 'normal_order')
-     * @return bool
+     * Deduct stock for a variant (create export receipt automatically).
+     *
+     * @param  int  $variantId  Variant ID (or Product ID if no variant)
+     * @param  int  $quantity  Quantity to deduct
+     * @param  string  $reason  Reason for deduction (e.g., 'flashsale_order', 'normal_order')
      */
     public function deductStock(int $variantId, int $quantity, string $reason = 'order'): bool
     {
         DB::beginTransaction();
-        
+
         try {
             // Check if variant exists
             $variant = Variant::find($variantId);
-            if (!$variant) {
+            if (! $variant) {
                 // If not found as variant, try to find default variant for product
                 $product = Product::find($variantId);
                 if ($product) {
                     $variant = $product->variant($variantId);
                 }
             }
-            
-            if (!$variant) {
+
+            if (! $variant) {
                 throw new \Exception("Variant hoặc Product không tồn tại: {$variantId}");
             }
-            
+
             // Check available stock
             $stockInfo = $this->getVariantStock($variant->id);
             if ($stockInfo['current_stock'] < $quantity) {
                 throw new \Exception("Không đủ tồn kho. Tồn kho hiện tại: {$stockInfo['current_stock']}, Yêu cầu: {$quantity}");
             }
-            
+
             // Create export receipt automatically
-            $code = 'XH-' . strtoupper($reason) . '-' . $variant->id . '-' . time();
-            $subject = "Xuất hàng tự động - " . $reason;
+            $code = 'XH-'.strtoupper($reason).'-'.$variant->id.'-'.time();
+            $subject = 'Xuất hàng tự động - '.$reason;
             $content = "Tự động tạo phiếu xuất hàng khi xử lý đơn hàng. Lý do: {$reason}";
-            
+
             $warehouse = Warehouse::create([
                 'code' => $code,
                 'subject' => $subject,
@@ -1426,10 +1356,10 @@ class WarehouseService implements WarehouseServiceInterface
                 'type' => 'export',
                 'user_id' => Auth::id() ?? 1,
             ]);
-            
+
             // Get variant price for export (base price only)
             $variantPrice = $variant->price;
-            
+
             // Create product warehouse item
             ProductWarehouse::create([
                 'warehouse_id' => $warehouse->id,
@@ -1438,16 +1368,16 @@ class WarehouseService implements WarehouseServiceInterface
                 'qty' => $quantity,
                 'type' => 'export',
             ]);
-            
+
             DB::commit();
+
             return true;
-            
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Deduct stock failed: ' . $e->getMessage(), [
+            Log::error('Deduct stock failed: '.$e->getMessage(), [
                 'variant_id' => $variantId,
                 'quantity' => $quantity,
-                'reason' => $reason
+                'reason' => $reason,
             ]);
             throw $e;
         }
@@ -1481,10 +1411,11 @@ class WarehouseService implements WarehouseServiceInterface
 
     /**
      * Process stock deduction for an order
-     * Centralized stock management for Warehouse V2
-     * 
-     * @param int $orderId Order ID
+     * Centralized stock management for Warehouse V2.
+     *
+     * @param  int  $orderId  Order ID
      * @return bool Success status
+     *
      * @throws \Exception
      */
     public function processOrderStock(int $orderId): bool
@@ -1497,6 +1428,7 @@ class WarehouseService implements WarehouseServiceInterface
                 Log::warning('WarehouseService: processOrderStock - No order details found', [
                     'order_id' => $orderId,
                 ]);
+
                 return false;
             }
 
@@ -1526,7 +1458,7 @@ class WarehouseService implements WarehouseServiceInterface
                     ->lockForUpdate()
                     ->first();
 
-                if (!$inventoryStock) {
+                if (! $inventoryStock) {
                     Log::error('WarehouseService: processOrderStock - Inventory stock not found', [
                         'order_id' => $orderId,
                         'variant_id' => $variantId,
@@ -1568,7 +1500,7 @@ class WarehouseService implements WarehouseServiceInterface
 
                 // Check if Flash Sale only when NOT a Deal item.
                 // Reason: product can be in both Deal and Flash Sale, but Deal order must deduct Deal hold.
-                if (!$isDeal) {
+                if (! $isDeal) {
                     // Check if Flash Sale (use productsale_id from OrderDetail if available, otherwise query)
                     if ($productsaleId) {
                         $activeFlashSale = ProductSale::find($productsaleId);
@@ -1599,17 +1531,17 @@ class WarehouseService implements WarehouseServiceInterface
                 // Unified stock deduction logic: Always deduct physical_stock
                 // For Flash Sale/Deal: Also deduct from flash_sale_hold/deal_hold
                 // Note: available_stock is a generated column, will be auto-calculated by MySQL
-                
+
                 // Step 1: Deduct physical_stock (always)
                 $inventoryStock->decrement('physical_stock', $quantity);
-                
+
                 // Step 2: Deduct from promotion holds if applicable
                 if ($isDeal && $saleDeal) {
                     // Deal: Deduct from deal_hold (lifetime tracking)
                     $currentDealHold = (int) ($inventoryStock->deal_hold ?? 0);
                     $newDealHold = max(0, $currentDealHold - $quantity);
                     $inventoryStock->deal_hold = $newDealHold;
-                    
+
                     // Ensure SaleDeal.buy is incremented (may already be done in CartController, but ensure consistency)
                     $buyBefore = $saleDeal->buy;
                     $saleDeal->increment('buy', $quantity);
@@ -1632,7 +1564,7 @@ class WarehouseService implements WarehouseServiceInterface
                     $currentFlashSaleHold = (int) ($inventoryStock->flash_sale_hold ?? 0);
                     $newFlashSaleHold = max(0, $currentFlashSaleHold - $quantity);
                     $inventoryStock->flash_sale_hold = $newFlashSaleHold;
-                    
+
                     // Increment ProductSale.buy for real-time tracking
                     $activeFlashSale->increment('buy', $quantity);
 
@@ -1662,7 +1594,7 @@ class WarehouseService implements WarehouseServiceInterface
                         'physical_stock_after' => $inventoryStock->physical_stock - $quantity,
                     ]);
                 }
-                
+
                 // Step 3: Update last_movement_at and save
                 $inventoryStock->last_movement_at = now();
                 $inventoryStock->save();
@@ -1693,10 +1625,11 @@ class WarehouseService implements WarehouseServiceInterface
 
     /**
      * Rollback stock for a cancelled order
-     * Reverse stock deduction when order is cancelled
-     * 
-     * @param int $orderId Order ID
+     * Reverse stock deduction when order is cancelled.
+     *
+     * @param  int  $orderId  Order ID
      * @return bool Success status
+     *
      * @throws \Exception
      */
     public function rollbackOrderStock(int $orderId): bool
@@ -1709,6 +1642,7 @@ class WarehouseService implements WarehouseServiceInterface
                 Log::warning('WarehouseService: rollbackOrderStock - No order details found', [
                     'order_id' => $orderId,
                 ]);
+
                 return false;
             }
 
@@ -1731,7 +1665,7 @@ class WarehouseService implements WarehouseServiceInterface
                     ->lockForUpdate()
                     ->first();
 
-                if (!$inventoryStock) {
+                if (! $inventoryStock) {
                     Log::warning('WarehouseService: rollbackOrderStock - Inventory stock not found', [
                         'order_id' => $orderId,
                         'variant_id' => $variantId,
@@ -1756,13 +1690,13 @@ class WarehouseService implements WarehouseServiceInterface
                     if ($productSale) {
                         $isFlashSale = true;
                         $productSaleId = $productsaleId;
-                        
+
                         // Check if Flash Sale campaign is still active
                         // Only rollback hold if campaign is still active (chưa kết thúc)
                         $flashSale = $productSale->flashsale ?? null;
-                        $isCampaignActive = $flashSale && 
-                            $flashSale->status == '1' && 
-                            $flashSale->start <= $now && 
+                        $isCampaignActive = $flashSale &&
+                            $flashSale->status == '1' &&
+                            $flashSale->start <= $now &&
                             $flashSale->end >= $now;
                     }
                 }
@@ -1773,13 +1707,13 @@ class WarehouseService implements WarehouseServiceInterface
                     if ($saleDeal) {
                         $isDeal = true;
                         $saleDealId = $dealsaleId;
-                        
+
                         // Check if Deal campaign is still active
                         // Only rollback hold if campaign is still active (chưa kết thúc)
                         $deal = $saleDeal->deal ?? null;
-                        $isCampaignActive = $deal && 
-                            $deal->status == '1' && 
-                            $deal->start <= $now && 
+                        $isCampaignActive = $deal &&
+                            $deal->status == '1' &&
+                            $deal->start <= $now &&
                             $deal->end >= $now;
                     }
                 }
@@ -1788,21 +1722,21 @@ class WarehouseService implements WarehouseServiceInterface
                 // CRITICAL: Only rollback hold if campaign is still active (chưa kết thúc)
                 // This ensures suất mua được trả lại cho chương trình nếu chương trình chưa kết thúc
                 // Note: available_stock is a generated column, will be auto-calculated by MySQL
-                
+
                 // Step 1: Add back physical_stock (always)
                 $inventoryStock->increment('physical_stock', $quantity);
-                
+
                 // Step 2: Add back promotion holds ONLY if campaign is still active
                 if ($isFlashSale && $productSale && $isCampaignActive) {
                     // Flash Sale: Add back to flash_sale_hold (only if campaign chưa kết thúc)
                     $currentFlashSaleHold = (int) ($inventoryStock->flash_sale_hold ?? 0);
                     $newFlashSaleHold = $currentFlashSaleHold + $quantity;
                     $inventoryStock->flash_sale_hold = $newFlashSaleHold;
-                    
+
                     // Decrement ProductSale.buy (always, to restore accurate sales count)
                     $buyBefore = $productSale->buy;
                     $productSale->decrement('buy', $quantity);
-                    
+
                     Log::info('WarehouseService: rollbackOrderStock - Flash Sale stock rolled back (campaign active)', [
                         'order_id' => $orderId,
                         'variant_id' => $variantId,
@@ -1815,11 +1749,11 @@ class WarehouseService implements WarehouseServiceInterface
                         'flash_sale_buy_before' => $buyBefore,
                         'flash_sale_buy_after' => $productSale->fresh()->buy,
                     ]);
-                } elseif ($isFlashSale && $productSale && !$isCampaignActive) {
+                } elseif ($isFlashSale && $productSale && ! $isCampaignActive) {
                     // Flash Sale ended: Only rollback buy count, NOT hold (campaign đã kết thúc)
                     $buyBefore = $productSale->buy;
                     $productSale->decrement('buy', $quantity);
-                    
+
                     Log::info('WarehouseService: rollbackOrderStock - Flash Sale buy rolled back (campaign ended, hold not restored)', [
                         'order_id' => $orderId,
                         'variant_id' => $variantId,
@@ -1836,11 +1770,11 @@ class WarehouseService implements WarehouseServiceInterface
                     $currentDealHold = (int) ($inventoryStock->deal_hold ?? 0);
                     $newDealHold = $currentDealHold + $quantity;
                     $inventoryStock->deal_hold = $newDealHold;
-                    
+
                     // Decrement SaleDeal.buy (always, to restore accurate sales count)
                     $buyBefore = $saleDeal->buy;
                     $saleDeal->decrement('buy', $quantity);
-                    
+
                     Log::info('WarehouseService: rollbackOrderStock - Deal stock rolled back (campaign active)', [
                         'order_id' => $orderId,
                         'variant_id' => $variantId,
@@ -1853,11 +1787,11 @@ class WarehouseService implements WarehouseServiceInterface
                         'deal_buy_before' => $buyBefore,
                         'deal_buy_after' => $saleDeal->fresh()->buy,
                     ]);
-                } elseif ($isDeal && $saleDeal && !$isCampaignActive) {
+                } elseif ($isDeal && $saleDeal && ! $isCampaignActive) {
                     // Deal ended: Only rollback buy count, NOT hold (campaign đã kết thúc)
                     $buyBefore = $saleDeal->buy;
                     $saleDeal->decrement('buy', $quantity);
-                    
+
                     Log::info('WarehouseService: rollbackOrderStock - Deal buy rolled back (campaign ended, hold not restored)', [
                         'order_id' => $orderId,
                         'variant_id' => $variantId,
@@ -1878,7 +1812,7 @@ class WarehouseService implements WarehouseServiceInterface
                         'physical_stock_after' => $inventoryStock->physical_stock + $quantity,
                     ]);
                 }
-                
+
                 // Step 3: Update last_movement_at and save
                 $inventoryStock->last_movement_at = now();
                 $inventoryStock->save();

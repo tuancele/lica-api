@@ -1,23 +1,22 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\GoogleMerchant\Controllers;
 
-use App\Http\Controllers\Controller;
-use App\Modules\Product\Models\Product;
-use App\Modules\Product\Models\Variant;
 use App\Enums\ProductType;
-use App\Services\Gmc\GmcOfferId;
-use App\Services\Gmc\GmcProductStatusService;
+use App\Http\Controllers\Controller;
 use App\Modules\GoogleMerchant\Jobs\PushProductToGmcJob;
 use App\Modules\GoogleMerchant\Jobs\PushVariantToGmcJob;
+use App\Modules\Product\Models\Product;
+use App\Modules\Product\Models\Variant;
+use App\Services\Gmc\GmcOfferId;
+use App\Services\Gmc\GmcProductStatusService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Session;
 
 /**
- * Google Merchant Center Management Controller
+ * Google Merchant Center Management Controller.
  */
 class GoogleMerchantController extends Controller
 {
@@ -28,16 +27,16 @@ class GoogleMerchantController extends Controller
 
     /**
      * Display GMC products management page
-     * Optimized: Only load product list, GMC status will be loaded via AJAX
+     * Optimized: Only load product list, GMC status will be loaded via AJAX.
      */
     public function index(Request $request)
     {
         // Set sidebar active for menu highlighting
         session(['sidebar_active' => 'google-merchant']);
-        
+
         $statusFilter = $request->get('status', 'all'); // all, approved, pending, disapproved, not_synced
         $keyword = $request->get('keyword', '');
-        
+
         // Get products same as /admin/product (only PRODUCT type, not TAXONOMY)
         $query = Product::with(['variants', 'brand'])
             ->where('type', ProductType::PRODUCT->value) // Only products, not taxonomies
@@ -46,7 +45,7 @@ class GoogleMerchantController extends Controller
 
         // Filter by keyword if provided
         if ($keyword) {
-            $query->where('name', 'like', '%' . $keyword . '%');
+            $query->where('name', 'like', '%'.$keyword.'%');
         }
 
         $products = $query->paginate(20);
@@ -76,7 +75,7 @@ class GoogleMerchantController extends Controller
                     ->first();
                 $offerId = $firstVariant
                     ? $this->offerIdService->forVariant($firstVariant)
-                    : ('PROD_' . (int) $product->id);
+                    : ('PROD_'.(int) $product->id);
                 $items[] = [
                     'product' => $product,
                     'variant' => null,
@@ -97,7 +96,7 @@ class GoogleMerchantController extends Controller
 
     /**
      * API: Get batch GMC statuses for multiple offer IDs
-     * POST /admin/google-merchant/batch-status
+     * POST /admin/google-merchant/batch-status.
      */
     public function batchStatus(Request $request)
     {
@@ -121,14 +120,14 @@ class GoogleMerchantController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Batch status failed: ' . $e->getMessage(),
+                'message' => 'Batch status failed: '.$e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * API: Sync product/variant to GMC
-     * POST /admin/google-merchant/sync
+     * POST /admin/google-merchant/sync.
      */
     public function sync(Request $request)
     {
@@ -141,7 +140,7 @@ class GoogleMerchantController extends Controller
             if ($request->has('variant_id')) {
                 $variant = Variant::findOrFail($request->variant_id);
                 PushVariantToGmcJob::dispatch($variant->id);
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Variant sync queued successfully',
@@ -150,7 +149,7 @@ class GoogleMerchantController extends Controller
             } elseif ($request->has('product_id')) {
                 $product = Product::findOrFail($request->product_id);
                 PushProductToGmcJob::dispatch($product->id);
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Product sync queued successfully',
@@ -169,14 +168,14 @@ class GoogleMerchantController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Sync failed: ' . $e->getMessage(),
+                'message' => 'Sync failed: '.$e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * API: Get GMC status for a product/variant
-     * GET /admin/google-merchant/status
+     * GET /admin/google-merchant/status.
      */
     public function getStatus(Request $request)
     {
@@ -187,7 +186,7 @@ class GoogleMerchantController extends Controller
 
         try {
             $offerId = null;
-            
+
             if ($request->has('variant_id')) {
                 $variant = Variant::findOrFail($request->variant_id);
                 $offerId = $this->offerIdService->forVariant($variant);
@@ -199,7 +198,7 @@ class GoogleMerchantController extends Controller
                     ->first();
                 $offerId = $firstVariant
                     ? $this->offerIdService->forVariant($firstVariant)
-                    : ('PROD_' . (int) $product->id);
+                    : ('PROD_'.(int) $product->id);
             } else {
                 return response()->json([
                     'success' => false,
@@ -223,9 +222,8 @@ class GoogleMerchantController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Get status failed: ' . $e->getMessage(),
+                'message' => 'Get status failed: '.$e->getMessage(),
             ], 500);
         }
     }
 }
-

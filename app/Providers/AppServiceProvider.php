@@ -1,19 +1,16 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
 use Illuminate\Pagination\Paginator;
-use Illuminate\Support\Facades\Schema;
-use App\Modules\Config\Models\Config;
+use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
     /**
      * Register any application services.
-     *
-     * @return void
      */
     public function register()
     {
@@ -80,15 +77,14 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\Inventory\InventoryService::class
         );
     }
+
     /**
      * Bootstrap any application services.
-     *
-     * @return void
      */
     public function boot()
     {
         Paginator::defaultView('pagination.default');
-        
+
         // Load Warehouse helper functions
         if (file_exists($helperPath = app_path('Modules/Warehouse/Helpers/helper.php'))) {
             require_once $helperPath;
@@ -98,7 +94,7 @@ class AppServiceProvider extends ServiceProvider
         if (class_exists(\App\Modules\FlashSale\Models\FlashSale::class)) {
             \App\Modules\FlashSale\Models\FlashSale::observe(\App\Modules\FlashSale\Observers\FlashSaleObserver::class);
         }
-        
+
         if (class_exists(\App\Modules\FlashSale\Models\ProductSale::class)) {
             \App\Modules\FlashSale\Models\ProductSale::observe(\App\Modules\FlashSale\Observers\ProductSaleObserver::class);
         }

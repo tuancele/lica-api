@@ -1,9 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services;
 
-use App\Modules\FlashSale\Models\FlashSale;
 use App\Modules\FlashSale\Models\ProductSale;
 use App\Modules\Marketing\Models\MarketingCampaignProduct;
 use App\Modules\Product\Models\Product;
@@ -12,8 +12,8 @@ use App\Services\Warehouse\WarehouseServiceInterface;
 use Carbon\Carbon;
 
 /**
- * Price Calculation Service
- * 
+ * Price Calculation Service.
+ *
  * Centralized service for calculating product prices with priority:
  * 1. Flash Sale (highest priority)
  * 2. Marketing Campaign
@@ -29,10 +29,7 @@ class PriceCalculationService
     }
 
     /**
-     * Set warehouse service (for dependency injection after construction)
-     * 
-     * @param WarehouseServiceInterface $warehouseService
-     * @return void
+     * Set warehouse service (for dependency injection after construction).
      */
     public function setWarehouseService(WarehouseServiceInterface $warehouseService): void
     {
@@ -40,12 +37,12 @@ class PriceCalculationService
     }
 
     /**
-     * Calculate effective stock (min of Flash Sale remaining and warehouse stock)
-     * 
+     * Calculate effective stock (min of Flash Sale remaining and warehouse stock).
+     *
      * Formula: min(flash_sale_remaining, warehouse_stock)
-     * 
-     * @param int|null $flashSaleRemaining Flash Sale remaining quantity
-     * @param int $warehouseStock Warehouse stock quantity
+     *
+     * @param  int|null  $flashSaleRemaining  Flash Sale remaining quantity
+     * @param  int  $warehouseStock  Warehouse stock quantity
      * @return int Effective stock
      */
     public function calculateEffectiveStock(?int $flashSaleRemaining, int $warehouseStock): int
@@ -54,32 +51,32 @@ class PriceCalculationService
         if ($flashSaleRemaining === null) {
             return $warehouseStock;
         }
-        
+
         // Return minimum of Flash Sale remaining and warehouse stock
         return min($flashSaleRemaining, $warehouseStock);
     }
+
     /**
-     * Calculate price for a Product
-     * 
-     * @param Product $product
-     * @param int|null $flashSaleId Optional Flash Sale ID to check
+     * Calculate price for a Product.
+     *
+     * @param  int|null  $flashSaleId  Optional Flash Sale ID to check
      * @return object PriceInfo object
      */
     public function calculateProductPrice(Product $product, ?int $flashSaleId = null): object
     {
         $now = time();
         $nowDate = Carbon::now();
-        
+
         $variant = $product->variant($product->id);
         $originalPrice = $variant ? $variant->price : 0;
-        
+
         // 1. Check Flash Sale (highest priority)
         $flashSaleProduct = ProductSale::where('product_id', $product->id)
             ->whereNull('variant_id') // Product-level Flash Sale
             ->whereHas('flashsale', function ($q) use ($now, $flashSaleId) {
                 $q->where('status', 1)
-                  ->where('start', '<=', $now)
-                  ->where('end', '>=', $now);
+                    ->where('start', '<=', $now)
+                    ->where('end', '>=', $now);
                 if ($flashSaleId) {
                     $q->where('id', $flashSaleId);
                 }
@@ -102,18 +99,18 @@ class PriceCalculationService
                 // Fallback to variant stock or product stock
                 $warehouseStock = $variant ? (int) ($variant->stock ?? 0) : 0;
             }
-            
+
             // Calculate effective stock: min(flash_sale_remaining, warehouse_stock)
             $flashSaleRemaining = $flashSaleProduct->remaining;
             $effectiveStock = $this->calculateEffectiveStock($flashSaleRemaining, $warehouseStock);
-            
+
             return (object) [
                 'price' => $flashSaleProduct->price_sale,
                 'original_price' => $originalPrice,
                 'type' => 'flashsale',
                 'label' => 'Flash Sale',
-                'discount_percent' => $originalPrice > 0 
-                    ? round(($originalPrice - $flashSaleProduct->price_sale) / ($originalPrice / 100)) 
+                'discount_percent' => $originalPrice > 0
+                    ? round(($originalPrice - $flashSaleProduct->price_sale) / ($originalPrice / 100))
                     : 0,
                 'flash_sale_info' => (object) [
                     'flashsale_id' => $flashSaleProduct->flashsale_id,
@@ -132,8 +129,8 @@ class PriceCalculationService
         $campaignProduct = MarketingCampaignProduct::where('product_id', $product->id)
             ->whereHas('campaign', function ($q) use ($nowDate) {
                 $q->where('status', 1)
-                  ->where('start_at', '<=', $nowDate)
-                  ->where('end_at', '>=', $nowDate);
+                    ->where('start_at', '<=', $nowDate)
+                    ->where('end_at', '>=', $nowDate);
             })->first();
 
         if ($campaignProduct) {
@@ -142,8 +139,8 @@ class PriceCalculationService
                 'original_price' => $originalPrice,
                 'type' => 'campaign',
                 'label' => 'Khuyến mại',
-                'discount_percent' => $originalPrice > 0 
-                    ? round(($originalPrice - $campaignProduct->price) / ($originalPrice / 100)) 
+                'discount_percent' => $originalPrice > 0
+                    ? round(($originalPrice - $campaignProduct->price) / ($originalPrice / 100))
                     : 0,
                 'variant_id' => null,
             ];
@@ -161,11 +158,10 @@ class PriceCalculationService
     }
 
     /**
-     * Calculate price for a Variant (with Flash Sale support)
-     * 
-     * @param Variant $variant
-     * @param int|null $productId Optional product ID (if not loaded)
-     * @param int|null $flashSaleId Optional Flash Sale ID to check
+     * Calculate price for a Variant (with Flash Sale support).
+     *
+     * @param  int|null  $productId  Optional product ID (if not loaded)
+     * @param  int|null  $flashSaleId  Optional Flash Sale ID to check
      * @return object PriceInfo object
      */
     public function calculateVariantPrice(Variant $variant, ?int $productId = null, ?int $flashSaleId = null): object
@@ -181,8 +177,8 @@ class PriceCalculationService
             ->where('variant_id', $variant->id)
             ->whereHas('flashsale', function ($q) use ($now, $flashSaleId) {
                 $q->where('status', 1)
-                  ->where('start', '<=', $now)
-                  ->where('end', '>=', $now);
+                    ->where('start', '<=', $now)
+                    ->where('end', '>=', $now);
                 if ($flashSaleId) {
                     $q->where('id', $flashSaleId);
                 }
@@ -204,18 +200,18 @@ class PriceCalculationService
                 // Fallback to variant stock if no warehouse service
                 $warehouseStock = (int) ($variant->stock ?? 0);
             }
-            
+
             // Calculate effective stock: min(flash_sale_remaining, warehouse_stock)
             $flashSaleRemaining = $productSale->remaining;
             $effectiveStock = $this->calculateEffectiveStock($flashSaleRemaining, $warehouseStock);
-            
+
             return (object) [
                 'price' => $productSale->price_sale,
                 'original_price' => $originalPrice,
                 'type' => 'flashsale',
                 'label' => 'Flash Sale',
-                'discount_percent' => $originalPrice > 0 
-                    ? round(($originalPrice - $productSale->price_sale) / ($originalPrice / 100)) 
+                'discount_percent' => $originalPrice > 0
+                    ? round(($originalPrice - $productSale->price_sale) / ($originalPrice / 100))
                     : 0,
                 'flash_sale_info' => (object) [
                     'flashsale_id' => $productSale->flashsale_id,
@@ -235,8 +231,8 @@ class PriceCalculationService
             ->whereNull('variant_id')
             ->whereHas('flashsale', function ($q) use ($now, $flashSaleId) {
                 $q->where('status', 1)
-                  ->where('start', '<=', $now)
-                  ->where('end', '>=', $now);
+                    ->where('start', '<=', $now)
+                    ->where('end', '>=', $now);
                 if ($flashSaleId) {
                     $q->where('id', $flashSaleId);
                 }
@@ -258,18 +254,18 @@ class PriceCalculationService
                 // Fallback to variant stock if no warehouse service
                 $warehouseStock = (int) ($variant->stock ?? 0);
             }
-            
+
             // Calculate effective stock: min(flash_sale_remaining, warehouse_stock)
             $flashSaleRemaining = $productSaleFallback->remaining;
             $effectiveStock = $this->calculateEffectiveStock($flashSaleRemaining, $warehouseStock);
-            
+
             return (object) [
                 'price' => $productSaleFallback->price_sale,
                 'original_price' => $originalPrice,
                 'type' => 'flashsale',
                 'label' => 'Flash Sale',
-                'discount_percent' => $originalPrice > 0 
-                    ? round(($originalPrice - $productSaleFallback->price_sale) / ($originalPrice / 100)) 
+                'discount_percent' => $originalPrice > 0
+                    ? round(($originalPrice - $productSaleFallback->price_sale) / ($originalPrice / 100))
                     : 0,
                 'flash_sale_info' => (object) [
                     'flashsale_id' => $productSaleFallback->flashsale_id,
@@ -288,8 +284,8 @@ class PriceCalculationService
         $campaignProduct = MarketingCampaignProduct::where('product_id', $productId)
             ->whereHas('campaign', function ($q) use ($nowDate) {
                 $q->where('status', 1)
-                  ->where('start_at', '<=', $nowDate)
-                  ->where('end_at', '>=', $nowDate);
+                    ->where('start_at', '<=', $nowDate)
+                    ->where('end_at', '>=', $nowDate);
             })->first();
 
         if ($campaignProduct) {
@@ -298,8 +294,8 @@ class PriceCalculationService
                 'original_price' => $originalPrice,
                 'type' => 'campaign',
                 'label' => 'Khuyến mại',
-                'discount_percent' => $originalPrice > 0 
-                    ? round(($originalPrice - $campaignProduct->price) / ($originalPrice / 100)) 
+                'discount_percent' => $originalPrice > 0
+                    ? round(($originalPrice - $campaignProduct->price) / ($originalPrice / 100))
                     : 0,
                 'variant_id' => $variant->id,
             ];

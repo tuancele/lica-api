@@ -1,12 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Warehouse\Models;
 
 use Illuminate\Database\Eloquent\Model;
+
 class ProductWarehouse extends Model
 {
-    protected $table = "product_warehouse";
+    protected $table = 'product_warehouse';
 
     protected $fillable = [
         'warehouse_id',
@@ -44,7 +46,7 @@ class ProductWarehouse extends Model
         $deal = $this->deal_stock ?? 0;
         $available = max(0, (int) $physical - (int) $flash - (int) $deal);
         $this->qty = $available;
-        
+
         // Cập nhật stock field ở variants table để đồng bộ legacy data
         if ($this->variant_id) {
             \DB::table('variants')->where('id', $this->variant_id)->update(['stock' => (int) $physical]);
@@ -63,15 +65,19 @@ class ProductWarehouse extends Model
         $physical = (int) ($this->physical_stock ?? 0);
         $flash = (int) ($this->flash_sale_stock ?? 0);
         $deal = (int) ($this->deal_stock ?? 0);
-        
+
         $available = $physical - $flash - $deal;
+
         return $available > 0 ? $available : 0;
     }
 
-    public function variant(){
-        return $this->belongsTo('App\Modules\Product\Models\Variant','variant_id','id');
+    public function variant()
+    {
+        return $this->belongsTo('App\Modules\Product\Models\Variant', 'variant_id', 'id');
     }
-    public function warehouse(){
-        return $this->belongsTo('App\Modules\Warehouse\Models\Warehouse','warehouse_id','id');
+
+    public function warehouse()
+    {
+        return $this->belongsTo('App\Modules\Warehouse\Models\Warehouse', 'warehouse_id', 'id');
     }
 }

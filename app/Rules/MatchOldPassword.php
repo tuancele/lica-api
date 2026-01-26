@@ -1,11 +1,12 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Rules;
-  
+
 use Illuminate\Contracts\Validation\Rule;
 use Illuminate\Support\Facades\Hash;
-  
+
 class MatchOldPassword implements Rule
 {
     /**
@@ -18,9 +19,10 @@ class MatchOldPassword implements Rule
     public function passes($attribute, $value)
     {
         $member = auth()->guard('member')->user();
+
         return Hash::check($value, $member['password']);
     }
-   
+
     /**
      * Get the validation error message.
      *

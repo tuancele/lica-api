@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
@@ -19,19 +20,27 @@ class PromotionController extends Controller
     {
         try {
             $filters = [];
-            if ($request->has('status') && $request->status !== '') $filters['status'] = $request->status;
-            if ($request->has('keyword') && $request->keyword !== '') $filters['keyword'] = $request->keyword;
-            
+            if ($request->has('status') && $request->status !== '') {
+                $filters['status'] = $request->status;
+            }
+            if ($request->has('keyword') && $request->keyword !== '') {
+                $filters['keyword'] = $request->keyword;
+            }
+
             $perPage = (int) $request->get('limit', 10);
             $perPage = $perPage > 0 && $perPage <= 100 ? $perPage : 10;
-            
+
             $query = Promotion::query();
-            if (isset($filters['status'])) $query->where('status', $filters['status']);
-            if (isset($filters['keyword'])) $query->where('name', 'like', '%' . $filters['keyword'] . '%');
+            if (isset($filters['status'])) {
+                $query->where('status', $filters['status']);
+            }
+            if (isset($filters['keyword'])) {
+                $query->where('name', 'like', '%'.$filters['keyword'].'%');
+            }
             $query->latest();
-            
+
             $promotions = $query->paginate($perPage);
-            
+
             return response()->json([
                 'success' => true,
                 'data' => PromotionResource::collection($promotions->items()),
@@ -43,7 +52,8 @@ class PromotionController extends Controller
                 ],
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get promotions list failed: ' . $e->getMessage());
+            Log::error('Get promotions list failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get promotions list'], 500);
         }
     }
@@ -52,10 +62,14 @@ class PromotionController extends Controller
     {
         try {
             $promotion = Promotion::with('user')->find($id);
-            if (!$promotion) return response()->json(['success' => false, 'message' => 'Promotion not found'], 404);
+            if (! $promotion) {
+                return response()->json(['success' => false, 'message' => 'Promotion not found'], 404);
+            }
+
             return response()->json(['success' => true, 'data' => new PromotionResource($promotion)], 200);
         } catch (\Exception $e) {
-            Log::error('Get promotion details failed: ' . $e->getMessage());
+            Log::error('Get promotion details failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get promotion details'], 500);
         }
     }
@@ -81,7 +95,7 @@ class PromotionController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             $promotion = Promotion::create([
                 'code' => $request->code,
                 'name' => $request->name,
@@ -98,14 +112,15 @@ class PromotionController extends Controller
                 'sort' => $request->sort ?? 0,
                 'user_id' => Auth::id(),
             ]);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Promotion created successfully',
                 'data' => new PromotionResource($promotion->load('user')),
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Create promotion failed: ' . $e->getMessage());
+            Log::error('Create promotion failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to create promotion'], 500);
         }
     }
@@ -114,11 +129,13 @@ class PromotionController extends Controller
     {
         try {
             $promotion = Promotion::find($id);
-            if (!$promotion) return response()->json(['success' => false, 'message' => 'Promotion not found'], 404);
-            
+            if (! $promotion) {
+                return response()->json(['success' => false, 'message' => 'Promotion not found'], 404);
+            }
+
             $validator = Validator::make($request->all(), [
                 'name' => 'sometimes|required|string|min:1|max:250',
-                'code' => 'sometimes|required|string|unique:promotions,code,' . $id,
+                'code' => 'sometimes|required|string|unique:promotions,code,'.$id,
                 'value' => 'sometimes|required|numeric|min:0',
                 'unit' => 'sometimes|required|in:percent,amount',
                 'number' => 'sometimes|required|integer|min:0',
@@ -134,32 +151,59 @@ class PromotionController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             $updateData = [];
-            if ($request->has('name')) $updateData['name'] = $request->name;
-            if ($request->has('code')) $updateData['code'] = $request->code;
-            if ($request->has('value')) $updateData['value'] = $request->value;
-            if ($request->has('unit')) $updateData['unit'] = $request->unit;
-            if ($request->has('number')) $updateData['number'] = $request->number;
-            if ($request->has('start')) $updateData['start'] = $request->start;
-            if ($request->has('end')) $updateData['end'] = $request->end;
-            if ($request->has('status')) $updateData['status'] = $request->status;
-            if ($request->has('endow')) $updateData['endow'] = $request->endow;
-            if ($request->has('order_sale')) $updateData['order_sale'] = $request->order_sale;
-            if ($request->has('payment')) $updateData['payment'] = $request->payment;
-            if ($request->has('content')) $updateData['content'] = $request->content;
-            if ($request->has('sort')) $updateData['sort'] = $request->sort;
+            if ($request->has('name')) {
+                $updateData['name'] = $request->name;
+            }
+            if ($request->has('code')) {
+                $updateData['code'] = $request->code;
+            }
+            if ($request->has('value')) {
+                $updateData['value'] = $request->value;
+            }
+            if ($request->has('unit')) {
+                $updateData['unit'] = $request->unit;
+            }
+            if ($request->has('number')) {
+                $updateData['number'] = $request->number;
+            }
+            if ($request->has('start')) {
+                $updateData['start'] = $request->start;
+            }
+            if ($request->has('end')) {
+                $updateData['end'] = $request->end;
+            }
+            if ($request->has('status')) {
+                $updateData['status'] = $request->status;
+            }
+            if ($request->has('endow')) {
+                $updateData['endow'] = $request->endow;
+            }
+            if ($request->has('order_sale')) {
+                $updateData['order_sale'] = $request->order_sale;
+            }
+            if ($request->has('payment')) {
+                $updateData['payment'] = $request->payment;
+            }
+            if ($request->has('content')) {
+                $updateData['content'] = $request->content;
+            }
+            if ($request->has('sort')) {
+                $updateData['sort'] = $request->sort;
+            }
             $updateData['user_id'] = Auth::id();
-            
+
             $promotion->update($updateData);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Promotion updated successfully',
                 'data' => new PromotionResource($promotion->fresh()->load('user')),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Update promotion failed: ' . $e->getMessage());
+            Log::error('Update promotion failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to update promotion'], 500);
         }
     }
@@ -168,11 +212,15 @@ class PromotionController extends Controller
     {
         try {
             $promotion = Promotion::find($id);
-            if (!$promotion) return response()->json(['success' => false, 'message' => 'Promotion not found'], 404);
+            if (! $promotion) {
+                return response()->json(['success' => false, 'message' => 'Promotion not found'], 404);
+            }
             $promotion->delete();
+
             return response()->json(['success' => true, 'message' => 'Promotion deleted successfully'], 200);
         } catch (\Exception $e) {
-            Log::error('Delete promotion failed: ' . $e->getMessage());
+            Log::error('Delete promotion failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to delete promotion'], 500);
         }
     }
@@ -185,11 +233,15 @@ class PromotionController extends Controller
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
             $promotion = Promotion::find($id);
-            if (!$promotion) return response()->json(['success' => false, 'message' => 'Promotion not found'], 404);
+            if (! $promotion) {
+                return response()->json(['success' => false, 'message' => 'Promotion not found'], 404);
+            }
             $promotion->update(['status' => $request->status, 'user_id' => Auth::id()]);
+
             return response()->json(['success' => true, 'message' => 'Promotion status updated successfully', 'data' => new PromotionResource($promotion->fresh())], 200);
         } catch (\Exception $e) {
-            Log::error('Update promotion status failed: ' . $e->getMessage());
+            Log::error('Update promotion status failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to update promotion status'], 500);
         }
     }
@@ -205,7 +257,7 @@ class PromotionController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             DB::beginTransaction();
             try {
                 $ids = $request->ids;
@@ -219,13 +271,15 @@ class PromotionController extends Controller
                 }
                 DB::commit();
                 $actionNames = ['hidden', 'shown', 'deleted'];
+
                 return response()->json(['success' => true, 'message' => "Successfully {$actionNames[$action]} {$affected} promotion(s)", 'affected_count' => $affected], 200);
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
         } catch (\Exception $e) {
-            Log::error('Bulk action failed: ' . $e->getMessage());
+            Log::error('Bulk action failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Bulk action failed'], 500);
         }
     }
@@ -241,22 +295,23 @@ class PromotionController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             DB::beginTransaction();
             try {
                 foreach ($request->sort as $item) {
                     Promotion::where('id', $item['id'])->update(['sort' => $item['sort'], 'user_id' => Auth::id()]);
                 }
                 DB::commit();
+
                 return response()->json(['success' => true, 'message' => 'Promotion sort order updated successfully'], 200);
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
         } catch (\Exception $e) {
-            Log::error('Update promotion sort failed: ' . $e->getMessage());
+            Log::error('Update promotion sort failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to update promotion sort order'], 500);
         }
     }
 }
-

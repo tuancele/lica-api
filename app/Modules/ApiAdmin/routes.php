@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 /**
- * API Admin Routes
- * 
+ * API Admin Routes.
+ *
  * All routes are prefixed with 'admin/api' and use 'api' middleware group
  * for JSON responses and API authentication
  */
@@ -11,29 +11,28 @@ Route::group([
     // Use web + auth so Admin API can be called from backend panel with session cookie
     'middleware' => ['web', 'auth'],
     'prefix' => 'admin/api',
-    'namespace' => 'App\Modules\ApiAdmin\Controllers'
+    'namespace' => 'App\Modules\ApiAdmin\Controllers',
 ], function () {
-    
     // Product Management Routes
     Route::prefix('products')->group(function () {
         // List products with pagination and filters
         Route::get('/', 'ProductController@index');
-        
+
         // Single product operations
         Route::get('/{id}', 'ProductController@show');
         Route::post('/', 'ProductController@store');
         Route::put('/{id}', 'ProductController@update');
         Route::delete('/{id}', 'ProductController@destroy');
-        
+
         // Status update
         Route::patch('/{id}/status', 'ProductController@updateStatus');
-        
+
         // Bulk operations
         Route::post('/bulk-action', 'ProductController@bulkAction');
-        
+
         // Sort update
         Route::patch('/sort', 'ProductController@updateSort');
-        
+
         // Variant management (nested routes)
         Route::prefix('{id}/variants')->group(function () {
             Route::get('/', 'ProductController@getVariants');
@@ -41,12 +40,12 @@ Route::group([
             Route::post('/', 'ProductController@createVariant');
             Route::put('/{code}', 'ProductController@updateVariant');
             Route::delete('/{code}', 'ProductController@deleteVariant');
-            
+
             // Variant packaging dimensions
             Route::get('/{code}/packaging', 'ProductController@getVariantPackaging');
             Route::put('/{code}/packaging', 'ProductController@updateVariantPackaging');
         });
-        
+
         // Product packaging dimensions
         Route::get('/{id}/packaging', 'ProductController@getProductPackaging');
         Route::put('/{id}/packaging', 'ProductController@updateProductPackaging');
@@ -56,19 +55,19 @@ Route::group([
     Route::prefix('brands')->group(function () {
         // List brands with pagination and filters
         Route::get('/', 'BrandController@index');
-        
+
         // Single brand operations
         Route::get('/{id}', 'BrandController@show');
         Route::post('/', 'BrandController@store');
         Route::put('/{id}', 'BrandController@update');
         Route::delete('/{id}', 'BrandController@destroy');
-        
+
         // Status update
         Route::patch('/{id}/status', 'BrandController@updateStatus');
-        
+
         // Bulk operations
         Route::post('/bulk-action', 'BrandController@bulkAction');
-        
+
         // Upload images
         Route::post('/upload', 'BrandController@upload');
     });
@@ -77,19 +76,19 @@ Route::group([
     Route::prefix('categories')->group(function () {
         // List categories with pagination and filters
         Route::get('/', 'CategoryController@index');
-        
+
         // Single category operations
         Route::get('/{id}', 'CategoryController@show');
         Route::post('/', 'CategoryController@store');
         Route::put('/{id}', 'CategoryController@update');
         Route::delete('/{id}', 'CategoryController@destroy');
-        
+
         // Status update
         Route::patch('/{id}/status', 'CategoryController@updateStatus');
-        
+
         // Bulk operations
         Route::post('/bulk-action', 'CategoryController@bulkAction');
-        
+
         // Sort and tree operations
         Route::patch('/sort', 'CategoryController@updateSort');
         Route::post('/tree', 'CategoryController@updateTree');
@@ -365,16 +364,16 @@ Route::group([
     Route::prefix('flash-sales')->group(function () {
         // List Flash Sales with pagination and filters
         Route::get('/', 'FlashSaleController@index');
-        
+
         // Single Flash Sale operations
         Route::get('/{id}', 'FlashSaleController@show');
         Route::post('/', 'FlashSaleController@store');
         Route::put('/{id}', 'FlashSaleController@update');
         Route::delete('/{id}', 'FlashSaleController@destroy');
-        
+
         // Status update
         Route::post('/{id}/status', 'FlashSaleController@updateStatus');
-        
+
         // Search products
         Route::post('/search-products', 'FlashSaleController@searchProducts');
     });
@@ -383,11 +382,11 @@ Route::group([
     Route::prefix('orders')->group(function () {
         // List orders with pagination and filters
         Route::get('/', 'OrderController@index');
-        
+
         // Single order operations
         Route::get('/{id}', 'OrderController@show');
         Route::put('/{id}', 'OrderController@update');
-        
+
         // Status update
         Route::patch('/{id}/status', 'OrderController@updateStatus');
     });
@@ -396,13 +395,13 @@ Route::group([
     Route::prefix('sliders')->group(function () {
         // List sliders with pagination and filters
         Route::get('/', 'SliderController@index');
-        
+
         // Single slider operations
         Route::get('/{id}', 'SliderController@show');
         Route::post('/', 'SliderController@store');
         Route::put('/{id}', 'SliderController@update');
         Route::delete('/{id}', 'SliderController@destroy');
-        
+
         // Status update
         Route::patch('/{id}/status', 'SliderController@updateStatus');
     });
@@ -411,13 +410,13 @@ Route::group([
     Route::prefix('deals')->group(function () {
         // List deals with pagination and filters
         Route::get('/', 'DealController@index');
-        
+
         // Single deal operations
         Route::get('/{id}', 'DealController@show');
         Route::post('/', 'DealController@store');
         Route::put('/{id}', 'DealController@update');
         Route::delete('/{id}', 'DealController@destroy');
-        
+
         // Status update
         Route::patch('/{id}/status', 'DealController@updateStatus');
     });
@@ -483,7 +482,7 @@ Route::group([
         Route::get('/inventory', 'WarehouseController@getInventory');
         Route::get('/inventory/{variantId}', 'WarehouseController@getVariantInventory');
         Route::get('/inventory/by-product/{productId}', 'WarehouseController@inventoryByProduct');
-        
+
         // Import Receipts Management
         Route::prefix('import-receipts')->group(function () {
             Route::get('/', 'WarehouseController@getImportReceipts');
@@ -493,7 +492,7 @@ Route::group([
             Route::delete('/{id}', 'WarehouseController@deleteImportReceipt');
             Route::get('/{id}/print', 'WarehouseController@getImportReceiptPrint');
         });
-        
+
         // Export Receipts Management
         Route::prefix('export-receipts')->group(function () {
             Route::get('/', 'WarehouseController@getExportReceipts');
@@ -503,13 +502,13 @@ Route::group([
             Route::delete('/{id}', 'WarehouseController@deleteExportReceipt');
             Route::get('/{id}/print', 'WarehouseController@getExportReceiptPrint');
         });
-        
+
         // Supporting Endpoints
         Route::get('/products/search', 'WarehouseController@searchProducts');
         Route::get('/products/{productId}/variants', 'WarehouseController@getProductVariants');
         Route::get('/variants/{variantId}/stock', 'WarehouseController@getVariantStock');
         Route::get('/variants/{variantId}/price', 'WarehouseController@getVariantPrice');
-        
+
         // Statistics
         Route::prefix('statistics')->group(function () {
             Route::get('/quantity', 'WarehouseController@getQuantityStatistics');
@@ -529,7 +528,7 @@ Route::group([
             Route::post('/{id}/complete', 'WarehouseAccountingController@complete');
             Route::post('/{id}/void', 'WarehouseAccountingController@void');
         });
-        
+
         // Statistics
         Route::get('/statistics', 'WarehouseAccountingController@statistics');
     });

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
@@ -42,8 +43,9 @@ class MediaController extends Controller
             ]);
 
             $file = $request->file('file');
-            if (!$file || !$file->isValid()) {
+            if (! $file || ! $file->isValid()) {
                 Log::warning("Media Upload [$logId]: Invalid file upload");
+
                 return response()->json([
                     'success' => false,
                     'message' => 'File không hợp lệ, vui lòng thử lại.',
@@ -67,6 +69,7 @@ class MediaController extends Controller
             $content = $file->get();
             if ($content === false || $content === null || $content === '') {
                 Log::error("Media Upload [$logId]: Empty file content");
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Không đọc được nội dung file, vui lòng thử lại.',
@@ -75,7 +78,7 @@ class MediaController extends Controller
 
             $mimeType = $file->getMimeType();
             $isAlreadyWebP = ($mimeType === 'image/webp');
-            $converter = new ImageConverter();
+            $converter = new ImageConverter;
             $tempFiles = [];
 
             if ($convertWebP) {
@@ -90,7 +93,7 @@ class MediaController extends Controller
 
                         $webpResult = $converter->convertToWebP($file, $quality);
 
-                        if ($webpResult && !empty($webpResult['is_converted']) && !empty($webpResult['path'])) {
+                        if ($webpResult && ! empty($webpResult['is_converted']) && ! empty($webpResult['path'])) {
                             $webpPath = $webpResult['path'];
                             if (file_exists($webpPath)) {
                                 $newContent = @file_get_contents($webpPath);
@@ -104,6 +107,7 @@ class MediaController extends Controller
                                     Log::error("Media Upload [$logId]: WebP file empty or unreadable", [
                                         'webpPath' => $webpPath,
                                     ]);
+
                                     return response()->json([
                                         'success' => false,
                                         'message' => 'Chuyển đổi WebP thất bại, vui lòng thử lại.',
@@ -113,6 +117,7 @@ class MediaController extends Controller
                                 Log::error("Media Upload [$logId]: WebP file not found", [
                                     'webpPath' => $webpPath,
                                 ]);
+
                                 return response()->json([
                                     'success' => false,
                                     'message' => 'Chuyển đổi WebP thất bại, vui lòng thử lại.',
@@ -122,6 +127,7 @@ class MediaController extends Controller
                             Log::info("Media Upload [$logId]: ImageConverter reports already WebP, keep original content");
                         } else {
                             Log::error("Media Upload [$logId]: ImageConverter returned null");
+
                             return response()->json([
                                 'success' => false,
                                 'message' => 'Chuyển đổi WebP thất bại, vui lòng thử lại.',
@@ -129,7 +135,7 @@ class MediaController extends Controller
                         }
                     }
                 } catch (\Exception $e) {
-                    Log::error("Media Upload [$logId]: WebP conversion exception: " . $e->getMessage(), [
+                    Log::error("Media Upload [$logId]: WebP conversion exception: ".$e->getMessage(), [
                         'file' => $e->getFile(),
                         'line' => $e->getLine(),
                     ]);
@@ -143,14 +149,14 @@ class MediaController extends Controller
 
             // Build R2 path
             $relativeDir = trim($folder, '/');
-            $relativePath = $relativeDir . '/' . date('Y/m/d');
+            $relativePath = $relativeDir.'/'.date('Y/m/d');
 
             $contentHash = substr(md5($content), 0, 8);
             $dateStr = date('Ymd');
             $randomStr = Str::random(8);
-            $fileName = $contentHash . '_' . $dateStr . '_' . $randomStr . '.webp';
+            $fileName = $contentHash.'_'.$dateStr.'_'.$randomStr.'.webp';
 
-            $fullPath = $relativePath . '/' . $fileName;
+            $fullPath = $relativePath.'/'.$fileName;
 
             Log::info("Media Upload [$logId]: Storing to R2", [
                 'path' => $fullPath,
@@ -164,7 +170,7 @@ class MediaController extends Controller
                 @unlink($tmp);
             }
 
-            if (!$stored) {
+            if (! $stored) {
                 Log::error("Media Upload [$logId]: Storage::put returned false", [
                     'path' => $fullPath,
                 ]);
@@ -178,8 +184,8 @@ class MediaController extends Controller
             $url = Storage::disk('r2')->url($fullPath);
             if (empty($url)) {
                 $r2Url = config('filesystems.disks.r2.url');
-                if (!empty($r2Url)) {
-                    $url = rtrim($r2Url, '/') . '/' . $fullPath;
+                if (! empty($r2Url)) {
+                    $url = rtrim($r2Url, '/').'/'.$fullPath;
                 }
             }
 
@@ -194,23 +200,22 @@ class MediaController extends Controller
                 'filename' => $fileName,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::error("Media Upload [$logId]: Validation error: " . $e->getMessage());
+            Log::error("Media Upload [$logId]: Validation error: ".$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Du lieu khong hop le: ' . implode(', ', $e->errors()),
+                'message' => 'Du lieu khong hop le: '.implode(', ', $e->errors()),
             ], 422);
         } catch (\Exception $e) {
-            Log::error("Media Upload [$logId]: Critical error: " . $e->getMessage(), [
+            Log::error("Media Upload [$logId]: Critical error: ".$e->getMessage(), [
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Loi he thong: ' . $e->getMessage(),
+                'message' => 'Loi he thong: '.$e->getMessage(),
             ], 500);
         }
     }
 }
-

@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
@@ -17,8 +15,8 @@ return new class extends Migration
         $exists = DB::table('ingredient_category')
             ->where('name', 'Emollient')
             ->exists();
-            
-        if (!$exists) {
+
+        if (! $exists) {
             $maxSort = DB::table('ingredient_category')->max('sort') ?? 0;
             DB::table('ingredient_category')->insert([
                 'name' => 'Emollient',

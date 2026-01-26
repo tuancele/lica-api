@@ -7,6 +7,18 @@ echo Phase 1: Foundation - Completion Script
 echo ==========================================
 echo.
 
+REM Fix PHP Path - Set PHP 8.3 as priority
+echo 0. Fixing PHP PATH to use PHP 8.3...
+set "PHP83_PATH=C:\laragon\bin\php\php-8.3.28-Win32-vs16-x64"
+if exist "%PHP83_PATH%\php.exe" (
+    set "PATH=%PHP83_PATH%;%PATH%"
+    echo ✅ PHP 8.3 path added to PATH
+) else (
+    echo ⚠️  WARNING: PHP 8.3 not found at %PHP83_PATH%
+    echo Please ensure PHP 8.3 is installed in Laragon
+)
+echo.
+
 REM Check PHP version
 echo 1. Checking PHP version...
 php -v >nul 2>&1
@@ -17,6 +29,13 @@ if %errorlevel% neq 0 (
 
 for /f "tokens=2" %%i in ('php -v ^| findstr /i "PHP"') do set PHP_VERSION=%%i
 echo PHP version: %PHP_VERSION%
+
+REM Verify PHP 8.3
+echo %PHP_VERSION% | findstr /i "8.3" >nul
+if %errorlevel% neq 0 (
+    echo ⚠️  WARNING: PHP version is not 8.3. Current: %PHP_VERSION%
+    echo Please ensure PHP 8.3 is selected in Laragon and restart terminal
+)
 echo.
 
 REM Check Redis connection

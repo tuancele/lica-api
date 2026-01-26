@@ -1,40 +1,46 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Taxonomy\Controllers;
 
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Modules\Taxonomy\Models\Category;
-use Validator;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Validator;
 
 class TaxonomyController extends Controller
 {
     public function index(Request $request)
     {
-        active('product','taxonomy');
-        $data['categories'] = Category::where([['type','taxonomy']])->where(function ($query) use ($request) {
-            if($request->get('status') != "") {
+        active('product', 'taxonomy');
+        $data['categories'] = Category::where([['type', 'taxonomy']])->where(function ($query) use ($request) {
+            if ($request->get('status') != '') {
                 $query->where('status', $request->get('status'));
             }
-            if($request->get('keyword') != "") {
-                $query->where('name','like','%'.$request->get('keyword').'%');
+            if ($request->get('keyword') != '') {
+                $query->where('name', 'like', '%'.$request->get('keyword').'%');
             }
-        })->orderBy('sort','asc')->get();
-        return view('Taxonomy::index',$data);
+        })->orderBy('sort', 'asc')->get();
+
+        return view('Taxonomy::index', $data);
     }
-    public function create(){
-        active('product','taxonomy');
-        $data['categories'] = Category::where([['type','taxonomy'],['status','1']])->orderBy('sort','asc')->get();
-        return view('Taxonomy::create',$data);
+
+    public function create()
+    {
+        active('product', 'taxonomy');
+        $data['categories'] = Category::where([['type', 'taxonomy'], ['status', '1']])->orderBy('sort', 'asc')->get();
+
+        return view('Taxonomy::create', $data);
     }
+
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'name' => 'required|min:1|max:250',
             'slug' => 'required|min:1|max:250|unique:posts,slug',
-        ],[
+        ], [
             'name.required' => 'Tiêu đề không được bỏ trống.',
             'name.min' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
             'name.max' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
@@ -43,10 +49,10 @@ class TaxonomyController extends Controller
             'slug.max' => 'Đường dẫn có độ dài từ 1 đến 250 ký tự',
             'slug.unique' => 'Đường dẫn đã tồn tại',
         ]);
-        if($validator->fails()) {
+        if ($validator->fails()) {
             return response()->json([
                 'status' => 'error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ]);
         }
         $id = Category::insertGetId(
@@ -63,35 +69,39 @@ class TaxonomyController extends Controller
                 'cat_id' => $request->cat_id,
                 'seo_title' => $request->seo_title,
                 'seo_description' => $request->seo_description,
-                'user_id'=> Auth::id(),
-                'created_at' => date('Y-m-d H:i:s')
+                'user_id' => Auth::id(),
+                'created_at' => date('Y-m-d H:i:s'),
             ]
         );
-        if($id > 0){
+        if ($id > 0) {
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Thêm thành công!',
-                'url' => route('taxonomy')
+                'url' => route('taxonomy'),
             ]);
-        }else{
+        } else {
             return response()->json([
                 'status' => 'error',
-                'errors' => array('alert' => array('0' => 'Thêm không thành công!'))
+                'errors' => ['alert' => ['0' => 'Thêm không thành công!']],
             ]);
         }
     }
-    public function edit($id){
-        active('product','taxonomy');
-        $data['categories'] = Category::where([['type','taxonomy'],['status','1'],['id','!=',$id]])->orderBy('sort','asc')->get();
+
+    public function edit($id)
+    {
+        active('product', 'taxonomy');
+        $data['categories'] = Category::where([['type', 'taxonomy'], ['status', '1'], ['id', '!=', $id]])->orderBy('sort', 'asc')->get();
         $data['detail'] = Category::find($id);
-        return view('Taxonomy::edit',$data);
+
+        return view('Taxonomy::edit', $data);
     }
+
     public function update(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'name' => 'required|min:1|max:250',
             'slug' => 'required|min:1|max:250|unique:posts,slug,'.$request->id,
-        ],[
+        ], [
             'name.required' => 'Tiêu đề không được bỏ trống.',
             'name.min' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
             'name.max' => 'Tiêu đề có độ dài từ 1 đến 250 ký tự',
@@ -100,13 +110,13 @@ class TaxonomyController extends Controller
             'slug.max' => 'Đường dẫn có độ dài từ 1 đến 250 ký tự',
             'slug.unique' => 'Đường dẫn đã tồn tại',
         ]);
-        if($validator->fails()) {
+        if ($validator->fails()) {
             return response()->json([
                 'status' => 'error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ]);
         }
-        Category::where('id',$request->id)->update(array(
+        Category::where('id', $request->id)->update([
             'name' => $request->name,
             'slug' => $request->slug,
             'image' => $request->image,
@@ -119,85 +129,94 @@ class TaxonomyController extends Controller
             'cat_id' => $request->cat_id,
             'seo_title' => $request->seo_title,
             'seo_description' => $request->seo_description,
-            'user_id'=> Auth::id()
-        ));
+            'user_id' => Auth::id(),
+        ]);
+
         return response()->json([
             'status' => 'success',
             'alert' => 'Sửa thành công!',
-            'url' => route('taxonomy')
+            'url' => route('taxonomy'),
         ]);
     }
+
     public function delete(Request $request)
     {
-        $check = Category::select('id')->where([['type','taxonomy'],['cat_id',$request->id]])->get();
-        if($check->count() > 0){
+        $check = Category::select('id')->where([['type', 'taxonomy'], ['cat_id', $request->id]])->get();
+        if ($check->count() > 0) {
             return response()->json([
                 'status' => 'error',
-                'errors' => array('alert' => array('0' => 'Danh mục chứa danh mục con, không thể xóa!'))
+                'errors' => ['alert' => ['0' => 'Danh mục chứa danh mục con, không thể xóa!']],
             ]);
-        }else{
+        } else {
             $data = Category::findOrFail($request->id)->delete();
-            if($request->page !=""){
+            if ($request->page != '') {
                 $url = route('taxonomy').'?page='.$request->page;
-            }else{
+            } else {
                 $url = route('taxonomy');
             }
+
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Xóa thành công!',
-                'url' => route('taxonomy')
+                'url' => route('taxonomy'),
             ]);
         }
     }
-    public function status(Request $request){
-        Category::where('id',$request->id)->update(array(
-            'status' => $request->status
-        ));
+
+    public function status(Request $request)
+    {
+        Category::where('id', $request->id)->update([
+            'status' => $request->status,
+        ]);
+
         return response()->json([
             'status' => 'success',
             'alert' => 'Đổi trạng thái thành công!',
-            'url' => route('taxonomy')
+            'url' => route('taxonomy'),
         ]);
     }
-    public function sort(){
-        active('product','taxonomy');
+
+    public function sort()
+    {
+        active('product', 'taxonomy');
+
         return view('Taxonomy::sort');
     }
-    public function tree(Request $req) {
+
+    public function tree(Request $req)
+    {
         $sort = $req->sortable;
-        if(isset($sort))
-        {
-            foreach($sort as $order => $value)
-            {
-                $id = (int)$value['item_id'];  
-                Category::where('id',$id)->update(array(
-                    'cat_id' => (int)$value['parent_id'],
-                    'sort' => $order
-                ));
+        if (isset($sort)) {
+            foreach ($sort as $order => $value) {
+                $id = (int) $value['item_id'];
+                Category::where('id', $id)->update([
+                    'cat_id' => (int) $value['parent_id'],
+                    'sort' => $order,
+                ]);
             }
         }
-        $menu = Category::where([['type','taxonomy'],['status','1']])->orderBy('sort','asc')->get();
-        $data['menu'] = $this->treeCate($menu,0);
-        return view('Taxonomy::tree',$data);
+        $menu = Category::where([['type', 'taxonomy'], ['status', '1']])->orderBy('sort', 'asc')->get();
+        $data['menu'] = $this->treeCate($menu, 0);
+
+        return view('Taxonomy::tree', $data);
     }
-    public function treeCate($array = NULL,$parent = 0)
+
+    public function treeCate($array = null, $parent = 0)
     {
-        $html = "";
-        if(isset($array) && !empty($array))
-        {
+        $html = '';
+        if (isset($array) && ! empty($array)) {
             $html .= '<ol class="sortable">';
-            foreach($array as  $item)
-            {
-                if($item->cat_id == $parent)
-                {
+            foreach ($array as $item) {
+                if ($item->cat_id == $parent) {
                     $html .= '<li id="list_'.$item->id.'">';
                     $html .= '<div><i class="fa fa-angle-double-right"></i> '.$item->name.'</div>';
                     $html .= $this->treeCate($array, $item->id);
                     $html .= '</li>';
                 }
-            } 
+            }
             $html .= '</ol>';
         }
+
         return $html;
     }
 }

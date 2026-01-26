@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
@@ -16,17 +17,21 @@ class ConfigController extends Controller
     {
         try {
             $filters = [];
-            if ($request->has('keyword') && $request->keyword !== '') $filters['keyword'] = $request->keyword;
-            
+            if ($request->has('keyword') && $request->keyword !== '') {
+                $filters['keyword'] = $request->keyword;
+            }
+
             $perPage = (int) $request->get('limit', 20);
             $perPage = $perPage > 0 && $perPage <= 100 ? $perPage : 20;
-            
+
             $query = Config::query();
-            if (isset($filters['keyword'])) $query->where('key', 'like', '%' . $filters['keyword'] . '%');
+            if (isset($filters['keyword'])) {
+                $query->where('key', 'like', '%'.$filters['keyword'].'%');
+            }
             $query->orderBy('key', 'asc');
-            
+
             $configs = $query->paginate($perPage);
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $configs->items()->map(function ($config) {
@@ -45,7 +50,8 @@ class ConfigController extends Controller
                 ],
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get configs list failed: ' . $e->getMessage());
+            Log::error('Get configs list failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get configs list'], 500);
         }
     }
@@ -54,7 +60,10 @@ class ConfigController extends Controller
     {
         try {
             $config = Config::find($id);
-            if (!$config) return response()->json(['success' => false, 'message' => 'Config not found'], 404);
+            if (! $config) {
+                return response()->json(['success' => false, 'message' => 'Config not found'], 404);
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -65,7 +74,8 @@ class ConfigController extends Controller
                 ],
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get config details failed: ' . $e->getMessage());
+            Log::error('Get config details failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get config details'], 500);
         }
     }
@@ -81,13 +91,13 @@ class ConfigController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             $config = Config::create([
                 'key' => $request->key,
                 'value' => $request->value ?? '',
                 'group' => $request->group ?? 'general',
             ]);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Config created successfully',
@@ -99,7 +109,8 @@ class ConfigController extends Controller
                 ],
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Create config failed: ' . $e->getMessage());
+            Log::error('Create config failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to create config'], 500);
         }
     }
@@ -108,24 +119,32 @@ class ConfigController extends Controller
     {
         try {
             $config = Config::find($id);
-            if (!$config) return response()->json(['success' => false, 'message' => 'Config not found'], 404);
-            
+            if (! $config) {
+                return response()->json(['success' => false, 'message' => 'Config not found'], 404);
+            }
+
             $validator = Validator::make($request->all(), [
-                'key' => 'sometimes|required|string|unique:configs,key,' . $id,
+                'key' => 'sometimes|required|string|unique:configs,key,'.$id,
                 'value' => 'nullable',
                 'group' => 'nullable|string',
             ]);
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             $updateData = [];
-            if ($request->has('key')) $updateData['key'] = $request->key;
-            if ($request->has('value')) $updateData['value'] = $request->value;
-            if ($request->has('group')) $updateData['group'] = $request->group;
-            
+            if ($request->has('key')) {
+                $updateData['key'] = $request->key;
+            }
+            if ($request->has('value')) {
+                $updateData['value'] = $request->value;
+            }
+            if ($request->has('group')) {
+                $updateData['group'] = $request->group;
+            }
+
             $config->update($updateData);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Config updated successfully',
@@ -137,7 +156,8 @@ class ConfigController extends Controller
                 ],
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Update config failed: ' . $e->getMessage());
+            Log::error('Update config failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to update config'], 500);
         }
     }
@@ -146,13 +166,16 @@ class ConfigController extends Controller
     {
         try {
             $config = Config::find($id);
-            if (!$config) return response()->json(['success' => false, 'message' => 'Config not found'], 404);
+            if (! $config) {
+                return response()->json(['success' => false, 'message' => 'Config not found'], 404);
+            }
             $config->delete();
+
             return response()->json(['success' => true, 'message' => 'Config deleted successfully'], 200);
         } catch (\Exception $e) {
-            Log::error('Delete config failed: ' . $e->getMessage());
+            Log::error('Delete config failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to delete config'], 500);
         }
     }
 }
-

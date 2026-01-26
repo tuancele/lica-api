@@ -1,23 +1,21 @@
 <?php
 
 declare(strict_types=1);
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 
 class CreateContactsTable extends Migration
 {
     /**
      * Run the migrations.
-     *
-     * @return void
      */
     public function up()
     {
         Schema::create('contacts', function (Blueprint $table) {
             $table->increments('id');
             $table->string('name');
-            $table->string('email',200)->nullable();
+            $table->string('email', 200)->nullable();
             $table->string('phone', 50)->nullable();
             $table->string('address', 200)->nullable();
             $table->text('content')->nullable();
@@ -29,8 +27,6 @@ class CreateContactsTable extends Migration
 
     /**
      * Reverse the migrations.
-     *
-     * @return void
      */
     public function down()
     {

@@ -1,12 +1,12 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Feature\ApiAdmin;
 
-use Tests\TestCase;
 use App\Modules\Brand\Models\Brand;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
+use Tests\TestCase;
 
 class BrandApiTest extends TestCase
 {
@@ -25,17 +25,17 @@ class BrandApiTest extends TestCase
         $response = $this->getJson('/admin/api/brands?limit=5');
 
         $response->assertStatus(200)
-                 ->assertJsonStructure([
-                     'success',
-                     'data',
-                     'pagination' => [
-                         'current_page',
-                         'per_page',
-                         'total',
-                         'last_page'
-                     ]
-                 ])
-                 ->assertJson(['success' => true]);
+            ->assertJsonStructure([
+                'success',
+                'data',
+                'pagination' => [
+                    'current_page',
+                    'per_page',
+                    'total',
+                    'last_page',
+                ],
+            ])
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_filter_brands(): void
@@ -45,7 +45,7 @@ class BrandApiTest extends TestCase
         $response = $this->getJson('/admin/api/brands?keyword=Test&status=1');
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_get_single_brand(): void
@@ -55,19 +55,19 @@ class BrandApiTest extends TestCase
         $response = $this->getJson("/admin/api/brands/{$brand->id}");
 
         $response->assertStatus(200)
-                 ->assertJsonStructure([
-                     'success',
-                     'data' => [
-                         'id',
-                         'name',
-                         'slug',
-                         'status'
-                     ]
-                 ])
-                 ->assertJson([
-                     'success' => true,
-                     'data' => ['id' => $brand->id]
-                 ]);
+            ->assertJsonStructure([
+                'success',
+                'data' => [
+                    'id',
+                    'name',
+                    'slug',
+                    'status',
+                ],
+            ])
+            ->assertJson([
+                'success' => true,
+                'data' => ['id' => $brand->id],
+            ]);
     }
 
     public function test_returns_404_for_nonexistent_brand(): void
@@ -75,7 +75,7 @@ class BrandApiTest extends TestCase
         $response = $this->getJson('/admin/api/brands/99999');
 
         $response->assertStatus(404)
-                 ->assertJson(['success' => false]);
+            ->assertJson(['success' => false]);
     }
 
     public function test_can_create_brand(): void
@@ -84,22 +84,22 @@ class BrandApiTest extends TestCase
             'name' => 'New Test Brand',
             'slug' => 'new-test-brand',
             'status' => '1',
-            'sort' => 0
+            'sort' => 0,
         ];
 
         $response = $this->postJson('/admin/api/brands', $brandData);
 
         $response->assertStatus(201)
-                 ->assertJsonStructure([
-                     'success',
-                     'message',
-                     'data'
-                 ])
-                 ->assertJson(['success' => true]);
+            ->assertJsonStructure([
+                'success',
+                'message',
+                'data',
+            ])
+            ->assertJson(['success' => true]);
 
         $this->assertDatabaseHas('brands', [
             'name' => 'New Test Brand',
-            'slug' => 'new-test-brand'
+            'slug' => 'new-test-brand',
         ]);
     }
 
@@ -116,15 +116,15 @@ class BrandApiTest extends TestCase
 
         $response = $this->putJson("/admin/api/brands/{$brand->id}", [
             'name' => 'Updated Name',
-            'status' => '1'
+            'status' => '1',
         ]);
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
 
         $this->assertDatabaseHas('brands', [
             'id' => $brand->id,
-            'name' => 'Updated Name'
+            'name' => 'Updated Name',
         ]);
     }
 
@@ -135,7 +135,7 @@ class BrandApiTest extends TestCase
         $response = $this->deleteJson("/admin/api/brands/{$brand->id}");
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
 
         $this->assertDatabaseMissing('brands', ['id' => $brand->id]);
     }
@@ -145,15 +145,15 @@ class BrandApiTest extends TestCase
         $brand = Brand::factory()->create(['status' => '1']);
 
         $response = $this->patchJson("/admin/api/brands/{$brand->id}/status", [
-            'status' => '0'
+            'status' => '0',
         ]);
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
 
         $this->assertDatabaseHas('brands', [
             'id' => $brand->id,
-            'status' => '0'
+            'status' => '0',
         ]);
     }
 
@@ -164,18 +164,17 @@ class BrandApiTest extends TestCase
 
         $response = $this->postJson('/admin/api/brands/bulk-action', [
             'ids' => $brandIds,
-            'action' => 0
+            'action' => 0,
         ]);
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
 
         foreach ($brandIds as $id) {
             $this->assertDatabaseHas('brands', [
                 'id' => $id,
-                'status' => '0'
+                'status' => '0',
             ]);
         }
     }
 }
-

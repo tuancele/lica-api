@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\GoogleMerchant\Observers;
 
 use App\Enums\ProductType;
@@ -27,6 +28,7 @@ class ProductObserver
                     'product_id' => $product->id,
                     'has_variants' => $hasVariants,
                 ]);
+
                 return;
             }
 
@@ -40,6 +42,3 @@ class ProductObserver
         }
     }
 }
-
-
-

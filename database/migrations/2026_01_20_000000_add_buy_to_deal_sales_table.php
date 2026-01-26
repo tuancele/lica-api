@@ -9,11 +9,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('deal_sales')) {
+        if (! Schema::hasTable('deal_sales')) {
             return;
         }
 
-        if (!Schema::hasColumn('deal_sales', 'buy')) {
+        if (! Schema::hasColumn('deal_sales', 'buy')) {
             Schema::table('deal_sales', function (Blueprint $table) {
                 $table->unsignedInteger('buy')->default(0)->after('qty');
             });
@@ -22,7 +22,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (!Schema::hasTable('deal_sales')) {
+        if (! Schema::hasTable('deal_sales')) {
             return;
         }
 
@@ -33,4 +33,3 @@ return new class extends Migration
         }
     }
 };
-

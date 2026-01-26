@@ -1,11 +1,12 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class WarehouseV2 extends Model
 {
@@ -92,7 +93,7 @@ class WarehouseV2 extends Model
     */
 
     /**
-     * Get the default warehouse
+     * Get the default warehouse.
      */
     public static function getDefault(): ?self
     {
@@ -100,19 +101,19 @@ class WarehouseV2 extends Model
     }
 
     /**
-     * Set this warehouse as default
+     * Set this warehouse as default.
      */
     public function setAsDefault(): bool
     {
         // Remove default from other warehouses
         static::where('is_default', true)->update(['is_default' => false]);
-        
+
         // Set this as default
         return $this->update(['is_default' => true]);
     }
 
     /**
-     * Get stock for a specific variant
+     * Get stock for a specific variant.
      */
     public function getStockForVariant(int $variantId): ?InventoryStock
     {
@@ -120,7 +121,7 @@ class WarehouseV2 extends Model
     }
 
     /**
-     * Get total stock value in this warehouse
+     * Get total stock value in this warehouse.
      */
     public function getTotalStockValue(): float
     {
@@ -130,7 +131,7 @@ class WarehouseV2 extends Model
     }
 
     /**
-     * Get count of low stock items
+     * Get count of low stock items.
      */
     public function getLowStockCount(): int
     {
@@ -141,7 +142,7 @@ class WarehouseV2 extends Model
     }
 
     /**
-     * Get count of out of stock items
+     * Get count of out of stock items.
      */
     public function getOutOfStockCount(): int
     {

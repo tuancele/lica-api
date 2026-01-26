@@ -16,10 +16,10 @@ return new class extends Migration
 
         Schema::create('stock_alerts', function (Blueprint $table) {
             $table->id();
-            
+
             $table->unsignedBigInteger('warehouse_id');
             $table->unsignedInteger('variant_id');
-            
+
             // Alert type
             $table->enum('alert_type', [
                 'low_stock',      // Sắp hết hàng
@@ -29,30 +29,30 @@ return new class extends Migration
                 'expired',        // Đã hết hạn
                 'reorder_point',  // Đạt điểm đặt hàng lại
             ])->comment('Loại cảnh báo');
-            
+
             // Stock info at alert time
             $table->integer('current_stock')->comment('Tồn kho lúc tạo cảnh báo');
             $table->integer('threshold')->nullable()->comment('Ngưỡng so sánh');
-            
+
             // Status
             $table->enum('status', ['active', 'acknowledged', 'resolved', 'ignored'])
                 ->default('active')
                 ->comment('Trạng thái cảnh báo');
-            
+
             // Actions taken
             $table->unsignedBigInteger('acknowledged_by')->nullable();
             $table->timestamp('acknowledged_at')->nullable();
             $table->unsignedBigInteger('resolved_by')->nullable();
             $table->timestamp('resolved_at')->nullable();
             $table->text('resolution_notes')->nullable();
-            
+
             // Notification tracking
             $table->boolean('email_sent')->default(false);
             $table->timestamp('email_sent_at')->nullable();
-            
+
             // Metadata
             $table->json('metadata')->nullable();
-            
+
             $table->timestamps();
 
             // Foreign keys

@@ -1,18 +1,23 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Compare\Models;
+
 use Illuminate\Database\Eloquent\Model;
+
 class Draff extends Model
 {
-    protected $table = "brand_draffs";
+    protected $table = 'brand_draffs';
     protected $fillable = [
         'store_id',
         'name',
         'status',
-        'link'
+        'link',
     ];
-    public function store(){
-    	return $this->belongsTo('App\Modules\Compare\Models\Store','store_id','id');
+
+    public function store()
+    {
+        return $this->belongsTo('App\Modules\Compare\Models\Store', 'store_id', 'id');
     }
 }

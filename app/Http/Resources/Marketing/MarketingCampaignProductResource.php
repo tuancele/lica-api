@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Marketing;
 
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -29,4 +30,3 @@ class MarketingCampaignProductResource extends JsonResource
         ];
     }
 }
-

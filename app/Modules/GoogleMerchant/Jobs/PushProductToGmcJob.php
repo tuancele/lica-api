@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\GoogleMerchant\Jobs;
 
 use App\Modules\GoogleMerchant\Services\GoogleMerchantService;
@@ -24,8 +25,9 @@ class PushProductToGmcJob implements ShouldQueue
     {
         try {
             $product = Product::find($this->productId);
-            if (!$product) {
+            if (! $product) {
                 Log::warning('[GoogleMerchant][Job] Product not found', ['product_id' => $this->productId]);
+
                 return;
             }
 
@@ -39,6 +41,3 @@ class PushProductToGmcJob implements ShouldQueue
         }
     }
 }
-
-
-

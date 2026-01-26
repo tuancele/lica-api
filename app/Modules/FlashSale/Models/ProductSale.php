@@ -1,35 +1,40 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\FlashSale\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
 class ProductSale extends Model
 {
-    protected $table = "productsales";
-    
-    public function user(){
-    	return $this->belongsTo('App\User','user_id','id');
+    protected $table = 'productsales';
+
+    public function user()
+    {
+        return $this->belongsTo('App\User', 'user_id', 'id');
     }
 
-    public function flashsale(){
-    	return $this->belongsTo('App\Modules\FlashSale\Models\FlashSale','flashsale_id','id');
+    public function flashsale()
+    {
+        return $this->belongsTo('App\Modules\FlashSale\Models\FlashSale', 'flashsale_id', 'id');
     }
 
-    public function product(){
-    	return $this->belongsTo('App\Modules\Product\Models\Product','product_id','id');
+    public function product()
+    {
+        return $this->belongsTo('App\Modules\Product\Models\Product', 'product_id', 'id');
     }
 
     /**
-     * Relationship with Variant
+     * Relationship with Variant.
      */
-    public function variant(){
-        return $this->belongsTo('App\Modules\Product\Models\Variant','variant_id','id');
+    public function variant()
+    {
+        return $this->belongsTo('App\Modules\Product\Models\Variant', 'variant_id', 'id');
     }
 
     /**
-     * Scope to filter by variant
+     * Scope to filter by variant.
      */
     public function scopeForVariant($query, $variantId)
     {
@@ -37,7 +42,7 @@ class ProductSale extends Model
     }
 
     /**
-     * Scope to filter by product (without variant)
+     * Scope to filter by product (without variant).
      */
     public function scopeForProduct($query, $productId)
     {
@@ -46,7 +51,7 @@ class ProductSale extends Model
     }
 
     /**
-     * Check if product sale is still available (has remaining stock)
+     * Check if product sale is still available (has remaining stock).
      */
     public function getIsAvailableAttribute(): bool
     {
@@ -54,7 +59,7 @@ class ProductSale extends Model
     }
 
     /**
-     * Get remaining quantity
+     * Get remaining quantity.
      */
     public function getRemainingAttribute(): int
     {
@@ -62,13 +67,14 @@ class ProductSale extends Model
     }
 
     /**
-     * Get discount percent
+     * Get discount percent.
      */
     public function getDiscountPercentAttribute(): ?int
     {
         if ($this->variant && $this->variant->price > 0) {
             return round(($this->variant->price - $this->price_sale) / ($this->variant->price / 100));
         }
+
         return null;
     }
 }

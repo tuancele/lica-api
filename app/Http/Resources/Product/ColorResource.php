@@ -1,12 +1,13 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Product;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Color Resource for API responses
+ * Color Resource for API responses.
  */
 class ColorResource extends JsonResource
 {
@@ -14,7 +15,6 @@ class ColorResource extends JsonResource
      * Transform the resource into an array.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return array
      */
     public function toArray($request): array
     {

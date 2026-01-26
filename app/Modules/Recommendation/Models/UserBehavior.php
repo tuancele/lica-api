@@ -1,15 +1,16 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Recommendation\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use App\Modules\Product\Models\Product;
+use Illuminate\Database\Eloquent\Model;
 
 class UserBehavior extends Model
 {
     protected $table = 'user_behaviors';
-    
+
     protected $fillable = [
         'session_id',
         'user_id',
@@ -50,7 +51,7 @@ class UserBehavior extends Model
     ];
 
     /**
-     * 行为类型常量
+     * 行为类型常量.
      */
     const TYPE_VIEW = 'view';
     const TYPE_CLICK = 'click';
@@ -66,7 +67,7 @@ class UserBehavior extends Model
     }
 
     /**
-     * 关联用户
+     * 关联用户.
      */
     public function user()
     {

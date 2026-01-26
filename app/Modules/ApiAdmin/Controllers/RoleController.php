@@ -1,13 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Role\RoleResource;
+use App\Modules\Permission\Models\Permission;
 use App\Modules\Role\Models\Role;
 use App\Modules\Role\Models\RolePermission;
-use App\Modules\Permission\Models\Permission;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -21,19 +22,27 @@ class RoleController extends Controller
     {
         try {
             $filters = [];
-            if ($request->has('status') && $request->status !== '') $filters['status'] = $request->status;
-            if ($request->has('keyword') && $request->keyword !== '') $filters['keyword'] = $request->keyword;
-            
+            if ($request->has('status') && $request->status !== '') {
+                $filters['status'] = $request->status;
+            }
+            if ($request->has('keyword') && $request->keyword !== '') {
+                $filters['keyword'] = $request->keyword;
+            }
+
             $perPage = (int) $request->get('limit', 20);
             $perPage = $perPage > 0 && $perPage <= 100 ? $perPage : 20;
-            
+
             $query = Role::withCount('permissions');
-            if (isset($filters['status'])) $query->where('status', $filters['status']);
-            if (isset($filters['keyword'])) $query->where('name', 'like', '%' . $filters['keyword'] . '%');
+            if (isset($filters['status'])) {
+                $query->where('status', $filters['status']);
+            }
+            if (isset($filters['keyword'])) {
+                $query->where('name', 'like', '%'.$filters['keyword'].'%');
+            }
             $query->orderBy('id', 'asc');
-            
+
             $roles = $query->paginate($perPage);
-            
+
             return response()->json([
                 'success' => true,
                 'data' => RoleResource::collection($roles->items()),
@@ -45,7 +54,8 @@ class RoleController extends Controller
                 ],
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get roles list failed: ' . $e->getMessage());
+            Log::error('Get roles list failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get roles list'], 500);
         }
     }
@@ -54,10 +64,14 @@ class RoleController extends Controller
     {
         try {
             $role = Role::with(['user', 'permissions'])->find($id);
-            if (!$role) return response()->json(['success' => false, 'message' => 'Role not found'], 404);
+            if (! $role) {
+                return response()->json(['success' => false, 'message' => 'Role not found'], 404);
+            }
+
             return response()->json(['success' => true, 'data' => new RoleResource($role)], 200);
         } catch (\Exception $e) {
-            Log::error('Get role details failed: ' . $e->getMessage());
+            Log::error('Get role details failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get role details'], 500);
         }
     }
@@ -74,7 +88,7 @@ class RoleController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             DB::beginTransaction();
             try {
                 $role = Role::create([
@@ -82,7 +96,7 @@ class RoleController extends Controller
                     'status' => $request->status,
                     'user_id' => Auth::id(),
                 ]);
-                
+
                 if ($request->has('permissions') && is_array($request->permissions)) {
                     foreach ($request->permissions as $permissionId) {
                         RolePermission::create([
@@ -92,9 +106,9 @@ class RoleController extends Controller
                         ]);
                     }
                 }
-                
+
                 DB::commit();
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Role created successfully',
@@ -105,7 +119,8 @@ class RoleController extends Controller
                 throw $e;
             }
         } catch (\Exception $e) {
-            Log::error('Create role failed: ' . $e->getMessage());
+            Log::error('Create role failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to create role'], 500);
         }
     }
@@ -114,8 +129,10 @@ class RoleController extends Controller
     {
         try {
             $role = Role::find($id);
-            if (!$role) return response()->json(['success' => false, 'message' => 'Role not found'], 404);
-            
+            if (! $role) {
+                return response()->json(['success' => false, 'message' => 'Role not found'], 404);
+            }
+
             $validator = Validator::make($request->all(), [
                 'name' => 'sometimes|required|string',
                 'status' => 'sometimes|in:0,1',
@@ -125,16 +142,20 @@ class RoleController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             DB::beginTransaction();
             try {
                 $updateData = [];
-                if ($request->has('name')) $updateData['name'] = $request->name;
-                if ($request->has('status')) $updateData['status'] = $request->status;
+                if ($request->has('name')) {
+                    $updateData['name'] = $request->name;
+                }
+                if ($request->has('status')) {
+                    $updateData['status'] = $request->status;
+                }
                 $updateData['user_id'] = Auth::id();
-                
+
                 $role->update($updateData);
-                
+
                 if ($request->has('permissions')) {
                     RolePermission::where('role_id', $id)->delete();
                     if (is_array($request->permissions)) {
@@ -147,9 +168,9 @@ class RoleController extends Controller
                         }
                     }
                 }
-                
+
                 DB::commit();
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Role updated successfully',
@@ -160,7 +181,8 @@ class RoleController extends Controller
                 throw $e;
             }
         } catch (\Exception $e) {
-            Log::error('Update role failed: ' . $e->getMessage());
+            Log::error('Update role failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to update role'], 500);
         }
     }
@@ -169,20 +191,24 @@ class RoleController extends Controller
     {
         try {
             $role = Role::find($id);
-            if (!$role) return response()->json(['success' => false, 'message' => 'Role not found'], 404);
-            
+            if (! $role) {
+                return response()->json(['success' => false, 'message' => 'Role not found'], 404);
+            }
+
             DB::beginTransaction();
             try {
                 RolePermission::where('role_id', $id)->delete();
                 $role->delete();
                 DB::commit();
+
                 return response()->json(['success' => true, 'message' => 'Role deleted successfully'], 200);
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
         } catch (\Exception $e) {
-            Log::error('Delete role failed: ' . $e->getMessage());
+            Log::error('Delete role failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to delete role'], 500);
         }
     }
@@ -191,8 +217,10 @@ class RoleController extends Controller
     {
         try {
             $role = Role::find($id);
-            if (!$role) return response()->json(['success' => false, 'message' => 'Role not found'], 404);
-            
+            if (! $role) {
+                return response()->json(['success' => false, 'message' => 'Role not found'], 404);
+            }
+
             $validator = Validator::make($request->all(), [
                 'permissions' => 'required|array|min:1',
                 'permissions.*' => 'integer|exists:permissions,id',
@@ -200,7 +228,7 @@ class RoleController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             DB::beginTransaction();
             try {
                 RolePermission::where('role_id', $id)->delete();
@@ -212,7 +240,7 @@ class RoleController extends Controller
                     ]);
                 }
                 DB::commit();
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Permissions assigned successfully',
@@ -223,7 +251,8 @@ class RoleController extends Controller
                 throw $e;
             }
         } catch (\Exception $e) {
-            Log::error('Assign permissions failed: ' . $e->getMessage());
+            Log::error('Assign permissions failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to assign permissions'], 500);
         }
     }
@@ -235,15 +264,15 @@ class RoleController extends Controller
                 ->orderBy('sort', 'asc')
                 ->with('children')
                 ->get();
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $permissions,
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get permissions failed: ' . $e->getMessage());
+            Log::error('Get permissions failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get permissions'], 500);
         }
     }
 }
-

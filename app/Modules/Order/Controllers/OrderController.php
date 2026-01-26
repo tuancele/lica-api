@@ -1,21 +1,22 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Order\Controllers;
 
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use App\Traits\Location;
+use App\Modules\Delivery\Models\Delivery;
 use App\Modules\Order\Models\Order;
 use App\Modules\Order\Models\OrderDetail;
-use App\Modules\Delivery\Models\Delivery;
 use App\Modules\Pick\Models\Pick;
-use App\Modules\Warehouse\Models\Warehouse;
 use App\Modules\Warehouse\Models\ProductWarehouse;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
+use App\Modules\Warehouse\Models\Warehouse;
+use App\Traits\Location;
 use GuzzleHttp\Client;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Validator;
 
 class OrderController extends Controller
@@ -27,27 +28,27 @@ class OrderController extends Controller
         active('order', 'list');
         $query = Order::query();
 
-        if ($request->get('status') != "") {
+        if ($request->get('status') != '') {
             $query->where('status', $request->get('status'));
         }
-        if ($request->get('ship') != "") {
+        if ($request->get('ship') != '') {
             $query->where('ship', $request->get('ship'));
         }
-        if ($request->get('code') != "") {
+        if ($request->get('code') != '') {
             $query->where('code', $request->get('code'));
         }
-        if ($request->get('keyword') != "") {
+        if ($request->get('keyword') != '') {
             $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->get('keyword') . '%')
-                  ->orWhere('email', 'like', '%' . $request->get('keyword') . '%')
-                  ->orWhere('phone', 'like', '%' . $request->get('keyword') . '%');
+                $q->where('name', 'like', '%'.$request->get('keyword').'%')
+                    ->orWhere('email', 'like', '%'.$request->get('keyword').'%')
+                    ->orWhere('phone', 'like', '%'.$request->get('keyword').'%');
             });
         }
 
         $data['orders'] = $query->orderBy('id', 'desc')->paginate(20)->appends([
             'keyword' => $request->get('keyword'),
             'status' => $request->get('status'),
-            'ship' => $request->get('ship')
+            'ship' => $request->get('ship'),
         ]);
 
         return view('Order::index', $data);
@@ -57,7 +58,7 @@ class OrderController extends Controller
     {
         active('order', 'list');
         $order = Order::where('code', $code)->first();
-        if (!$order) {
+        if (! $order) {
             return redirect('admin/order');
         }
 
@@ -67,16 +68,16 @@ class OrderController extends Controller
         if ($delivery) {
             if (getConfig('ghtk_status')) {
                 try {
-                    $client = new Client();
-                    $response = $client->request('GET', getConfig('ghtk_url') . "/services/shipment/v2/" . $delivery->label_id, [
+                    $client = new Client;
+                    $response = $client->request('GET', getConfig('ghtk_url').'/services/shipment/v2/'.$delivery->label_id, [
                         'headers' => [
-                            'Token' => getConfig('ghtk_token')
-                        ]
+                            'Token' => getConfig('ghtk_token'),
+                        ],
                     ]);
                     $status = json_decode($response->getBody()->getContents());
                     $data['status'] = ($status->success) ? $status->order : '';
                 } catch (\Exception $e) {
-                    Log::error("GHTK Status Error: " . $e->getMessage());
+                    Log::error('GHTK Status Error: '.$e->getMessage());
                     $data['status'] = '';
                 }
             }
@@ -84,25 +85,25 @@ class OrderController extends Controller
         } else {
             $pick = Pick::where('status', '1')->orderBy('sort', 'asc')->first();
             $weight = OrderDetail::where('order_id', $order->id)->sum('weight');
-            
+
             if ($pick) {
                 $info = [
-                    "pick_province" => $pick->province->name ?? '',
-                    "pick_district" => $pick->district->name ?? '',
-                    "pick_ward" => $pick->ward->name ?? '',
-                    "pick_street" => $pick->street,
-                    "pick_address" => $pick->address,
-                    "province" => $order->province->name ?? '',
-                    "district" => $order->district->name ?? '',
-                    "ward" => $order->ward->name ?? '',
-                    "address" => $order->address,
-                    "weight" => $weight,
-                    "value" => $order->total - $order->sale,
-                    "transport" => 'road',
-                    "deliver_option" => 'none',
-                    "tags" => [0],
+                    'pick_province' => $pick->province->name ?? '',
+                    'pick_district' => $pick->district->name ?? '',
+                    'pick_ward' => $pick->ward->name ?? '',
+                    'pick_street' => $pick->street,
+                    'pick_address' => $pick->address,
+                    'province' => $order->province->name ?? '',
+                    'district' => $order->district->name ?? '',
+                    'ward' => $order->ward->name ?? '',
+                    'address' => $order->address,
+                    'weight' => $weight,
+                    'value' => $order->total - $order->sale,
+                    'transport' => 'road',
+                    'deliver_option' => 'none',
+                    'tags' => [0],
                 ];
-                
+
                 $getFee = json_decode($this->getFee($info));
                 // Ensure fee is always an object or null, never a string
                 if ($getFee && is_object($getFee) && isset($getFee->success) && $getFee->success && isset($getFee->fee)) {
@@ -112,24 +113,27 @@ class OrderController extends Controller
                 }
             }
         }
-        
+
         $data['order'] = $order;
+
         return view('Order::view', $data);
     }
 
     public function getFee($data)
     {
         try {
-            $client = new Client();
-            $response = $client->request('GET', getConfig('ghtk_url') . "/services/shipment/fee", [
+            $client = new Client;
+            $response = $client->request('GET', getConfig('ghtk_url').'/services/shipment/fee', [
                 'headers' => [
-                    'Token' => getConfig('ghtk_token')
+                    'Token' => getConfig('ghtk_token'),
                 ],
-                'query' => $data
+                'query' => $data,
             ]);
+
             return $response->getBody()->getContents();
         } catch (\Exception $e) {
-            Log::error("GHTK Fee Error: " . $e->getMessage());
+            Log::error('GHTK Fee Error: '.$e->getMessage());
+
             return json_encode(['success' => false, 'message' => $e->getMessage()]);
         }
     }
@@ -142,17 +146,17 @@ class OrderController extends Controller
         ]);
 
         if ($validator->fails()) {
-             return response()->json([
+            return response()->json([
                 'status' => 'error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ]);
         }
 
         $order = Order::where('code', $req->code)->first();
-        if (!$order) {
+        if (! $order) {
             return response()->json([
                 'status' => 'error',
-                'errors' => ['alert' => ['0' => 'Đơn hàng không tồn tại!']]
+                'errors' => ['alert' => ['0' => 'Đơn hàng không tồn tại!']],
             ]);
         } else {
             $oldStatus = $order->status;
@@ -161,8 +165,8 @@ class OrderController extends Controller
             // Debug status change for cancel flow
             Log::info('[Order_Cancel_Debug] Status Change', [
                 'code' => $order->code,
-                'old'  => $oldStatus,
-                'new'  => $req->status,
+                'old' => $oldStatus,
+                'new' => $req->status,
             ]);
 
             DB::beginTransaction();
@@ -172,7 +176,7 @@ class OrderController extends Controller
                     'status' => $req->status,
                     'payment' => $req->payment,
                     'ship' => $req->ship,
-                    'user_id' => Auth::id()
+                    'user_id' => Auth::id(),
                 ]);
 
                 $order->refresh();
@@ -182,7 +186,7 @@ class OrderController extends Controller
                 // Auto create/update export receipt based on order status
                 try {
                     $orderStockReceiptService = app(\App\Services\Warehouse\OrderStockReceiptService::class);
-                    $orderStockReceiptService->updateExportReceiptFromOrderStatus($order, (string)$oldStatus, (string)$req->status);
+                    $orderStockReceiptService->updateExportReceiptFromOrderStatus($order, (string) $oldStatus, (string) $req->status);
                 } catch (\Exception $e) {
                     Log::error('Failed to update export receipt for order status change', [
                         'order_id' => $order->id,
@@ -201,7 +205,7 @@ class OrderController extends Controller
                 // NOTE: OrderController only sends information to warehouse, does NOT directly modify stock
                 // All stock operations (deduct/restore) are handled by OrderStockReceiptService
                 if (in_array((int) $req->status, $cancelStatuses, true)
-                    && !in_array((int) $oldStatus, $cancelStatuses, true)) {
+                    && ! in_array((int) $oldStatus, $cancelStatuses, true)) {
                     try {
                         // NOTE: Stock restoration and Deal quota rollback are handled by OrderStockReceiptService::cancelExportReceiptFromOrder
                         // which is called via updateExportReceiptFromOrderStatus above
@@ -211,21 +215,22 @@ class OrderController extends Controller
                         // - Decrement ProductSale.buy / SaleDeal.buy
                         // - Increment SaleDeal.qty
                         // Do NOT call WarehouseService::rollbackOrderStock or rollbackDealQuota here to avoid duplicate operations
-                        
+
                         Log::info('[Order_Cancel] Stock restoration handled by OrderStockReceiptService', [
                             'order_id' => $order->id,
                             'order_code' => $order->code,
                         ]);
-                        
+
                         // Tạo phiếu nhập lại kho (tương tự luồng hủy/hoàn)
                         // This is for accounting purposes, stock is already restored by OrderStockReceiptService
                         $this->createImportReceiptFromOrder($order);
                     } catch (\Exception $e) {
                         DB::rollBack();
-                        Log::error("Create import receipt error for order {$order->code}: " . $e->getMessage());
+                        Log::error("Create import receipt error for order {$order->code}: ".$e->getMessage());
+
                         return response()->json([
                             'status' => 'error',
-                            'errors' => ['alert' => ['0' => 'Tạo phiếu nhập kho thất bại: ' . $e->getMessage()]]
+                            'errors' => ['alert' => ['0' => 'Tạo phiếu nhập kho thất bại: '.$e->getMessage()]],
                         ]);
                     }
                 }
@@ -235,7 +240,7 @@ class OrderController extends Controller
                     try {
                         $this->createImportReceiptFromOrder($order);
                     } catch (\Exception $e) {
-                        Log::error("Auto create import receipt error for order " . $order->code . ": " . $e->getMessage());
+                        Log::error('Auto create import receipt error for order '.$order->code.': '.$e->getMessage());
                         // Không rollback vì chỉ là phụ trợ
                     }
                 }
@@ -245,67 +250,67 @@ class OrderController extends Controller
                 return response()->json([
                     'status' => 'success',
                     'alert' => 'Cập nhật thành công!',
-                    'url' => '/admin/order/view/' . $req->code
+                    'url' => '/admin/order/view/'.$req->code,
                 ]);
             } catch (\Exception $e) {
                 DB::rollBack();
-                Log::error("Order update failed for code {$order->code}: " . $e->getMessage());
+                Log::error("Order update failed for code {$order->code}: ".$e->getMessage());
+
                 return response()->json([
                     'status' => 'error',
-                    'errors' => ['alert' => ['0' => 'Cập nhật thất bại: ' . $e->getMessage()]]
+                    'errors' => ['alert' => ['0' => 'Cập nhật thất bại: '.$e->getMessage()]],
                 ]);
             }
         }
     }
 
     /**
-     * Auto create import receipt when order is cancelled or returned
-     * @param Order $order
-     * @return bool
+     * Auto create import receipt when order is cancelled or returned.
      */
     private function createImportReceiptFromOrder(Order $order): bool
     {
         // Check if import receipt already exists for this order
         // Check by order ID in content to avoid duplicates
-        $existingReceipt = Warehouse::where('content', 'like', '%ID ' . $order->id)
+        $existingReceipt = Warehouse::where('content', 'like', '%ID '.$order->id)
             ->where('type', 'import')
             ->first();
-        
+
         if ($existingReceipt) {
-            Log::info("Import receipt already exists for order ID: " . $order->id);
+            Log::info('Import receipt already exists for order ID: '.$order->id);
+
             return false;
         }
-        
+
         // Content format: "Đơn hàng thất bại/Hoàn trả ID {order_id}"
         // No VAT invoice (leave blank as requested)
-        $content = 'Đơn hàng thất bại/Hoàn trả ID ' . $order->id;
-        
+        $content = 'Đơn hàng thất bại/Hoàn trả ID '.$order->id;
+
         // Generate unique code for import receipt
-        $importCode = 'NH-' . $order->code . '-' . time();
-        
+        $importCode = 'NH-'.$order->code.'-'.time();
+
         // Check if code already exists, if yes, append random number
         while (Warehouse::where('code', $importCode)->exists()) {
-            $importCode = 'NH-' . $order->code . '-' . time() . '-' . rand(1000, 9999);
+            $importCode = 'NH-'.$order->code.'-'.time().'-'.rand(1000, 9999);
         }
-        
+
         // Determine subject based on status
         // Priority: ship=3 (returned) > status=2 (cancelled)
         $statusText = ($order->ship == 3) ? 'Hoàn trả' : (($order->status == 2) ? 'Đơn hàng thất bại' : 'Hoàn trả');
-        
+
         // Create warehouse entry
         $warehouseId = Warehouse::insertGetId([
             'code' => $importCode,
-            'subject' => $statusText . ' - ' . $order->code,
+            'subject' => $statusText.' - '.$order->code,
             'content' => $content,
             'type' => 'import',
             'created_at' => date('Y-m-d H:i:s'),
             'user_id' => Auth::id(),
         ]);
-        
+
         if ($warehouseId > 0) {
             // Get order details
             $orderDetails = OrderDetail::where('order_id', $order->id)->get();
-            
+
             if ($orderDetails->count() > 0) {
                 foreach ($orderDetails as $detail) {
                     // Only create ProductWarehouse if variant_id exists
@@ -321,11 +326,12 @@ class OrderController extends Controller
                     }
                 }
             }
-            
-            Log::info("Auto created import receipt: " . $importCode . " for order: " . $order->code . " (ID: " . $order->id . ")");
+
+            Log::info('Auto created import receipt: '.$importCode.' for order: '.$order->code.' (ID: '.$order->id.')');
+
             return true;
         }
-        
+
         return false;
     }
 
@@ -335,16 +341,16 @@ class OrderController extends Controller
         if ($detail) {
             Order::where('code', $request->id)->delete();
             OrderDetail::where('order_id', $detail->id)->delete();
-            
+
             $url = route('order');
-            if ($request->page != "") {
-                $url .= '?page=' . $request->page;
+            if ($request->page != '') {
+                $url .= '?page='.$request->page;
             }
-            
+
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Xóa thành công!',
-                'url' => $url
+                'url' => $url,
             ]);
         } else {
             return response()->json([
@@ -367,7 +373,8 @@ class OrderController extends Controller
             ->get();
 
         if ($details->isEmpty()) {
-            Log::info('[DEAL_REFUND] Order: ' . $order->code . ' | No deal items found, skip rollback');
+            Log::info('[DEAL_REFUND] Order: '.$order->code.' | No deal items found, skip rollback');
+
             return;
         }
 
@@ -378,10 +385,10 @@ class OrderController extends Controller
             }
 
             Log::info('[Order_Cancel_Debug] Checking detail for refund', [
-                'order_code'  => $order->code,
-                'detail_id'   => $detail->id,
+                'order_code' => $order->code,
+                'detail_id' => $detail->id,
                 'dealsale_id' => $detail->dealsale_id,
-                'qty'         => $qty,
+                'qty' => $qty,
             ]);
 
             // Lock row để tránh race condition
@@ -389,8 +396,8 @@ class OrderController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            if (!$saleDeal) {
-                Log::warning('[DEAL_REFUND] Order: ' . $order->code . ' | DealID: ' . $detail->dealsale_id . ' not found');
+            if (! $saleDeal) {
+                Log::warning('[DEAL_REFUND] Order: '.$order->code.' | DealID: '.$detail->dealsale_id.' not found');
                 continue;
             }
 
@@ -400,17 +407,17 @@ class OrderController extends Controller
 
             // Cộng lại suất vào qty (numbersale)
             $saleDeal->increment('qty', $qty);
-            
+
             // Trừ bớt số lượng đã mua (buy)
             $newBuy = max(0, $oldBuy - $qty);
             $saleDeal->buy = $newBuy;
             $saleDeal->save();
 
             // Log chi tiết
-            Log::info('[DEAL_REFUND] Order: ' . $order->code . ' | DealID: ' . $saleDeal->id . 
-                ' | Suất được trả lại: ' . $qty . 
-                ' | Qty trước: ' . $oldQty . ' → Qty sau: ' . ($oldQty + $qty) .
-                ' | Buy trước: ' . $oldBuy . ' → Buy sau: ' . $newBuy);
+            Log::info('[DEAL_REFUND] Order: '.$order->code.' | DealID: '.$saleDeal->id.
+                ' | Suất được trả lại: '.$qty.
+                ' | Qty trước: '.$oldQty.' → Qty sau: '.($oldQty + $qty).
+                ' | Buy trước: '.$oldBuy.' → Buy sau: '.$newBuy);
         }
     }
 }

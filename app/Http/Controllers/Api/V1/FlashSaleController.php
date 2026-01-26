@@ -1,12 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\FlashSale\FlashSaleResource;
-use App\Http\Resources\FlashSale\ProductSaleResource;
-use App\Http\Resources\Product\ProductResource;
 use App\Modules\FlashSale\Models\FlashSale;
 use App\Modules\FlashSale\Models\ProductSale;
 use App\Services\PriceCalculationService;
@@ -16,8 +15,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Flash Sale API Controller V1
- * 
+ * Flash Sale API Controller V1.
+ *
  * RESTful API endpoints for Flash Sale
  * Base URL: /api/v1/flash-sales
  */
@@ -35,21 +34,18 @@ class FlashSaleController extends Controller
     }
 
     /**
-     * Get active Flash Sales
-     * 
+     * Get active Flash Sales.
+     *
      * GET /api/v1/flash-sales/active
-     * 
+     *
      * Query Parameters:
      * - limit (integer, optional): Number of results, default 10, max 50
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getActive(Request $request): JsonResponse
     {
         try {
             $limit = (int) $request->get('limit', 10);
-            
+
             // Validate limit
             if ($limit < 1 || $limit > 50) {
                 $limit = 10;
@@ -69,34 +65,31 @@ class FlashSaleController extends Controller
                 'data' => $formattedFlashSales,
                 'count' => $flashSales->count(),
             ], 200);
-
         } catch (\Exception $e) {
-            Log::error('Get active Flash Sales failed: ' . $e->getMessage(), [
+            Log::error('Get active Flash Sales failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Lấy danh sách Flash Sale thất bại',
-                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ'
+                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ',
             ], 500);
         }
     }
 
     /**
-     * Get products in a Flash Sale
-     * 
+     * Get products in a Flash Sale.
+     *
      * GET /api/v1/flash-sales/{id}/products
-     * 
+     *
      * Query Parameters:
      * - page (integer, optional): Page number, default 1
      * - limit (integer, optional): Items per page, default 20, max 100
      * - available_only (boolean, optional): Only available products (buy < number), default true
-     * 
-     * @param Request $request
-     * @param int $id Flash Sale ID
-     * @return JsonResponse
+     *
+     * @param  int  $id  Flash Sale ID
      */
     public function getProducts(Request $request, int $id): JsonResponse
     {
@@ -112,31 +105,31 @@ class FlashSaleController extends Controller
 
             // Get Flash Sale
             $flashSale = FlashSale::find($id);
-            
-            if (!$flashSale) {
+
+            if (! $flashSale) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Chương trình Flash Sale không tồn tại'
+                    'message' => 'Chương trình Flash Sale không tồn tại',
                 ], 404);
             }
 
             // Check if Flash Sale is active
-            if (!$flashSale->is_active) {
+            if (! $flashSale->is_active) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Chương trình Flash Sale không đang diễn ra'
+                    'message' => 'Chương trình Flash Sale không đang diễn ra',
                 ], 400);
             }
 
             // Query ProductSales with Eager Loading
             $query = ProductSale::where('flashsale_id', $id)
                 ->with([
-                    'product' => function($q) {
+                    'product' => function ($q) {
                         $q->with(['brand:id,name,slug,image', 'origin:id,name']);
                     },
-                    'variant' => function($q) {
+                    'variant' => function ($q) {
                         $q->with(['color:id,name,color', 'size:id,name,unit']);
-                    }
+                    },
                 ]);
 
             // Filter by availability
@@ -151,8 +144,8 @@ class FlashSaleController extends Controller
             $products = [];
             foreach ($productSales->items() as $productSale) {
                 $product = $productSale->product;
-                
-                if (!$product) {
+
+                if (! $product) {
                     continue;
                 }
 
@@ -190,17 +183,17 @@ class FlashSaleController extends Controller
                     $variant = $productSale->variant;
                     if ($variant) {
                         $variantPriceInfo = $this->priceService->calculateVariantPrice($variant, $product->id, $id);
-                        
+
                         // Get warehouse stock for variant
                         $warehouseStock = 0;
                         try {
                             $stockData = $this->warehouseService->getVariantStock($variant->id);
                             $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
                         } catch (\Exception $e) {
-                            Log::warning('Failed to get warehouse stock for variant: ' . $variant->id);
+                            Log::warning('Failed to get warehouse stock for variant: '.$variant->id);
                             $warehouseStock = (int) ($variant->stock ?? 0);
                         }
-                        
+
                         $productData['variants'] = [
                             [
                                 'id' => $variant->id,
@@ -219,7 +212,7 @@ class FlashSaleController extends Controller
                                     'remaining' => $productSale->remaining,
                                 ],
                                 'price_info' => $variantPriceInfo,
-                            ]
+                            ],
                         ];
                     }
                 } else {
@@ -237,19 +230,19 @@ class FlashSaleController extends Controller
                     // Add variants if product has variants
                     if ($product->has_variants) {
                         $variants = $product->variants;
-                        $productData['variants'] = $variants->map(function($variant) use ($product, $id) {
+                        $productData['variants'] = $variants->map(function ($variant) use ($product, $id) {
                             $variantPriceInfo = $this->priceService->calculateVariantPrice($variant, $product->id, $id);
-                            
+
                             // Get warehouse stock
                             $warehouseStock = 0;
                             try {
                                 $stockData = $this->warehouseService->getVariantStock($variant->id);
                                 $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
                             } catch (\Exception $e) {
-                                Log::warning('Failed to get warehouse stock for variant: ' . $variant->id);
+                                Log::warning('Failed to get warehouse stock for variant: '.$variant->id);
                                 $warehouseStock = (int) ($variant->stock ?? 0);
                             }
-                            
+
                             return [
                                 'id' => $variant->id,
                                 'sku' => $variant->sku,
@@ -271,14 +264,14 @@ class FlashSaleController extends Controller
             $totalUniqueProducts = ProductSale::where('flashsale_id', $id)
                 ->distinct('product_id')
                 ->count('product_id');
-            
+
             // Get Flash Sale resource and add total_products if not already included
             $flashSaleResource = new FlashSaleResource($flashSale);
             $flashSaleData = $flashSaleResource->toArray($request);
-            if (!isset($flashSaleData['total_products'])) {
+            if (! isset($flashSaleData['total_products'])) {
                 $flashSaleData['total_products'] = $totalUniqueProducts;
             }
-            
+
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -293,18 +286,17 @@ class FlashSaleController extends Controller
                     'total_unique_products' => $totalUniqueProducts, // Total unique products in Flash Sale
                 ],
             ], 200);
-
         } catch (\Exception $e) {
-            Log::error('Get Flash Sale products failed: ' . $e->getMessage(), [
+            Log::error('Get Flash Sale products failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'flash_sale_id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Lấy danh sách sản phẩm Flash Sale thất bại',
-                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ'
+                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ',
             ], 500);
         }
     }

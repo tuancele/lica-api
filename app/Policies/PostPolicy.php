@@ -1,15 +1,17 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Policies;
 
-use App\User;
 use App\Post;
+use App\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
 class PostPolicy
 {
     use HandlesAuthorization;
+
     /**
      * Determine whether the user can viewAny the product.
      *
@@ -19,7 +21,7 @@ class PostPolicy
      */
     public function viewAny(User $user)
     {
-        return  false;
+        return false;
     }
 
     /**
@@ -31,7 +33,7 @@ class PostPolicy
      */
     public function view(User $user, Post $post)
     {
-        return  $user->can('post-edit') && $user->id === $post->user_id;
+        return $user->can('post-edit') && $user->id === $post->user_id;
     }
 
     /**
@@ -44,6 +46,7 @@ class PostPolicy
     {
         return $user->hasPermission('post-create');
     }
+
     /**
      * Determine whether the user can import posts.
      *

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
@@ -20,7 +21,7 @@ class GmcController extends Controller
     ) {}
 
     /**
-     * GET /admin/api/gmc/products/preview?variant_id=123
+     * GET /admin/api/gmc/products/preview?variant_id=123.
      */
     public function preview(Request $request): JsonResponse
     {
@@ -39,7 +40,7 @@ class GmcController extends Controller
 
             $variantId = (int) $request->get('variant_id');
             $variant = Variant::with(['product.brand'])->find($variantId);
-            if (!$variant || !$variant->product) {
+            if (! $variant || ! $variant->product) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Variant not found',
@@ -75,7 +76,7 @@ class GmcController extends Controller
 
     /**
      * POST /admin/api/gmc/products/sync
-     * Body: { "variant_ids": [1,2,3], "dry_run": true|false }
+     * Body: { "variant_ids": [1,2,3], "dry_run": true|false }.
      */
     public function sync(Request $request): JsonResponse
     {
@@ -100,7 +101,7 @@ class GmcController extends Controller
             $results = [];
             foreach ($variantIds as $variantId) {
                 $variant = Variant::with(['product.brand'])->find($variantId);
-                if (!$variant || !$variant->product) {
+                if (! $variant || ! $variant->product) {
                     $results[] = [
                         'variant_id' => $variantId,
                         'success' => false,
@@ -147,7 +148,7 @@ class GmcController extends Controller
     }
 
     /**
-     * Convert Google ShoppingContent Product object to array for JSON preview
+     * Convert Google ShoppingContent Product object to array for JSON preview.
      */
     private function convertGmcProductToArray($gmcProduct): array
     {
@@ -251,6 +252,3 @@ class GmcController extends Controller
         return $result;
     }
 }
-
-
-

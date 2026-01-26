@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
@@ -20,19 +21,27 @@ class PageController extends Controller
     {
         try {
             $filters = [];
-            if ($request->has('status') && $request->status !== '') $filters['status'] = $request->status;
-            if ($request->has('keyword') && $request->keyword !== '') $filters['keyword'] = $request->keyword;
-            
+            if ($request->has('status') && $request->status !== '') {
+                $filters['status'] = $request->status;
+            }
+            if ($request->has('keyword') && $request->keyword !== '') {
+                $filters['keyword'] = $request->keyword;
+            }
+
             $perPage = (int) $request->get('limit', 10);
             $perPage = $perPage > 0 && $perPage <= 100 ? $perPage : 10;
-            
+
             $query = Page::query();
-            if (isset($filters['status'])) $query->where('status', $filters['status']);
-            if (isset($filters['keyword'])) $query->where('name', 'like', '%' . $filters['keyword'] . '%');
+            if (isset($filters['status'])) {
+                $query->where('status', $filters['status']);
+            }
+            if (isset($filters['keyword'])) {
+                $query->where('name', 'like', '%'.$filters['keyword'].'%');
+            }
             $query->orderBy('name', 'asc');
-            
+
             $pages = $query->paginate($perPage);
-            
+
             return response()->json([
                 'success' => true,
                 'data' => PageResource::collection($pages->items()),
@@ -44,7 +53,8 @@ class PageController extends Controller
                 ],
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get pages list failed: ' . $e->getMessage());
+            Log::error('Get pages list failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get pages list'], 500);
         }
     }
@@ -53,10 +63,14 @@ class PageController extends Controller
     {
         try {
             $page = Page::with('user')->find($id);
-            if (!$page) return response()->json(['success' => false, 'message' => 'Page not found'], 404);
+            if (! $page) {
+                return response()->json(['success' => false, 'message' => 'Page not found'], 404);
+            }
+
             return response()->json(['success' => true, 'data' => new PageResource($page)], 200);
         } catch (\Exception $e) {
-            Log::error('Get page details failed: ' . $e->getMessage());
+            Log::error('Get page details failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get page details'], 500);
         }
     }
@@ -77,18 +91,18 @@ class PageController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             $slug = $request->slug;
             if (empty($slug)) {
                 $slug = Str::slug($request->name);
                 $originalSlug = $slug;
                 $counter = 1;
                 while (Page::where('slug', $slug)->exists()) {
-                    $slug = $originalSlug . '-' . $counter;
+                    $slug = $originalSlug.'-'.$counter;
                     $counter++;
                 }
             }
-            
+
             $page = Page::create([
                 'name' => $request->name,
                 'slug' => $slug,
@@ -101,14 +115,15 @@ class PageController extends Controller
                 'type' => 'page',
                 'user_id' => Auth::id(),
             ]);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Page created successfully',
                 'data' => new PageResource($page->load('user')),
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Create page failed: ' . $e->getMessage());
+            Log::error('Create page failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to create page'], 500);
         }
     }
@@ -117,11 +132,13 @@ class PageController extends Controller
     {
         try {
             $page = Page::find($id);
-            if (!$page) return response()->json(['success' => false, 'message' => 'Page not found'], 404);
-            
+            if (! $page) {
+                return response()->json(['success' => false, 'message' => 'Page not found'], 404);
+            }
+
             $validator = Validator::make($request->all(), [
                 'name' => 'sometimes|required|string|min:1|max:250',
-                'slug' => 'nullable|string|max:250|unique:posts,slug,' . $id,
+                'slug' => 'nullable|string|max:250|unique:posts,slug,'.$id,
                 'image' => 'nullable|string',
                 'description' => 'nullable|string',
                 'content' => 'nullable|string',
@@ -132,27 +149,44 @@ class PageController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             $updateData = [];
-            if ($request->has('name')) $updateData['name'] = $request->name;
-            if ($request->has('slug')) $updateData['slug'] = $request->slug;
-            if ($request->has('image')) $updateData['image'] = $request->image;
-            if ($request->has('description')) $updateData['description'] = $request->description;
-            if ($request->has('content')) $updateData['content'] = $request->content;
-            if ($request->has('status')) $updateData['status'] = $request->status;
-            if ($request->has('seo_title')) $updateData['seo_title'] = $request->seo_title;
-            if ($request->has('seo_description')) $updateData['seo_description'] = $request->seo_description;
+            if ($request->has('name')) {
+                $updateData['name'] = $request->name;
+            }
+            if ($request->has('slug')) {
+                $updateData['slug'] = $request->slug;
+            }
+            if ($request->has('image')) {
+                $updateData['image'] = $request->image;
+            }
+            if ($request->has('description')) {
+                $updateData['description'] = $request->description;
+            }
+            if ($request->has('content')) {
+                $updateData['content'] = $request->content;
+            }
+            if ($request->has('status')) {
+                $updateData['status'] = $request->status;
+            }
+            if ($request->has('seo_title')) {
+                $updateData['seo_title'] = $request->seo_title;
+            }
+            if ($request->has('seo_description')) {
+                $updateData['seo_description'] = $request->seo_description;
+            }
             $updateData['user_id'] = Auth::id();
-            
+
             $page->update($updateData);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Page updated successfully',
                 'data' => new PageResource($page->fresh()->load('user')),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Update page failed: ' . $e->getMessage());
+            Log::error('Update page failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to update page'], 500);
         }
     }
@@ -161,11 +195,15 @@ class PageController extends Controller
     {
         try {
             $page = Page::find($id);
-            if (!$page) return response()->json(['success' => false, 'message' => 'Page not found'], 404);
+            if (! $page) {
+                return response()->json(['success' => false, 'message' => 'Page not found'], 404);
+            }
             $page->delete();
+
             return response()->json(['success' => true, 'message' => 'Page deleted successfully'], 200);
         } catch (\Exception $e) {
-            Log::error('Delete page failed: ' . $e->getMessage());
+            Log::error('Delete page failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to delete page'], 500);
         }
     }
@@ -178,11 +216,15 @@ class PageController extends Controller
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
             $page = Page::find($id);
-            if (!$page) return response()->json(['success' => false, 'message' => 'Page not found'], 404);
+            if (! $page) {
+                return response()->json(['success' => false, 'message' => 'Page not found'], 404);
+            }
             $page->update(['status' => $request->status, 'user_id' => Auth::id()]);
+
             return response()->json(['success' => true, 'message' => 'Page status updated successfully', 'data' => new PageResource($page->fresh())], 200);
         } catch (\Exception $e) {
-            Log::error('Update page status failed: ' . $e->getMessage());
+            Log::error('Update page status failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to update page status'], 500);
         }
     }
@@ -198,7 +240,7 @@ class PageController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             DB::beginTransaction();
             try {
                 $ids = $request->ids;
@@ -212,15 +254,16 @@ class PageController extends Controller
                 }
                 DB::commit();
                 $actionNames = ['hidden', 'shown', 'deleted'];
+
                 return response()->json(['success' => true, 'message' => "Successfully {$actionNames[$action]} {$affected} page(s)", 'affected_count' => $affected], 200);
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
         } catch (\Exception $e) {
-            Log::error('Bulk action failed: ' . $e->getMessage());
+            Log::error('Bulk action failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Bulk action failed'], 500);
         }
     }
 }
-

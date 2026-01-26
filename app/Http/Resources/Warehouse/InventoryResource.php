@@ -1,13 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Warehouse;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Inventory Resource for API responses
- * 
+ * Inventory Resource for API responses.
+ *
  * Formats inventory data for API output
  */
 class InventoryResource extends JsonResource
@@ -16,7 +17,6 @@ class InventoryResource extends JsonResource
      * Transform the resource into an array.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return array
      */
     /**
      * Transform the resource into an array.

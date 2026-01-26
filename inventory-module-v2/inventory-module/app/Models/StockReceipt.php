@@ -3,9 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class StockReceipt extends Model
 {
@@ -161,15 +161,15 @@ class StockReceipt extends Model
 
     public function getTotalValueFormattedAttribute(): string
     {
-        return number_format($this->total_value, 0, ',', '.') . ' đ';
+        return number_format($this->total_value, 0, ',', '.').' đ';
     }
 
     /**
-     * Get the effective warehouse (to_warehouse for import, from_warehouse for export)
+     * Get the effective warehouse (to_warehouse for import, from_warehouse for export).
      */
     public function getWarehouseAttribute(): ?WarehouseV2
     {
-        return match($this->type) {
+        return match ($this->type) {
             self::TYPE_IMPORT, self::TYPE_RETURN => $this->toWarehouse,
             self::TYPE_EXPORT => $this->fromWarehouse,
             default => $this->toWarehouse ?? $this->fromWarehouse,
@@ -226,7 +226,7 @@ class StockReceipt extends Model
     {
         return $query->where(function ($q) use ($warehouseId) {
             $q->where('from_warehouse_id', $warehouseId)
-              ->orWhere('to_warehouse_id', $warehouseId);
+                ->orWhere('to_warehouse_id', $warehouseId);
         });
     }
 
@@ -243,7 +243,7 @@ class StockReceipt extends Model
     */
 
     /**
-     * Check if receipt can be edited
+     * Check if receipt can be edited.
      */
     public function canEdit(): bool
     {
@@ -251,7 +251,7 @@ class StockReceipt extends Model
     }
 
     /**
-     * Check if receipt can be cancelled
+     * Check if receipt can be cancelled.
      */
     public function canCancel(): bool
     {
@@ -259,7 +259,7 @@ class StockReceipt extends Model
     }
 
     /**
-     * Check if receipt can be completed
+     * Check if receipt can be completed.
      */
     public function canComplete(): bool
     {
@@ -267,7 +267,7 @@ class StockReceipt extends Model
     }
 
     /**
-     * Mark as completed
+     * Mark as completed.
      */
     public function markCompleted(int $userId): bool
     {
@@ -279,7 +279,7 @@ class StockReceipt extends Model
     }
 
     /**
-     * Mark as cancelled
+     * Mark as cancelled.
      */
     public function markCancelled(int $userId, ?string $reason = null): bool
     {
@@ -292,38 +292,38 @@ class StockReceipt extends Model
     }
 
     /**
-     * Recalculate totals from items
+     * Recalculate totals from items.
      */
     public function recalculateTotals(): bool
     {
         $items = $this->items;
-        
+
         return $this->update([
             'total_items' => $items->count(),
             'total_quantity' => $items->sum('quantity'),
-            'total_value' => $items->sum(fn($item) => $item->quantity * $item->unit_price),
+            'total_value' => $items->sum(fn ($item) => $item->quantity * $item->unit_price),
         ]);
     }
 
     /**
-     * Generate receipt code
+     * Generate receipt code.
      */
     public static function generateCode(string $type): string
     {
         $prefix = config("inventory.receipt_prefixes.{$type}", strtoupper(substr($type, 0, 3)));
         $date = now()->format('Ymd');
-        
+
         $lastReceipt = static::where('receipt_code', 'like', "{$prefix}-{$date}-%")
             ->orderBy('receipt_code', 'desc')
             ->first();
-        
+
         if ($lastReceipt) {
             $lastNumber = (int) substr($lastReceipt->receipt_code, -6);
             $nextNumber = $lastNumber + 1;
         } else {
             $nextNumber = 1;
         }
-        
-        return "{$prefix}-{$date}-" . str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
+
+        return "{$prefix}-{$date}-".str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
     }
 }

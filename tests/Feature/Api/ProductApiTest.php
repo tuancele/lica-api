@@ -1,14 +1,15 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Feature\Api;
 
-use Tests\TestCase;
-use App\User;
-use App\Modules\Product\Models\Product;
 use App\Enums\ProductStatus;
 use App\Enums\ProductType;
+use App\Modules\Product\Models\Product;
+use App\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class ProductApiTest extends TestCase
 {

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Modules\FlashSale\Models\FlashSale;
@@ -9,8 +10,8 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Expire Flash Sales Command
- * 
+ * Expire Flash Sales Command.
+ *
  * Finds expired Flash Sales and releases remaining stock back to warehouse
  */
 class ExpireFlashSales extends Command
@@ -46,7 +47,7 @@ class ExpireFlashSales extends Command
         $query = FlashSale::with('products')
             ->where('end', '<', $now);
 
-        if (!$force) {
+        if (! $force) {
             $query->where('status', '1'); // Only active ones
         }
 
@@ -54,6 +55,7 @@ class ExpireFlashSales extends Command
 
         if ($expiredFlashSales->isEmpty()) {
             $this->info('No expired Flash Sales found.');
+
             return Command::SUCCESS;
         }
 
@@ -95,7 +97,7 @@ class ExpireFlashSales extends Command
 
                     // Update status to expired (0 = inactive)
                     $flashSale->update(['status' => '0']);
-                    $this->info("  Status updated to inactive");
+                    $this->info('  Status updated to inactive');
 
                     $processed++;
                 } else {
@@ -107,14 +109,14 @@ class ExpireFlashSales extends Command
                 Log::error('[ExpireFlashSales] Error processing Flash Sale', [
                     'flash_sale_id' => $flashSale->id,
                     'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
+                    'trace' => $e->getTraceAsString(),
                 ]);
                 $failed++;
             }
         }
 
         $this->newLine();
-        $this->info("Summary:");
+        $this->info('Summary:');
         $this->info("  Processed: {$processed}");
         $this->info("  Failed: {$failed}");
         $this->info("  Total stock released: {$totalReleased}");
@@ -122,5 +124,3 @@ class ExpireFlashSales extends Command
         return Command::SUCCESS;
     }
 }
-
-

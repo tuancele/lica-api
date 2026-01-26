@@ -1,12 +1,13 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App;
 
-use Illuminate\Notifications\Notifiable;
-use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Illuminate\Foundation\Auth\User as Authenticatable;
 use App\Modules\Permission\Models\Permission;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+
 class User extends Authenticatable
 {
     use Notifiable;
@@ -38,14 +39,18 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
     ];
 
-    public function role(){
-        return $this->belongsTo('App\Modules\Role\Models\Role','role_id','id');
+    public function role()
+    {
+        return $this->belongsTo('App\Modules\Role\Models\Role', 'role_id', 'id');
     }
 
-    public function hasPermission(Permission $permission){
-        return !! optional(optional($this->role)->permissions)->contains($permission);
+    public function hasPermission(Permission $permission)
+    {
+        return (bool) optional(optional($this->role)->permissions)->contains($permission);
     }
-    public function posts(){
-        return $this->hasMany('App\Post','user_id','id');
+
+    public function posts()
+    {
+        return $this->hasMany('App\Post', 'user_id', 'id');
     }
 }

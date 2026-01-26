@@ -1,23 +1,21 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\FlashSale;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Flash Sale Detail Resource for Admin API
- * 
+ * Flash Sale Detail Resource for Admin API.
+ *
  * Extends FlashSaleResource with products list
  */
 class FlashSaleDetailResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return array
      */
     public function toArray(Request $request): array
     {

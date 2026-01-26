@@ -1,23 +1,23 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Gmc;
 
-use App\Modules\Product\Models\Product;
-use App\Modules\Product\Models\Variant;
-use App\Modules\Marketing\Models\MarketingCampaign;
-use App\Modules\Marketing\Models\MarketingCampaignProduct;
-use App\Modules\FlashSale\Models\FlashSale;
-use App\Modules\FlashSale\Models\ProductSale;
 use App\Modules\Deal\Models\Deal;
 use App\Modules\Deal\Models\SaleDeal;
-use App\Services\Pricing\PriceEngineServiceInterface;
+use App\Modules\FlashSale\Models\FlashSale;
+use App\Modules\FlashSale\Models\ProductSale;
+use App\Modules\Marketing\Models\MarketingCampaignProduct;
+use App\Modules\Product\Models\Product;
+use App\Modules\Product\Models\Variant;
 use App\Services\Inventory\Contracts\InventoryServiceInterface;
-use Google\Service\ShoppingContent\Product as GmcProduct;
+use App\Services\Pricing\PriceEngineServiceInterface;
+use Carbon\Carbon;
 use Google\Service\ShoppingContent\Price as GmcPrice;
+use Google\Service\ShoppingContent\Product as GmcProduct;
 use Google\Service\ShoppingContent\ProductDimension as GmcProductDimension;
 use Google\Service\ShoppingContent\ProductShippingWeight as GmcProductShippingWeight;
-use Carbon\Carbon;
 
 class GmcProductMapper
 {
@@ -56,13 +56,13 @@ class GmcProductMapper
 
         $offerId = $this->offerId->forVariant($variant);
 
-        $g = new GmcProduct();
+        $g = new GmcProduct;
         $g->setOfferId($offerId);
-        
+
         // Rule 2: Set itemGroupId for variants (all variants of same product share same itemGroupId)
         // itemGroupId = product_id (to group all variants together)
         $g->setItemGroupId((string) $product->id);
-        
+
         // Set isDefaultVariant for the first variant (to help Google choose main display image)
         $isDefaultVariant = $this->isFirstVariant($product, $variant);
         if ($isDefaultVariant && method_exists($g, 'setIsDefaultVariant')) {
@@ -72,7 +72,7 @@ class GmcProductMapper
                 // Method may not exist in some API versions, silently skip
             }
         }
-        
+
         $g->setTitle($this->buildVariantTitle($product, $variant));
         $g->setDescription($this->buildHighQualityDescription($product, $variant));
         $g->setLink($link);
@@ -85,9 +85,9 @@ class GmcProductMapper
         $g->setTargetCountry($country);
         $g->setAvailability($availability);
         $g->setCondition('new');
-        
+
         // Set original price (base price, NOT promotional price)
-        $price = new GmcPrice();
+        $price = new GmcPrice;
         $price->setValue(number_format(max(0.0, $originalPrice), 0, '.', ''));
         $price->setCurrency($currency);
         $g->setPrice($price);
@@ -108,7 +108,7 @@ class GmcProductMapper
         // Set sale price and effective date (Priority: Flash Sale > Deal > Marketing Campaign)
         $salePriceInfo = $this->resolveSalePriceInfo($product, $variant);
         if ($salePriceInfo !== null) {
-            $salePrice = new GmcPrice();
+            $salePrice = new GmcPrice;
             $salePrice->setValue(number_format(max(0.0, $salePriceInfo['price']), 0, '.', ''));
             $salePrice->setCurrency($currency);
             $g->setSalePrice($salePrice);
@@ -117,23 +117,23 @@ class GmcProductMapper
 
         // Set packaging dimensions (always set, with fallback defaults)
         $dimensions = $this->resolveDimensions($product, $variant);
-        
-        $shippingWeight = new GmcProductShippingWeight();
+
+        $shippingWeight = new GmcProductShippingWeight;
         $shippingWeight->setValue(max(0.0, $dimensions['weight']));
         $shippingWeight->setUnit('grams');
         $g->setShippingWeight($shippingWeight);
 
-        $productLength = new GmcProductDimension();
+        $productLength = new GmcProductDimension;
         $productLength->setValue(max(0.0, $dimensions['length']));
         $productLength->setUnit('cm');
         $g->setProductLength($productLength);
 
-        $productWidth = new GmcProductDimension();
+        $productWidth = new GmcProductDimension;
         $productWidth->setValue(max(0.0, $dimensions['width']));
         $productWidth->setUnit('cm');
         $g->setProductWidth($productWidth);
 
-        $productHeight = new GmcProductDimension();
+        $productHeight = new GmcProductDimension;
         $productHeight->setValue(max(0.0, $dimensions['height']));
         $productHeight->setUnit('cm');
         $g->setProductHeight($productHeight);
@@ -149,6 +149,7 @@ class GmcProductMapper
         $text = strip_tags($text);
         $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $text = preg_replace('/\s+/', ' ', $text) ?? $text;
+
         return trim($text);
     }
 
@@ -156,7 +157,7 @@ class GmcProductMapper
     {
         $base = trim((string) config('gmc.store_base_url', ''));
         if ($base !== '') {
-            return rtrim($base, '/') . '/' . ltrim((string) ($product->slug ?? ''), '/');
+            return rtrim($base, '/').'/'.ltrim((string) ($product->slug ?? ''), '/');
         }
 
         return function_exists('getSlug') ? (string) getSlug((string) $product->slug) : (string) url((string) $product->slug);
@@ -180,7 +181,7 @@ class GmcProductMapper
             return $base;
         }
 
-        return $base . ' - ' . implode(' - ', $parts);
+        return $base.' - '.implode(' - ', $parts);
     }
 
     private function buildHighQualityDescription(Product $product, Variant $variant): string
@@ -197,17 +198,17 @@ class GmcProductMapper
             $brand = $this->cleanText((string) config('app.name', ''));
         }
         if ($brand !== '') {
-            $parts[] = 'Brand: ' . $brand;
+            $parts[] = 'Brand: '.$brand;
         }
 
         $originName = $this->cleanText((string) optional($product->origin)->name);
         if ($originName !== '') {
-            $parts[] = 'Origin: ' . $originName;
+            $parts[] = 'Origin: '.$originName;
         }
 
         $opt = $this->cleanText((string) ($variant->option1_value ?? ''));
         if ($opt !== '') {
-            $parts[] = 'Variant: ' . $opt;
+            $parts[] = 'Variant: '.$opt;
         }
 
         $desc = $this->cleanText((string) ($product->description ?? $product->seo_description ?? ''));
@@ -221,14 +222,14 @@ class GmcProductMapper
         }
 
         if ($ingredient !== '') {
-            $parts[] = 'Ingredients: ' . mb_substr($ingredient, 0, 800);
+            $parts[] = 'Ingredients: '.mb_substr($ingredient, 0, 800);
         }
 
         $text = trim(implode('. ', array_filter($parts)));
         $text = $this->cleanText($text);
 
         if (mb_strlen($text) < 30) {
-            $text = $name !== '' ? ($name . '. ' . 'High quality product for daily use.') : 'High quality product for daily use.';
+            $text = $name !== '' ? ($name.'. '.'High quality product for daily use.') : 'High quality product for daily use.';
         }
 
         return mb_substr($text, 0, 4800);
@@ -255,6 +256,7 @@ class GmcProductMapper
     private function decodeGallery(string $galleryJson): array
     {
         $decoded = json_decode($galleryJson, true);
+
         return is_array($decoded) ? array_values($decoded) : [];
     }
 
@@ -264,8 +266,9 @@ class GmcProductMapper
         if ($image === '') {
             $r2Domain = (string) config('filesystems.disks.r2.url', '');
             if ($r2Domain !== '') {
-                return rtrim($r2Domain, '/') . '/public/image/no_image.png';
+                return rtrim($r2Domain, '/').'/public/image/no_image.png';
             }
+
             return (string) asset('/public/image/no_image.png');
         }
 
@@ -281,13 +284,13 @@ class GmcProductMapper
         $r2DomainClean = rtrim($r2Domain, '/');
         $checkR2 = str_replace(['http://', 'https://'], '', $r2DomainClean);
         $cleanPath = str_replace(['http://', 'https://'], '', $image);
-        $cleanPath = str_replace($checkR2 . '/', '', $cleanPath);
+        $cleanPath = str_replace($checkR2.'/', '', $cleanPath);
         $cleanPath = str_replace($checkR2, '', $cleanPath);
         $cleanPath = preg_replace('#/+#', '/', $cleanPath) ?? $cleanPath;
         $cleanPath = preg_replace('#(uploads/)+#', 'uploads/', $cleanPath) ?? $cleanPath;
         $cleanPath = ltrim($cleanPath, '/');
 
-        return $r2DomainClean . '/' . $cleanPath;
+        return $r2DomainClean.'/'.$cleanPath;
     }
 
     /**
@@ -300,25 +303,25 @@ class GmcProductMapper
     {
         $now = Carbon::now();
         $nowTimestamp = $now->timestamp;
-        
+
         // Priority 1: Flash Sale
         $flashSaleInfo = $this->resolveFlashSaleInfo($product, $variant, $nowTimestamp);
         if ($flashSaleInfo !== null) {
             return $flashSaleInfo;
         }
-        
+
         // Priority 2: Deal
         $dealInfo = $this->resolveDealInfo($product, $variant, $nowTimestamp);
         if ($dealInfo !== null) {
             return $dealInfo;
         }
-        
+
         // Priority 3: Marketing Campaign
         $marketingCampaignInfo = $this->resolveMarketingCampaignInfo($product, $variant, $now);
         if ($marketingCampaignInfo !== null) {
             return $marketingCampaignInfo;
         }
-        
+
         return null;
     }
 
@@ -334,32 +337,32 @@ class GmcProductMapper
             ->where('start', '<=', $nowTimestamp)
             ->where('end', '>=', $nowTimestamp)
             ->first();
-        
-        if (!$activeFlashSale) {
+
+        if (! $activeFlashSale) {
             return null;
         }
-        
+
         // Find ProductSale for this product/variant
         $productSale = ProductSale::where('flashsale_id', $activeFlashSale->id)
             ->where('product_id', $product->id)
             ->where('variant_id', $variant->id)
             ->first();
-        
-        if (!$productSale) {
+
+        if (! $productSale) {
             return null;
         }
-        
+
         // Check if still has stock
         $remainingStock = $productSale->number - $productSale->buy;
         if ($remainingStock <= 0) {
             return null;
         }
-        
+
         // Format effective date: YYYY-MM-DDTHH:mm:ssZ/YYYY-MM-DDTHH:mm:ssZ
         $startDate = Carbon::createFromTimestamp($activeFlashSale->start)->utc();
         $endDate = Carbon::createFromTimestamp($activeFlashSale->end)->utc();
-        $effectiveDate = $startDate->format('Y-m-d\TH:i:s\Z') . '/' . $endDate->format('Y-m-d\TH:i:s\Z');
-        
+        $effectiveDate = $startDate->format('Y-m-d\TH:i:s\Z').'/'.$endDate->format('Y-m-d\TH:i:s\Z');
+
         return [
             'price' => (float) $productSale->price_sale,
             'effective_date' => $effectiveDate,
@@ -378,27 +381,27 @@ class GmcProductMapper
             ->where('start', '<=', $nowTimestamp)
             ->where('end', '>=', $nowTimestamp)
             ->first();
-        
-        if (!$activeDeal) {
+
+        if (! $activeDeal) {
             return null;
         }
-        
+
         // Find SaleDeal for this product/variant
         $saleDeal = SaleDeal::where('deal_id', $activeDeal->id)
             ->where('product_id', $product->id)
             ->where('variant_id', $variant->id)
             ->where('status', '1')
             ->first();
-        
-        if (!$saleDeal || !$saleDeal->price || $saleDeal->price <= 0) {
+
+        if (! $saleDeal || ! $saleDeal->price || $saleDeal->price <= 0) {
             return null;
         }
-        
+
         // Format effective date: YYYY-MM-DDTHH:mm:ssZ/YYYY-MM-DDTHH:mm:ssZ
         $startDate = Carbon::createFromTimestamp($activeDeal->start)->utc();
         $endDate = Carbon::createFromTimestamp($activeDeal->end)->utc();
-        $effectiveDate = $startDate->format('Y-m-d\TH:i:s\Z') . '/' . $endDate->format('Y-m-d\TH:i:s\Z');
-        
+        $effectiveDate = $startDate->format('Y-m-d\TH:i:s\Z').'/'.$endDate->format('Y-m-d\TH:i:s\Z');
+
         return [
             'price' => (float) $saleDeal->price,
             'effective_date' => $effectiveDate,
@@ -416,23 +419,23 @@ class GmcProductMapper
         $campaignProduct = MarketingCampaignProduct::where('product_id', $product->id)
             ->whereHas('campaign', function ($q) use ($now) {
                 $q->where('status', '1')
-                  ->where('start_at', '<=', $now)
-                  ->where('end_at', '>=', $now);
+                    ->where('start_at', '<=', $now)
+                    ->where('end_at', '>=', $now);
             })
             ->orderByDesc('id')
             ->first();
-        
-        if (!$campaignProduct || !$campaignProduct->campaign) {
+
+        if (! $campaignProduct || ! $campaignProduct->campaign) {
             return null;
         }
-        
+
         $campaign = $campaignProduct->campaign;
-        
+
         // Format effective date: YYYY-MM-DDTHH:mm:ssZ/YYYY-MM-DDTHH:mm:ssZ
         $startDate = Carbon::parse($campaign->start_at)->utc();
         $endDate = Carbon::parse($campaign->end_at)->utc();
-        $effectiveDate = $startDate->format('Y-m-d\TH:i:s\Z') . '/' . $endDate->format('Y-m-d\TH:i:s\Z');
-        
+        $effectiveDate = $startDate->format('Y-m-d\TH:i:s\Z').'/'.$endDate->format('Y-m-d\TH:i:s\Z');
+
         return [
             'price' => (float) $campaignProduct->price,
             'effective_date' => $effectiveDate,
@@ -441,7 +444,7 @@ class GmcProductMapper
 
     /**
      * Resolve packaging dimensions (weight in grams, size in cm) with safe defaults.
-     * 
+     *
      * Priority: variant > product > default values
      * Defaults: weight=100g, dimensions=10x10x10cm
      *
@@ -494,11 +497,7 @@ class GmcProductMapper
 
     /**
      * Check if this variant is the first/default variant of the product.
-     * Priority: position ASC -> id ASC
-     *
-     * @param Product $product
-     * @param Variant $variant
-     * @return bool
+     * Priority: position ASC -> id ASC.
      */
     private function isFirstVariant(Product $product, Variant $variant): bool
     {
@@ -519,5 +518,3 @@ class GmcProductMapper
         return $firstVariant->id === $variant->id;
     }
 }
-
-

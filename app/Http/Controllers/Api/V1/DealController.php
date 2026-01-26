@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
@@ -96,7 +97,7 @@ class DealController extends Controller
                 ->where('end', '>=', $now)
                 ->first();
 
-            if (!$deal) {
+            if (! $deal) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Deal không tồn tại hoặc không còn hoạt động',
@@ -128,7 +129,7 @@ class DealController extends Controller
     {
         $mainProducts = [];
         foreach ($deal->products as $productDeal) {
-            if (!$productDeal->product) {
+            if (! $productDeal->product) {
                 continue;
             }
 
@@ -154,7 +155,7 @@ class DealController extends Controller
 
         $saleProducts = [];
         foreach ($deal->sales as $saleDeal) {
-            if (!$saleDeal->product) {
+            if (! $saleDeal->product) {
                 continue;
             }
 
@@ -266,4 +267,3 @@ class DealController extends Controller
         return (int) round((($originalPrice - $salePrice) / $originalPrice) * 100);
     }
 }
-

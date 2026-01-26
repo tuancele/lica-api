@@ -1,14 +1,15 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Video\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
 class Video extends Model
 {
-    protected $table = "posts";
-    
+    protected $table = 'posts';
+
     protected $fillable = [
         'name',
         'slug',
@@ -24,14 +25,15 @@ class Video extends Model
         'cat_id',
         'user_id',
     ];
-    
+
     protected $casts = [
         'status' => 'integer',
         'view' => 'integer',
         'cat_id' => 'integer',
     ];
-    
-    public function user(){
-    	return $this->belongsTo('App\User','user_id','id');
+
+    public function user()
+    {
+        return $this->belongsTo('App\User', 'user_id', 'id');
     }
 }

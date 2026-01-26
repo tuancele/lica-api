@@ -1,11 +1,12 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Feature\ApiAdmin;
 
-use Tests\TestCase;
 use App\Modules\Banner\Models\Banner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class BannerApiTest extends TestCase
 {
@@ -24,7 +25,7 @@ class BannerApiTest extends TestCase
         $response = $this->getJson('/admin/api/banners?limit=5');
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_get_single_banner(): void
@@ -34,7 +35,7 @@ class BannerApiTest extends TestCase
         $response = $this->getJson("/admin/api/banners/{$banner->id}");
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_create_banner(): void
@@ -44,13 +45,13 @@ class BannerApiTest extends TestCase
             'image' => '/uploads/image/banner.jpg',
             'link' => 'https://example.com',
             'status' => '1',
-            'sort' => 0
+            'sort' => 0,
         ];
 
         $response = $this->postJson('/admin/api/banners', $bannerData);
 
         $response->assertStatus(201)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_update_banner(): void
@@ -59,11 +60,11 @@ class BannerApiTest extends TestCase
 
         $response = $this->putJson("/admin/api/banners/{$banner->id}", [
             'name' => 'Updated Banner',
-            'status' => '1'
+            'status' => '1',
         ]);
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_delete_banner(): void
@@ -73,7 +74,6 @@ class BannerApiTest extends TestCase
         $response = $this->deleteJson("/admin/api/banners/{$banner->id}");
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 }
-

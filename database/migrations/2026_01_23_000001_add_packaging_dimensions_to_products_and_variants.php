@@ -9,23 +9,21 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     *
-     * @return void
      */
     public function up(): void
     {
         if (Schema::hasTable('posts')) {
             Schema::table('posts', function (Blueprint $table) {
-                if (!Schema::hasColumn('posts', 'weight')) {
+                if (! Schema::hasColumn('posts', 'weight')) {
                     $table->decimal('weight', 10, 2)->default(0)->after('stock');
                 }
-                if (!Schema::hasColumn('posts', 'length')) {
+                if (! Schema::hasColumn('posts', 'length')) {
                     $table->decimal('length', 10, 2)->default(0)->after('weight');
                 }
-                if (!Schema::hasColumn('posts', 'width')) {
+                if (! Schema::hasColumn('posts', 'width')) {
                     $table->decimal('width', 10, 2)->default(0)->after('length');
                 }
-                if (!Schema::hasColumn('posts', 'height')) {
+                if (! Schema::hasColumn('posts', 'height')) {
                     $table->decimal('height', 10, 2)->default(0)->after('width');
                 }
             });
@@ -33,13 +31,13 @@ return new class extends Migration
 
         if (Schema::hasTable('variants')) {
             Schema::table('variants', function (Blueprint $table) {
-                if (!Schema::hasColumn('variants', 'length')) {
+                if (! Schema::hasColumn('variants', 'length')) {
                     $table->decimal('length', 10, 2)->default(0)->after('weight');
                 }
-                if (!Schema::hasColumn('variants', 'width')) {
+                if (! Schema::hasColumn('variants', 'width')) {
                     $table->decimal('width', 10, 2)->default(0)->after('length');
                 }
-                if (!Schema::hasColumn('variants', 'height')) {
+                if (! Schema::hasColumn('variants', 'height')) {
                     $table->decimal('height', 10, 2)->default(0)->after('width');
                 }
             });
@@ -48,8 +46,6 @@ return new class extends Migration
 
     /**
      * Reverse the migrations.
-     *
-     * @return void
      */
     public function down(): void
     {
@@ -85,5 +81,3 @@ return new class extends Migration
         }
     }
 };
-
-

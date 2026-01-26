@@ -1,17 +1,16 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Member\Models;
-use Illuminate\Database\Eloquent\Model;
+
 use App\Notifications\MemberResetPasswordNotification;
-use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
 
 class Member extends Authenticatable
 {
-    protected $table = "members";
-    
+    protected $table = 'members';
+
     protected $fillable = [
         'name',
         'email',
@@ -20,7 +19,7 @@ class Member extends Authenticatable
         'password',
         'status',
     ];
-    
+
     protected $casts = [
         'email_verified_at' => 'datetime',
         'status' => 'integer',
@@ -49,10 +48,13 @@ class Member extends Authenticatable
         $this->notify(new MemberResetPasswordNotification($token));
     }
 
-    public function order(){
-        return $this->hasMany('App\Modules\Order\Models\Order','member_id','id');
+    public function order()
+    {
+        return $this->hasMany('App\Modules\Order\Models\Order', 'member_id', 'id');
     }
-    public function address(){
-        return $this->hasMany('App\Modules\Address\Models\Address','member_id','id');
+
+    public function address()
+    {
+        return $this->hasMany('App\Modules\Address\Models\Address', 'member_id', 'id');
     }
 }

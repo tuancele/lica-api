@@ -1,17 +1,18 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Inventory\DTOs;
 
 class AdjustStockDTO
 {
     /**
-     * @param int $warehouseId ID kho
-     * @param array $items Danh sách điều chỉnh [{variant_id, new_quantity, reason?}]
-     * @param int $createdBy ID người tạo
-     * @param string|null $subject Tiêu đề (vd: Kiểm kê tháng 1/2025)
-     * @param string|null $content Ghi chú
-     * @param array|null $metadata Dữ liệu bổ sung
+     * @param  int  $warehouseId  ID kho
+     * @param  array  $items  Danh sách điều chỉnh [{variant_id, new_quantity, reason?}]
+     * @param  int  $createdBy  ID người tạo
+     * @param  string|null  $subject  Tiêu đề (vd: Kiểm kê tháng 1/2025)
+     * @param  string|null  $content  Ghi chú
+     * @param  array|null  $metadata  Dữ liệu bổ sung
      */
     public function __construct(
         public int $warehouseId,
@@ -25,7 +26,7 @@ class AdjustStockDTO
     }
 
     /**
-     * Validate items
+     * Validate items.
      */
     private function validateItems(): void
     {
@@ -34,17 +35,17 @@ class AdjustStockDTO
         }
 
         foreach ($this->items as $index => $item) {
-            if (!isset($item['variant_id'])) {
+            if (! isset($item['variant_id'])) {
                 throw new \InvalidArgumentException("Item at index {$index} is missing variant_id");
             }
-            if (!isset($item['new_quantity']) || $item['new_quantity'] < 0) {
+            if (! isset($item['new_quantity']) || $item['new_quantity'] < 0) {
                 throw new \InvalidArgumentException("Item at index {$index} has invalid new_quantity");
             }
         }
     }
 
     /**
-     * Create from array
+     * Create from array.
      */
     public static function fromArray(array $data): self
     {
@@ -59,7 +60,7 @@ class AdjustStockDTO
     }
 
     /**
-     * Get item count
+     * Get item count.
      */
     public function getItemCount(): int
     {

@@ -1,21 +1,22 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Inventory\DTOs;
 
 class ImportStockDTO
 {
     /**
-     * @param string $code Mã đơn hàng / PO
-     * @param string $subject Tiêu đề / Nội dung
-     * @param int $warehouseId ID kho nhập
-     * @param array $items Danh sách sản phẩm [{variant_id, quantity, unit_price, batch_number?, expiry_date?, notes?}]
-     * @param int $createdBy ID người tạo
-     * @param string|null $content Ghi chú
-     * @param string|null $vatInvoice Số hóa đơn VAT
-     * @param int|null $supplierId ID nhà cung cấp
-     * @param string|null $supplierName Tên nhà cung cấp
-     * @param array|null $metadata Dữ liệu bổ sung
+     * @param  string  $code  Mã đơn hàng / PO
+     * @param  string  $subject  Tiêu đề / Nội dung
+     * @param  int  $warehouseId  ID kho nhập
+     * @param  array  $items  Danh sách sản phẩm [{variant_id, quantity, unit_price, batch_number?, expiry_date?, notes?}]
+     * @param  int  $createdBy  ID người tạo
+     * @param  string|null  $content  Ghi chú
+     * @param  string|null  $vatInvoice  Số hóa đơn VAT
+     * @param  int|null  $supplierId  ID nhà cung cấp
+     * @param  string|null  $supplierName  Tên nhà cung cấp
+     * @param  array|null  $metadata  Dữ liệu bổ sung
      */
     public function __construct(
         public string $code,
@@ -33,7 +34,7 @@ class ImportStockDTO
     }
 
     /**
-     * Validate items array
+     * Validate items array.
      */
     private function validateItems(): void
     {
@@ -42,17 +43,17 @@ class ImportStockDTO
         }
 
         foreach ($this->items as $index => $item) {
-            if (!isset($item['variant_id'])) {
+            if (! isset($item['variant_id'])) {
                 throw new \InvalidArgumentException("Item at index {$index} is missing variant_id");
             }
-            if (!isset($item['quantity']) || $item['quantity'] <= 0) {
+            if (! isset($item['quantity']) || $item['quantity'] <= 0) {
                 throw new \InvalidArgumentException("Item at index {$index} has invalid quantity");
             }
         }
     }
 
     /**
-     * Create from request array
+     * Create from request array.
      */
     public static function fromArray(array $data): self
     {
@@ -71,7 +72,7 @@ class ImportStockDTO
     }
 
     /**
-     * Get total quantity
+     * Get total quantity.
      */
     public function getTotalQuantity(): int
     {
@@ -79,7 +80,7 @@ class ImportStockDTO
     }
 
     /**
-     * Get total value
+     * Get total value.
      */
     public function getTotalValue(): float
     {
@@ -89,7 +90,7 @@ class ImportStockDTO
     }
 
     /**
-     * Get item count
+     * Get item count.
      */
     public function getItemCount(): int
     {

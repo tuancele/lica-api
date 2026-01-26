@@ -1,13 +1,13 @@
 <?php
 
-require __DIR__ . '/../vendor/autoload.php';
+require __DIR__.'/../vendor/autoload.php';
 
-$app = require __DIR__ . '/../bootstrap/app.php';
+$app = require __DIR__.'/../bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 $kernel->bootstrap();
 
-use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 $chunk = 1000;
 $total = DB::table('variants')->count();
@@ -33,8 +33,8 @@ DB::table('variants')
             // If product has only 1 variant -> LC{PRODUCT_ID}VN
             // If product has many variants -> LC{PRODUCT_ID}VN-V{VARIANT_ID}
             $newSku = ($count > 1)
-                ? 'LC' . $pid . 'VN-V' . $vid
-                : 'LC' . $pid . 'VN';
+                ? 'LC'.$pid.'VN-V'.$vid
+                : 'LC'.$pid.'VN';
 
             DB::table('variants')->where('id', $vid)->update([
                 'sku' => $newSku,
@@ -53,5 +53,3 @@ $duplicateCount = DB::table('variants')
 echo "total_variants={$total}\n";
 echo "updated={$updated}\n";
 echo "duplicate_skus_after_update={$duplicateCount}\n";
-
-

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Requests\Taxonomy;
 
 use Illuminate\Foundation\Http\FormRequest;
@@ -29,4 +30,3 @@ class StoreTaxonomyRequest extends FormRequest
         ];
     }
 }
-

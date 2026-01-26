@@ -1,14 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Requests\Product;
 
 use Illuminate\Foundation\Http\FormRequest;
-use App\Modules\Product\Models\Product;
 
 /**
- * Form Request for storing a new variant
- * 
+ * Form Request for storing a new variant.
+ *
  * This class handles validation and authorization
  * for variant creation requests.
  */
@@ -16,8 +16,6 @@ class StoreVariantRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
-     * 
-     * @return bool
      */
     public function authorize(): bool
     {
@@ -26,7 +24,7 @@ class StoreVariantRequest extends FormRequest
 
     /**
      * Get the validation rules that apply to the request.
-     * 
+     *
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array|string>
      */
     public function rules(): array
@@ -36,65 +34,63 @@ class StoreVariantRequest extends FormRequest
                 'required',
                 'string',
                 'max:100',
-                'unique:variants,sku'
+                'unique:variants,sku',
             ],
             'product_id' => [
                 'required',
                 'integer',
-                'exists:posts,id'
+                'exists:posts,id',
             ],
             'option1_value' => [
                 'nullable',
                 'string',
-                'max:255'
+                'max:255',
             ],
             'image' => [
                 'nullable',
                 'url',
-                'max:500'
+                'max:500',
             ],
             'size_id' => [
                 'nullable',
                 'integer',
-                'exists:sizes,id'
+                'exists:sizes,id',
             ],
             'color_id' => [
                 'nullable',
                 'integer',
-                'exists:colors,id'
+                'exists:colors,id',
             ],
             'weight' => [
                 'nullable',
                 'numeric',
-                'min:0'
+                'min:0',
             ],
             'price' => [
                 'required',
                 'numeric',
-                'min:0'
+                'min:0',
             ],
             'sale' => [
                 'nullable',
                 'numeric',
-                'min:0'
+                'min:0',
             ],
             'stock' => [
                 'nullable',
                 'integer',
-                'min:0'
+                'min:0',
             ],
             'position' => [
                 'nullable',
                 'integer',
-                'min:0'
+                'min:0',
             ],
         ];
     }
 
     /**
      * Get custom messages for validator errors.
-     * 
-     * @return array
      */
     public function messages(): array
     {

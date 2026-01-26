@@ -1,17 +1,16 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Requests\Product;
 
+use App\Modules\Product\Models\Product;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
-use App\Enums\ProductStatus;
-use App\Enums\ProductType;
-use App\Modules\Product\Models\Product;
 
 /**
- * Form Request for updating an existing product
- * 
+ * Form Request for updating an existing product.
+ *
  * This class handles validation and authorization
  * for product update requests.
  */
@@ -19,8 +18,6 @@ class UpdateProductRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
-     * 
-     * @return bool
      */
     public function authorize(): bool
     {
@@ -31,22 +28,22 @@ class UpdateProductRequest extends FormRequest
 
     /**
      * Get the validation rules that apply to the request.
-     * 
+     *
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array|string>
      */
     public function rules(): array
     {
         // Get product ID from route parameter (URL) instead of request body
         $productId = $this->route('id') ?? $this->input('id');
-        
+
         // Ensure productId is not null for slug unique validation
-        if (!$productId) {
+        if (! $productId) {
             \Log::warning('UpdateProductRequest: productId is null', [
                 'route_params' => $this->route()->parameters(),
                 'input_id' => $this->input('id'),
             ]);
         }
-        
+
         return [
             // Note: 'id' is not required in body since it comes from URL route parameter
             // Controller will merge it from route parameter
@@ -54,107 +51,107 @@ class UpdateProductRequest extends FormRequest
                 'required',
                 'string',
                 'min:1',
-                'max:250'
+                'max:250',
             ],
             'slug' => [
                 'required',
                 'string',
                 'min:1',
                 'max:250',
-                'unique:posts,slug,' . $productId,
-                'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'
+                'unique:posts,slug,'.$productId,
+                'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/',
             ],
             'content' => [
                 'nullable',
-                'string'
+                'string',
             ],
             'description' => [
                 'nullable',
                 'string',
-                'max:500'
+                'max:500',
             ],
             'video' => [
                 'nullable',
                 'url',
-                'max:500'
+                'max:500',
             ],
             'imageOther' => [
                 'nullable',
-                'array'
+                'array',
             ],
             'imageOther.*' => [
                 'nullable',
                 'string',
-                'max:500'
+                'max:500',
                 // Note: Accept both relative paths (/uploads/...) and absolute URLs (http://...)
                 // Removed 'url' rule to allow relative paths
             ],
             'imageOtherRemoved' => [
                 'nullable',
-                'array'
+                'array',
             ],
             'imageOtherRemoved.*' => [
                 'nullable',
                 'string',
-                'max:500'
+                'max:500',
                 // Note: Accept both relative paths and absolute URLs
             ],
             'cat_id' => [
                 'nullable',
-                'array'
+                'array',
             ],
             'cat_id.*' => [
                 'integer',
-                'exists:posts,id'
+                'exists:posts,id',
             ],
             'brand_id' => [
                 'nullable',
                 'integer',
-                'exists:brands,id'
+                'exists:brands,id',
             ],
             'origin_id' => [
                 'nullable',
                 'integer',
-                'exists:origins,id'
+                'exists:origins,id',
             ],
             'ingredient' => [
                 'nullable',
-                'string'
+                'string',
             ],
             'cbmp' => [
                 'nullable',
                 'string',
-                'max:250'
+                'max:250',
             ],
             'price' => [
                 'nullable',
                 'numeric',
-                'min:0'
+                'min:0',
             ],
             'stock_qty' => [
                 'nullable',
                 'integer',
-                'min:0'
+                'min:0',
             ],
             'weight' => [
                 'nullable',
                 'numeric',
-                'min:0'
+                'min:0',
             ],
             'length' => [
                 'nullable',
                 'numeric',
-                'min:0'
+                'min:0',
             ],
             'width' => [
                 'nullable',
                 'numeric',
-                'min:0'
+                'min:0',
             ],
             'height' => [
                 'nullable',
                 'numeric',
-                'min:0'
+                'min:0',
             ],
             'sku' => [
                 'nullable',
@@ -165,56 +162,54 @@ class UpdateProductRequest extends FormRequest
             ],
             'has_variants' => [
                 'nullable',
-                'in:0,1'
+                'in:0,1',
             ],
             'option1_name' => [
                 'nullable',
                 'string',
                 'max:50',
-                'required_if:has_variants,1'
+                'required_if:has_variants,1',
             ],
             'variants_json' => [
                 'nullable',
                 'string',
-                'required_if:has_variants,1'
+                'required_if:has_variants,1',
             ],
             'status' => [
                 'nullable',
-                'in:0,1'
+                'in:0,1',
             ],
             'feature' => [
                 'nullable',
-                'in:0,1'
+                'in:0,1',
             ],
             'best' => [
                 'nullable',
-                'in:0,1'
+                'in:0,1',
             ],
             'stock' => [
                 'nullable',
-                'in:0,1'
+                'in:0,1',
             ],
             'seo_title' => [
                 'nullable',
                 'string',
-                'max:250'
+                'max:250',
             ],
             'seo_description' => [
                 'nullable',
                 'string',
-                'max:500'
+                'max:500',
             ],
             'r2_session_key' => [
                 'nullable',
-                'string'
-            ]
+                'string',
+            ],
         ];
     }
 
     /**
      * Get custom messages for validator errors.
-     * 
-     * @return array
      */
     public function messages(): array
     {
@@ -239,9 +234,7 @@ class UpdateProductRequest extends FormRequest
 
     /**
      * Handle a failed validation attempt.
-     * 
-     * @param \Illuminate\Contracts\Validation\Validator $validator
-     * @return void
+     *
      * @throws \Illuminate\Validation\ValidationException
      */
     protected function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
@@ -252,34 +245,32 @@ class UpdateProductRequest extends FormRequest
             'input' => $this->all(),
             'route_id' => $this->route('id'),
         ]);
-        
+
         parent::failedValidation($validator);
     }
 
     /**
      * Prepare the data for validation.
-     * 
-     * @return void
      */
     protected function prepareForValidation(): void
     {
         // Ensure slug is lowercase
         if ($this->has('slug')) {
             $this->merge([
-                'slug' => Str::slug($this->slug)
+                'slug' => Str::slug($this->slug),
             ]);
         }
 
         // Convert price strings to numbers (remove commas)
         if ($this->has('price') && is_string($this->price)) {
             $this->merge([
-                'price' => (float) str_replace(',', '', $this->price)
+                'price' => (float) str_replace(',', '', $this->price),
             ]);
         }
         // Normalize has_variants
         if ($this->has('has_variants')) {
             $this->merge([
-                'has_variants' => (string) $this->input('has_variants')
+                'has_variants' => (string) $this->input('has_variants'),
             ]);
         } else {
             $this->merge(['has_variants' => '0']);

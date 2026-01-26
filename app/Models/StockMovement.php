@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -212,6 +213,7 @@ class StockMovement extends Model
         if (is_array($type)) {
             return $query->whereIn('movement_type', $type);
         }
+
         return $query->where('movement_type', $type);
     }
 
@@ -248,19 +250,19 @@ class StockMovement extends Model
     */
 
     /**
-     * Create a new movement record
+     * Create a new movement record.
      */
     public static function record(array $data): self
     {
         $data['created_at'] = $data['created_at'] ?? now();
         $data['ip_address'] = $data['ip_address'] ?? request()->ip();
         $data['user_agent'] = $data['user_agent'] ?? substr(request()->userAgent() ?? '', 0, 500);
-        
+
         return static::create($data);
     }
 
     /**
-     * Get summary of movements for a variant in date range
+     * Get summary of movements for a variant in date range.
      */
     public static function getSummary(int $variantId, int $warehouseId, $startDate, $endDate): array
     {
@@ -270,8 +272,8 @@ class StockMovement extends Model
             ->get();
 
         return [
-            'total_in' => $movements->filter(fn($m) => $m->is_increase)->sum('quantity'),
-            'total_out' => abs($movements->filter(fn($m) => $m->is_decrease)->sum('quantity')),
+            'total_in' => $movements->filter(fn ($m) => $m->is_increase)->sum('quantity'),
+            'total_out' => abs($movements->filter(fn ($m) => $m->is_decrease)->sum('quantity')),
             'count' => $movements->count(),
             'by_type' => $movements->groupBy('movement_type')->map->sum('quantity'),
         ];

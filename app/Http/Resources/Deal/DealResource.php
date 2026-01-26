@@ -1,23 +1,21 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Deal;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Deal Resource for API responses
- * 
+ * Deal Resource for API responses.
+ *
  * Formats Deal data with ISO 8601 dates and computed fields
  */
 class DealResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return array
      */
     public function toArray(Request $request): array
     {
@@ -26,8 +24,8 @@ class DealResource extends JsonResource
         $endDate = $this->end ? date('c', $this->end) : null;
 
         $now = strtotime(date('Y-m-d H:i:s'));
-        $isActive = $this->status == '1' 
-            && $this->start <= $now 
+        $isActive = $this->status == '1'
+            && $this->start <= $now
             && $this->end >= $now;
 
         return [
@@ -41,7 +39,7 @@ class DealResource extends JsonResource
             'status_text' => $this->status == '1' ? 'Kích hoạt' : 'Ngừng',
             'limited' => (int) $this->limited,
             'is_active' => $isActive,
-            'created_by' => $this->whenLoaded('user', function() {
+            'created_by' => $this->whenLoaded('user', function () {
                 return [
                     'id' => $this->user->id,
                     'name' => $this->user->name ?? 'N/A',

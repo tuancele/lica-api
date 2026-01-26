@@ -9,7 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('showrooms')) {
+        if (! Schema::hasTable('showrooms')) {
             Schema::create('showrooms', function (Blueprint $table) {
                 $table->increments('id');
                 $table->string('name', 250);
@@ -21,7 +21,7 @@ return new class extends Migration
                 $table->integer('sort')->default(0);
                 $table->integer('user_id')->nullable();
                 $table->timestamps();
-                
+
                 $table->index('status');
                 $table->index('sort');
                 $table->index('cat_id');
@@ -29,7 +29,7 @@ return new class extends Migration
         } else {
             // Add missing columns if table exists
             Schema::table('showrooms', function (Blueprint $table) {
-                if (!Schema::hasColumn('showrooms', 'sort')) {
+                if (! Schema::hasColumn('showrooms', 'sort')) {
                     $table->integer('sort')->default(0)->after('status');
                 }
             });

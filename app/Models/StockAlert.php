@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -199,7 +200,7 @@ class StockAlert extends Model
     }
 
     /**
-     * Create alert if not exists
+     * Create alert if not exists.
      */
     public static function createIfNotExists(
         int $warehouseId,
@@ -213,12 +214,13 @@ class StockAlert extends Model
             ->forVariant($variantId)
             ->ofType($alertType)
             ->first();
-        
+
         if ($existing) {
             $existing->update(['current_stock' => $currentStock]);
+
             return $existing;
         }
-        
+
         return static::create([
             'warehouse_id' => $warehouseId,
             'variant_id' => $variantId,
@@ -230,7 +232,7 @@ class StockAlert extends Model
     }
 
     /**
-     * Auto-resolve alerts when stock restored
+     * Auto-resolve alerts when stock restored.
      */
     public static function autoResolve(int $warehouseId, int $variantId, int $currentStock, int $threshold): void
     {
@@ -245,7 +247,7 @@ class StockAlert extends Model
                     'resolution_notes' => 'Auto-resolved: Stock replenished',
                 ]);
         }
-        
+
         if ($currentStock > 0) {
             static::active()
                 ->forWarehouse($warehouseId)

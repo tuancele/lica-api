@@ -1,11 +1,12 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Feature\ApiAdmin;
 
-use Tests\TestCase;
 use App\Modules\Category\Models\Category;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class CategoryApiTest extends TestCase
 {
@@ -24,12 +25,12 @@ class CategoryApiTest extends TestCase
         $response = $this->getJson('/admin/api/categories?limit=5');
 
         $response->assertStatus(200)
-                 ->assertJsonStructure([
-                     'success',
-                     'data',
-                     'pagination'
-                 ])
-                 ->assertJson(['success' => true]);
+            ->assertJsonStructure([
+                'success',
+                'data',
+                'pagination',
+            ])
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_get_single_category(): void
@@ -39,7 +40,7 @@ class CategoryApiTest extends TestCase
         $response = $this->getJson("/admin/api/categories/{$category->id}");
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_create_category(): void
@@ -48,13 +49,13 @@ class CategoryApiTest extends TestCase
             'name' => 'New Category',
             'slug' => 'new-category',
             'status' => '1',
-            'sort' => 0
+            'sort' => 0,
         ];
 
         $response = $this->postJson('/admin/api/categories', $categoryData);
 
         $response->assertStatus(201)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_update_category(): void
@@ -63,11 +64,11 @@ class CategoryApiTest extends TestCase
 
         $response = $this->putJson("/admin/api/categories/{$category->id}", [
             'name' => 'Updated Category',
-            'status' => '1'
+            'status' => '1',
         ]);
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_delete_category(): void
@@ -77,7 +78,7 @@ class CategoryApiTest extends TestCase
         $response = $this->deleteJson("/admin/api/categories/{$category->id}");
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_get_category_tree(): void
@@ -87,7 +88,6 @@ class CategoryApiTest extends TestCase
         $response = $this->getJson('/admin/api/categories/tree');
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 }
-

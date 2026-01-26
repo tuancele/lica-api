@@ -1,15 +1,18 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Compare\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
 class Compare extends Model
 {
-    protected $table = "compares";
-    public function user(){
-    	return $this->belongsTo('App\User','user_id','id');
+    protected $table = 'compares';
+
+    public function user()
+    {
+        return $this->belongsTo('App\User', 'user_id', 'id');
     }
 
     protected $fillable = [
@@ -20,10 +23,11 @@ class Compare extends Model
         'is_link',
         'brand',
         'user_id',
-        'status'
+        'status',
     ];
 
-    public function store(){
-    	return $this->belongsTo('App\Modules\Compare\Models\Store','store_id','id');
+    public function store()
+    {
+        return $this->belongsTo('App\Modules\Compare\Models\Store', 'store_id', 'id');
     }
 }

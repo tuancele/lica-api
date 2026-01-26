@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
@@ -19,21 +20,33 @@ class PostController extends Controller
     {
         try {
             $filters = [];
-            if ($request->has('status') && $request->status !== '') $filters['status'] = $request->status;
-            if ($request->has('cat_id') && $request->cat_id !== '') $filters['cat_id'] = $request->cat_id;
-            if ($request->has('keyword') && $request->keyword !== '') $filters['keyword'] = $request->keyword;
-            
+            if ($request->has('status') && $request->status !== '') {
+                $filters['status'] = $request->status;
+            }
+            if ($request->has('cat_id') && $request->cat_id !== '') {
+                $filters['cat_id'] = $request->cat_id;
+            }
+            if ($request->has('keyword') && $request->keyword !== '') {
+                $filters['keyword'] = $request->keyword;
+            }
+
             $perPage = (int) $request->get('limit', 10);
             $perPage = $perPage > 0 && $perPage <= 100 ? $perPage : 10;
-            
+
             $query = Post::where('type', 'post');
-            if (isset($filters['status'])) $query->where('status', $filters['status']);
-            if (isset($filters['cat_id'])) $query->where('cat_id', $filters['cat_id']);
-            if (isset($filters['keyword'])) $query->where('name', 'like', '%' . $filters['keyword'] . '%');
+            if (isset($filters['status'])) {
+                $query->where('status', $filters['status']);
+            }
+            if (isset($filters['cat_id'])) {
+                $query->where('cat_id', $filters['cat_id']);
+            }
+            if (isset($filters['keyword'])) {
+                $query->where('name', 'like', '%'.$filters['keyword'].'%');
+            }
             $query->orderBy('created_at', 'desc');
-            
+
             $posts = $query->paginate($perPage);
-            
+
             return response()->json([
                 'success' => true,
                 'data' => PostResource::collection($posts->items()),
@@ -45,7 +58,8 @@ class PostController extends Controller
                 ],
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get posts list failed: ' . $e->getMessage());
+            Log::error('Get posts list failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get posts list'], 500);
         }
     }
@@ -54,10 +68,14 @@ class PostController extends Controller
     {
         try {
             $post = Post::where('type', 'post')->with('user')->find($id);
-            if (!$post) return response()->json(['success' => false, 'message' => 'Post not found'], 404);
+            if (! $post) {
+                return response()->json(['success' => false, 'message' => 'Post not found'], 404);
+            }
+
             return response()->json(['success' => true, 'data' => new PostResource($post)], 200);
         } catch (\Exception $e) {
-            Log::error('Get post details failed: ' . $e->getMessage());
+            Log::error('Get post details failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get post details'], 500);
         }
     }
@@ -79,18 +97,18 @@ class PostController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             $slug = $request->slug;
             if (empty($slug)) {
                 $slug = Str::slug($request->name);
                 $originalSlug = $slug;
                 $counter = 1;
                 while (Post::where('slug', $slug)->exists()) {
-                    $slug = $originalSlug . '-' . $counter;
+                    $slug = $originalSlug.'-'.$counter;
                     $counter++;
                 }
             }
-            
+
             $post = Post::create([
                 'name' => $request->name,
                 'slug' => $slug,
@@ -104,14 +122,15 @@ class PostController extends Controller
                 'type' => 'post',
                 'user_id' => Auth::id(),
             ]);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Post created successfully',
                 'data' => new PostResource($post->load('user')),
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Create post failed: ' . $e->getMessage());
+            Log::error('Create post failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to create post'], 500);
         }
     }
@@ -120,11 +139,13 @@ class PostController extends Controller
     {
         try {
             $post = Post::where('type', 'post')->find($id);
-            if (!$post) return response()->json(['success' => false, 'message' => 'Post not found'], 404);
-            
+            if (! $post) {
+                return response()->json(['success' => false, 'message' => 'Post not found'], 404);
+            }
+
             $validator = Validator::make($request->all(), [
                 'name' => 'sometimes|required|string|min:1|max:250',
-                'slug' => 'nullable|string|max:250|unique:posts,slug,' . $id,
+                'slug' => 'nullable|string|max:250|unique:posts,slug,'.$id,
                 'image' => 'nullable|string',
                 'description' => 'nullable|string',
                 'content' => 'nullable|string',
@@ -136,28 +157,47 @@ class PostController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             $updateData = [];
-            if ($request->has('name')) $updateData['name'] = $request->name;
-            if ($request->has('slug')) $updateData['slug'] = $request->slug;
-            if ($request->has('image')) $updateData['image'] = $request->image;
-            if ($request->has('description')) $updateData['description'] = $request->description;
-            if ($request->has('content')) $updateData['content'] = $request->content;
-            if ($request->has('cat_id')) $updateData['cat_id'] = $request->cat_id;
-            if ($request->has('status')) $updateData['status'] = $request->status;
-            if ($request->has('seo_title')) $updateData['seo_title'] = $request->seo_title;
-            if ($request->has('seo_description')) $updateData['seo_description'] = $request->seo_description;
+            if ($request->has('name')) {
+                $updateData['name'] = $request->name;
+            }
+            if ($request->has('slug')) {
+                $updateData['slug'] = $request->slug;
+            }
+            if ($request->has('image')) {
+                $updateData['image'] = $request->image;
+            }
+            if ($request->has('description')) {
+                $updateData['description'] = $request->description;
+            }
+            if ($request->has('content')) {
+                $updateData['content'] = $request->content;
+            }
+            if ($request->has('cat_id')) {
+                $updateData['cat_id'] = $request->cat_id;
+            }
+            if ($request->has('status')) {
+                $updateData['status'] = $request->status;
+            }
+            if ($request->has('seo_title')) {
+                $updateData['seo_title'] = $request->seo_title;
+            }
+            if ($request->has('seo_description')) {
+                $updateData['seo_description'] = $request->seo_description;
+            }
             $updateData['user_id'] = Auth::id();
-            
+
             $post->update($updateData);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Post updated successfully',
                 'data' => new PostResource($post->fresh()->load('user')),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Update post failed: ' . $e->getMessage());
+            Log::error('Update post failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to update post'], 500);
         }
     }
@@ -166,11 +206,15 @@ class PostController extends Controller
     {
         try {
             $post = Post::where('type', 'post')->find($id);
-            if (!$post) return response()->json(['success' => false, 'message' => 'Post not found'], 404);
+            if (! $post) {
+                return response()->json(['success' => false, 'message' => 'Post not found'], 404);
+            }
             $post->delete();
+
             return response()->json(['success' => true, 'message' => 'Post deleted successfully'], 200);
         } catch (\Exception $e) {
-            Log::error('Delete post failed: ' . $e->getMessage());
+            Log::error('Delete post failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to delete post'], 500);
         }
     }
@@ -183,13 +227,16 @@ class PostController extends Controller
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
             $post = Post::where('type', 'post')->find($id);
-            if (!$post) return response()->json(['success' => false, 'message' => 'Post not found'], 404);
+            if (! $post) {
+                return response()->json(['success' => false, 'message' => 'Post not found'], 404);
+            }
             $post->update(['status' => $request->status, 'user_id' => Auth::id()]);
+
             return response()->json(['success' => true, 'message' => 'Post status updated successfully', 'data' => new PostResource($post->fresh())], 200);
         } catch (\Exception $e) {
-            Log::error('Update post status failed: ' . $e->getMessage());
+            Log::error('Update post status failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to update post status'], 500);
         }
     }
 }
-

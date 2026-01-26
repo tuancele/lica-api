@@ -9,7 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('brands')) {
+        if (! Schema::hasTable('brands')) {
             Schema::create('brands', function (Blueprint $table) {
                 $table->increments('id');
                 $table->string('name', 250);
@@ -25,7 +25,7 @@ return new class extends Migration
                 $table->integer('sort')->default(0);
                 $table->integer('user_id')->nullable();
                 $table->timestamps();
-                
+
                 $table->index('status');
                 $table->index('sort');
             });

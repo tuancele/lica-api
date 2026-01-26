@@ -35,17 +35,16 @@ return new class extends Migration
     public function down(): void
     {
         // Re-add columns for rollback in local env (no data restoration)
-        if (!Schema::hasColumn('variants', 'sale')) {
+        if (! Schema::hasColumn('variants', 'sale')) {
             Schema::table('variants', function (Blueprint $table) {
                 $table->unsignedInteger('sale')->default(0)->after('price');
             });
         }
 
-        if (!Schema::hasColumn('posts', 'sale')) {
+        if (! Schema::hasColumn('posts', 'sale')) {
             Schema::table('posts', function (Blueprint $table) {
                 $table->unsignedInteger('sale')->default(0);
             });
         }
     }
 };
-

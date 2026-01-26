@@ -1,18 +1,19 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Inventory\DTOs;
 
 class TransferStockDTO
 {
     /**
-     * @param int $fromWarehouseId Kho xuất
-     * @param int $toWarehouseId Kho nhập
-     * @param array $items Danh sách sản phẩm [{variant_id, quantity}]
-     * @param int $createdBy ID người tạo
-     * @param string|null $subject Tiêu đề
-     * @param string|null $content Ghi chú
-     * @param array|null $metadata Dữ liệu bổ sung
+     * @param  int  $fromWarehouseId  Kho xuất
+     * @param  int  $toWarehouseId  Kho nhập
+     * @param  array  $items  Danh sách sản phẩm [{variant_id, quantity}]
+     * @param  int  $createdBy  ID người tạo
+     * @param  string|null  $subject  Tiêu đề
+     * @param  string|null  $content  Ghi chú
+     * @param  array|null  $metadata  Dữ liệu bổ sung
      */
     public function __construct(
         public int $fromWarehouseId,
@@ -27,7 +28,7 @@ class TransferStockDTO
     }
 
     /**
-     * Validate
+     * Validate.
      */
     private function validate(): void
     {
@@ -40,17 +41,17 @@ class TransferStockDTO
         }
 
         foreach ($this->items as $index => $item) {
-            if (!isset($item['variant_id'])) {
+            if (! isset($item['variant_id'])) {
                 throw new \InvalidArgumentException("Item at index {$index} is missing variant_id");
             }
-            if (!isset($item['quantity']) || $item['quantity'] <= 0) {
+            if (! isset($item['quantity']) || $item['quantity'] <= 0) {
                 throw new \InvalidArgumentException("Item at index {$index} has invalid quantity");
             }
         }
     }
 
     /**
-     * Create from array
+     * Create from array.
      */
     public static function fromArray(array $data): self
     {
@@ -66,7 +67,7 @@ class TransferStockDTO
     }
 
     /**
-     * Get total quantity
+     * Get total quantity.
      */
     public function getTotalQuantity(): int
     {
@@ -74,7 +75,7 @@ class TransferStockDTO
     }
 
     /**
-     * Get item count
+     * Get item count.
      */
     public function getItemCount(): int
     {

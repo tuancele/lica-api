@@ -1,14 +1,13 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Gmc;
 
-use Google\Service\ShoppingContent;
-use Google\Service\ShoppingContent\ProductStatus;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Service to fetch product status from Google Merchant Center
+ * Service to fetch product status from Google Merchant Center.
  */
 class GmcProductStatusService
 {
@@ -17,9 +16,9 @@ class GmcProductStatusService
     ) {}
 
     /**
-     * Get product status from Google Merchant Center
-     * 
-     * @param string $offerId The offer ID (SKU or variant ID)
+     * Get product status from Google Merchant Center.
+     *
+     * @param  string  $offerId  The offer ID (SKU or variant ID)
      * @return array{status:string|null, issues:array, destination_statuses:array}|null
      */
     public function getProductStatus(string $offerId): ?array
@@ -27,24 +26,25 @@ class GmcProductStatusService
         $merchantId = (string) config('gmc.merchant_id', '');
         if ($merchantId === '') {
             Log::warning('[GMC] Cannot fetch product status: merchant_id is missing');
+
             return null;
         }
 
         try {
             $service = $this->clientFactory->makeContentService();
-            
+
             // Use productstatuses.get to get status
             $productStatus = $service->productstatuses->get($merchantId, $offerId);
-            
-            if (!$productStatus) {
+
+            if (! $productStatus) {
                 return null;
             }
 
-            $status = $productStatus->getDataQualityIssues() ? 'disapproved' : 
+            $status = $productStatus->getDataQualityIssues() ? 'disapproved' :
                      ($productStatus->getItemLevelIssues() ? 'pending' : 'approved');
 
             $issues = [];
-            
+
             // Collect data quality issues
             if ($productStatus->getDataQualityIssues()) {
                 foreach ($productStatus->getDataQualityIssues() as $issue) {
@@ -100,12 +100,12 @@ class GmcProductStatusService
                 'error' => $e->getMessage(),
                 'code' => $e->getCode(),
             ]);
-            
+
             // If product not found, return null
             if ($e->getCode() === 404) {
                 return null;
             }
-            
+
             return [
                 'status' => 'error',
                 'issues' => [['description' => $e->getMessage()]],
@@ -115,9 +115,9 @@ class GmcProductStatusService
     }
 
     /**
-     * Get multiple product statuses in batch
-     * 
-     * @param array<string> $offerIds Array of offer IDs
+     * Get multiple product statuses in batch.
+     *
+     * @param  array<string>  $offerIds  Array of offer IDs
      * @return array<string, array> Map of offerId => status data
      */
     public function getBatchProductStatuses(array $offerIds): array
@@ -126,7 +126,7 @@ class GmcProductStatusService
         foreach ($offerIds as $offerId) {
             $results[$offerId] = $this->getProductStatus($offerId);
         }
+
         return $results;
     }
 }
-

@@ -108,11 +108,11 @@ class StockReservation extends Model
         if ($this->status === self::STATUS_EXPIRED) {
             return true;
         }
-        
+
         if ($this->status === self::STATUS_ACTIVE && $this->expires_at) {
             return $this->expires_at->isPast();
         }
-        
+
         return false;
     }
 
@@ -123,10 +123,10 @@ class StockReservation extends Model
 
     public function getTimeLeftAttribute(): ?int
     {
-        if (!$this->is_active || !$this->expires_at) {
+        if (! $this->is_active || ! $this->expires_at) {
             return null;
         }
-        
+
         return max(0, now()->diffInSeconds($this->expires_at, false));
     }
 
@@ -156,7 +156,7 @@ class StockReservation extends Model
     {
         return $query->where(function ($q) {
             $q->whereNull('expires_at')
-              ->orWhere('expires_at', '>', now());
+                ->orWhere('expires_at', '>', now());
         });
     }
 
@@ -188,14 +188,14 @@ class StockReservation extends Model
     */
 
     /**
-     * Mark reservation as confirmed (stock deducted)
+     * Mark reservation as confirmed (stock deducted).
      */
     public function confirm(): bool
     {
         if ($this->status !== self::STATUS_ACTIVE) {
             return false;
         }
-        
+
         return $this->update([
             'status' => self::STATUS_CONFIRMED,
             'confirmed_at' => now(),
@@ -203,14 +203,14 @@ class StockReservation extends Model
     }
 
     /**
-     * Mark reservation as released
+     * Mark reservation as released.
      */
     public function release(?int $userId = null, ?string $reason = null): bool
     {
-        if (!in_array($this->status, [self::STATUS_ACTIVE])) {
+        if (! in_array($this->status, [self::STATUS_ACTIVE])) {
             return false;
         }
-        
+
         return $this->update([
             'status' => self::STATUS_RELEASED,
             'released_at' => now(),
@@ -220,14 +220,14 @@ class StockReservation extends Model
     }
 
     /**
-     * Mark reservation as expired
+     * Mark reservation as expired.
      */
     public function markExpired(): bool
     {
         if ($this->status !== self::STATUS_ACTIVE) {
             return false;
         }
-        
+
         return $this->update([
             'status' => self::STATUS_EXPIRED,
             'released_at' => now(),
@@ -236,37 +236,37 @@ class StockReservation extends Model
     }
 
     /**
-     * Extend expiration time
+     * Extend expiration time.
      */
     public function extend(int $minutes): bool
     {
         if ($this->status !== self::STATUS_ACTIVE) {
             return false;
         }
-        
+
         return $this->update([
             'expires_at' => now()->addMinutes($minutes),
         ]);
     }
 
     /**
-     * Get total reserved quantity for a variant
+     * Get total reserved quantity for a variant.
      */
     public static function getTotalReserved(int $variantId, ?int $warehouseId = null): int
     {
         $query = static::active()
             ->forVariant($variantId)
             ->notExpired();
-        
+
         if ($warehouseId) {
             $query->forWarehouse($warehouseId);
         }
-        
+
         return $query->sum('quantity');
     }
 
     /**
-     * Find reservation for order
+     * Find reservation for order.
      */
     public static function findForOrder(int $orderId, int $variantId): ?self
     {
@@ -276,7 +276,7 @@ class StockReservation extends Model
     }
 
     /**
-     * Get all reservations for an order
+     * Get all reservations for an order.
      */
     public static function getForOrder(int $orderId)
     {

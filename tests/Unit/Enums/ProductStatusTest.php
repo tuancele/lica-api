@@ -1,10 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Unit\Enums;
 
-use Tests\TestCase;
 use App\Enums\ProductStatus;
+use Tests\TestCase;
 
 class ProductStatusTest extends TestCase
 {
@@ -33,7 +34,7 @@ class ProductStatusTest extends TestCase
     public function it_can_convert_to_array()
     {
         $array = ProductStatus::toArray();
-        
+
         $this->assertIsArray($array);
         $this->assertArrayHasKey('1', $array);
         $this->assertArrayHasKey('0', $array);

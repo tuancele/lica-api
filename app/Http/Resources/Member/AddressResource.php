@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Member;
 
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -24,4 +25,3 @@ class AddressResource extends JsonResource
         ];
     }
 }
-

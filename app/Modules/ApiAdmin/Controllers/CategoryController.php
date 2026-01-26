@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
@@ -15,58 +16,55 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 /**
- * Category API Controller for Admin
- * 
+ * Category API Controller for Admin.
+ *
  * Handles all category management API endpoints following RESTful standards
  * Base URL: /admin/api/categories
  */
 class CategoryController extends Controller
 {
     /**
-     * Get paginated list of categories with tree structure support
-     * 
+     * Get paginated list of categories with tree structure support.
+     *
      * GET /admin/api/categories
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function index(Request $request): JsonResponse
     {
         try {
             // Prepare filters from query parameters
             $filters = [];
-            
+
             if ($request->has('status') && $request->status !== '') {
                 $filters['status'] = $request->status;
             }
-            
+
             if ($request->has('keyword') && $request->keyword !== '') {
                 $filters['keyword'] = $request->keyword;
             }
-            
+
             // Get tree structure flag
             $tree = $request->boolean('tree', false);
-            
+
             // Build query
             $query = Category::where('type', 'category');
-            
+
             // Apply filters
             if (isset($filters['status'])) {
                 $query->where('status', $filters['status']);
             }
-            
+
             if (isset($filters['keyword'])) {
-                $query->where('name', 'like', '%' . $filters['keyword'] . '%');
+                $query->where('name', 'like', '%'.$filters['keyword'].'%');
             }
-            
+
             // Order by sort ASC
             $query->orderBy('sort', 'asc')->orderBy('id', 'asc');
-            
+
             if ($tree) {
                 // Return tree structure
                 $categories = $query->get();
                 $treeData = $this->buildTree($categories);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => CategoryResource::collection($treeData),
@@ -75,9 +73,9 @@ class CategoryController extends Controller
                 // Return flat list with pagination
                 $perPage = (int) $request->get('limit', 10);
                 $perPage = $perPage > 0 && $perPage <= 100 ? $perPage : 10;
-                
+
                 $categories = $query->paginate($perPage);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => CategoryResource::collection($categories->items()),
@@ -89,28 +87,24 @@ class CategoryController extends Controller
                     ],
                 ], 200);
             }
-            
         } catch (\Exception $e) {
-            Log::error('Get categories list failed: ' . $e->getMessage(), [
+            Log::error('Get categories list failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get categories list',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
-     * Get single category details
-     * 
+     * Get single category details.
+     *
      * GET /admin/api/categories/{id}
-     * 
-     * @param int $id
-     * @return JsonResponse
      */
     public function show(int $id): JsonResponse
     {
@@ -118,41 +112,37 @@ class CategoryController extends Controller
             $category = Category::where('type', 'category')
                 ->with(['user', 'children'])
                 ->find($id);
-            
-            if (!$category) {
+
+            if (! $category) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Category not found'
+                    'message' => 'Category not found',
                 ], 404);
             }
-            
+
             return response()->json([
                 'success' => true,
                 'data' => new CategoryResource($category),
             ], 200);
-            
         } catch (\Exception $e) {
-            Log::error('Get category details failed: ' . $e->getMessage(), [
+            Log::error('Get category details failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'category_id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get category details',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
-     * Create a new category
-     * 
+     * Create a new category.
+     *
      * POST /admin/api/categories
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function store(Request $request): JsonResponse
     {
@@ -171,15 +161,15 @@ class CategoryController extends Controller
                 'seo_description' => 'nullable|string|max:500',
                 'sort' => 'nullable|integer|min:0',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
-            
+
             // Generate slug if not provided
             $slug = $request->slug;
             if (empty($slug)) {
@@ -187,11 +177,11 @@ class CategoryController extends Controller
                 $originalSlug = $slug;
                 $counter = 1;
                 while (Category::where('slug', $slug)->where('type', 'category')->exists()) {
-                    $slug = $originalSlug . '-' . $counter;
+                    $slug = $originalSlug.'-'.$counter;
                     $counter++;
                 }
             }
-            
+
             // Create category
             $category = Category::create([
                 'name' => $request->name,
@@ -208,56 +198,51 @@ class CategoryController extends Controller
                 'sort' => $request->sort ?? 0,
                 'user_id' => Auth::id(),
             ]);
-            
+
             // Load relations
             $category->load(['user', 'children']);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Category created successfully',
                 'data' => new CategoryResource($category),
             ], 201);
-            
         } catch (\Exception $e) {
-            Log::error('Create category failed: ' . $e->getMessage(), [
+            Log::error('Create category failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'data' => $request->all(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create category',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
-     * Update an existing category
-     * 
+     * Update an existing category.
+     *
      * PUT /admin/api/categories/{id}
-     * 
-     * @param Request $request
-     * @param int $id
-     * @return JsonResponse
      */
     public function update(Request $request, int $id): JsonResponse
     {
         try {
             $category = Category::where('type', 'category')->find($id);
-            
-            if (!$category) {
+
+            if (! $category) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Category not found'
+                    'message' => 'Category not found',
                 ], 404);
             }
-            
+
             // Validation
             $validator = Validator::make($request->all(), [
                 'name' => 'sometimes|required|string|min:1|max:250',
-                'slug' => 'nullable|string|max:250|unique:posts,slug,' . $id,
+                'slug' => 'nullable|string|max:250|unique:posts,slug,'.$id,
                 'image' => 'nullable|string',
                 'description' => 'nullable|string',
                 'content' => 'nullable|string',
@@ -268,23 +253,23 @@ class CategoryController extends Controller
                 'seo_description' => 'nullable|string|max:500',
                 'sort' => 'nullable|integer|min:0',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
-            
+
             // Prevent circular reference (category cannot be its own parent)
             if ($request->has('cat_id') && $request->cat_id == $id) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Category cannot be its own parent'
+                    'message' => 'Category cannot be its own parent',
                 ], 422);
             }
-            
+
             // Prepare update data
             $updateData = [];
             if ($request->has('name')) {
@@ -321,97 +306,88 @@ class CategoryController extends Controller
                 $updateData['sort'] = $request->sort;
             }
             $updateData['user_id'] = Auth::id();
-            
+
             // Update category
             $category->update($updateData);
-            
+
             // Load relations
             $category->load(['user', 'children']);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Category updated successfully',
                 'data' => new CategoryResource($category),
             ], 200);
-            
         } catch (\Exception $e) {
-            Log::error('Update category failed: ' . $e->getMessage(), [
+            Log::error('Update category failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'category_id' => $id,
                 'data' => $request->all(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update category',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
-     * Delete a category
-     * 
+     * Delete a category.
+     *
      * DELETE /admin/api/categories/{id}
-     * 
-     * @param int $id
-     * @return JsonResponse
      */
     public function destroy(int $id): JsonResponse
     {
         try {
             $category = Category::where('type', 'category')->find($id);
-            
-            if (!$category) {
+
+            if (! $category) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Category not found'
+                    'message' => 'Category not found',
                 ], 404);
             }
-            
+
             // Check if category has children
             $childrenCount = Category::where('type', 'category')
                 ->where('cat_id', $id)
                 ->count();
-            
+
             if ($childrenCount > 0) {
                 return response()->json([
                     'success' => false,
-                    'message' => "Cannot delete category. It has {$childrenCount} child category(ies)."
+                    'message' => "Cannot delete category. It has {$childrenCount} child category(ies).",
                 ], 422);
             }
-            
+
             $category->delete();
-            
+
             return response()->json([
                 'success' => true,
-                'message' => 'Category deleted successfully'
+                'message' => 'Category deleted successfully',
             ], 200);
-            
         } catch (\Exception $e) {
-            Log::error('Delete category failed: ' . $e->getMessage(), [
+            Log::error('Delete category failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'category_id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to delete category',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
-     * Update category status
-     * 
+     * Update category status.
+     *
      * PATCH /admin/api/categories/{id}/status
-     * 
-     * @param Request $request
-     * @param int $id
-     * @return JsonResponse
      */
     public function updateStatus(Request $request, int $id): JsonResponse
     {
@@ -419,57 +395,53 @@ class CategoryController extends Controller
             $validator = Validator::make($request->all(), [
                 'status' => 'required|in:0,1',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
-            
+
             $category = Category::where('type', 'category')->find($id);
-            
-            if (!$category) {
+
+            if (! $category) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Category not found'
+                    'message' => 'Category not found',
                 ], 404);
             }
-            
+
             $category->update([
                 'status' => $request->status,
                 'user_id' => Auth::id(),
             ]);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Category status updated successfully',
                 'data' => new CategoryResource($category->fresh()),
             ], 200);
-            
         } catch (\Exception $e) {
-            Log::error('Update category status failed: ' . $e->getMessage(), [
+            Log::error('Update category status failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'category_id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update category status',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
-     * Bulk actions (hide/show/delete)
-     * 
+     * Bulk actions (hide/show/delete).
+     *
      * POST /admin/api/categories/bulk-action
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function bulkAction(Request $request): JsonResponse
     {
@@ -479,21 +451,21 @@ class CategoryController extends Controller
                 'ids.*' => 'integer|exists:posts,id',
                 'action' => 'required|in:0,1,2', // 0=hide, 1=show, 2=delete
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
-            
+
             $ids = $request->ids;
             $action = $request->action;
             $affected = 0;
-            
+
             DB::beginTransaction();
-            
+
             try {
                 if ($action == 0) {
                     // Hide
@@ -518,58 +490,54 @@ class CategoryController extends Controller
                         ->whereHas('children')
                         ->pluck('id')
                         ->toArray();
-                    
-                    if (!empty($categoriesWithChildren)) {
+
+                    if (! empty($categoriesWithChildren)) {
                         DB::rollBack();
+
                         return response()->json([
                             'success' => false,
                             'message' => 'Cannot delete categories with child categories',
-                            'category_ids' => $categoriesWithChildren
+                            'category_ids' => $categoriesWithChildren,
                         ], 422);
                     }
-                    
+
                     $affected = Category::where('type', 'category')
                         ->whereIn('id', $ids)
                         ->delete();
                 }
-                
+
                 DB::commit();
-                
+
                 $actionNames = ['hidden', 'shown', 'deleted'];
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => "Successfully {$actionNames[$action]} {$affected} category(ies)",
                     'affected_count' => $affected,
                 ], 200);
-                
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
-            
         } catch (\Exception $e) {
-            Log::error('Bulk action failed: ' . $e->getMessage(), [
+            Log::error('Bulk action failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'data' => $request->all(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Bulk action failed',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
-     * Update category sort order
-     * 
+     * Update category sort order.
+     *
      * PATCH /admin/api/categories/sort
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function updateSort(Request $request): JsonResponse
     {
@@ -579,17 +547,17 @@ class CategoryController extends Controller
                 'sort.*.id' => 'required|integer|exists:posts,id',
                 'sort.*.sort' => 'required|integer|min:0',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
-            
+
             DB::beginTransaction();
-            
+
             try {
                 foreach ($request->sort as $item) {
                     Category::where('id', $item['id'])
@@ -599,41 +567,36 @@ class CategoryController extends Controller
                             'user_id' => Auth::id(),
                         ]);
                 }
-                
+
                 DB::commit();
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Category sort order updated successfully',
                 ], 200);
-                
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
-            
         } catch (\Exception $e) {
-            Log::error('Update category sort failed: ' . $e->getMessage(), [
+            Log::error('Update category sort failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'data' => $request->all(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update category sort order',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
-     * Update category tree structure
-     * 
+     * Update category tree structure.
+     *
      * POST /admin/api/categories/tree
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function updateTree(Request $request): JsonResponse
     {
@@ -644,33 +607,34 @@ class CategoryController extends Controller
                 'sortable.*.parent_id' => 'required|integer',
                 'sortable.*.sort' => 'nullable|integer|min:0',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
-            
+
             DB::beginTransaction();
-            
+
             try {
                 foreach ($request->sortable as $order => $value) {
                     $id = (int) $value['item_id'];
                     $parentId = (int) $value['parent_id'];
                     $sort = isset($value['sort']) ? (int) $value['sort'] : $order;
-                    
+
                     // Prevent circular reference
                     if ($id == $parentId) {
                         DB::rollBack();
+
                         return response()->json([
                             'success' => false,
                             'message' => 'Category cannot be its own parent',
-                            'category_id' => $id
+                            'category_id' => $id,
                         ], 422);
                     }
-                    
+
                     Category::where('id', $id)
                         ->where('type', 'category')
                         ->update([
@@ -679,47 +643,45 @@ class CategoryController extends Controller
                             'user_id' => Auth::id(),
                         ]);
                 }
-                
+
                 DB::commit();
-                
+
                 // Return updated tree structure
                 $categories = Category::where('type', 'category')
                     ->where('status', '1')
                     ->orderBy('sort', 'asc')
                     ->get();
                 $treeData = $this->buildTree($categories);
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Category tree structure updated successfully',
                     'data' => CategoryResource::collection($treeData),
                 ], 200);
-                
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
-            
         } catch (\Exception $e) {
-            Log::error('Update category tree failed: ' . $e->getMessage(), [
+            Log::error('Update category tree failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'data' => $request->all(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update category tree structure',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
-     * Build tree structure from flat category list
-     * 
-     * @param \Illuminate\Support\Collection $categories
-     * @param int $parentId
+     * Build tree structure from flat category list.
+     *
+     * @param  \Illuminate\Support\Collection  $categories
+     * @param  int  $parentId
      * @return \Illuminate\Support\Collection
      */
     private function buildTree($categories, $parentId = 0)
@@ -728,8 +690,8 @@ class CategoryController extends Controller
             return ($category->cat_id ?? 0) == $parentId;
         })->map(function ($category) use ($categories) {
             $category->setRelation('children', $this->buildTree($categories, $category->id));
+
             return $category;
         })->values();
     }
 }
-

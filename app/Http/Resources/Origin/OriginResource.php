@@ -1,12 +1,13 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Origin;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Origin Resource for API responses
+ * Origin Resource for API responses.
  */
 class OriginResource extends JsonResource
 {
@@ -31,4 +32,3 @@ class OriginResource extends JsonResource
         ];
     }
 }
-

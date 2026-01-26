@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
@@ -21,8 +22,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 /**
- * Deal API Controller for Admin
- * 
+ * Deal API Controller for Admin.
+ *
  * Handles all Deal management API endpoints following RESTful standards
  * Base URL: /admin/api/deals
  */
@@ -38,12 +39,9 @@ class DealController extends Controller
     }
 
     /**
-     * Get paginated list of Deals with filters
-     * 
+     * Get paginated list of Deals with filters.
+     *
      * GET /admin/api/deals
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function index(Request $request): JsonResponse
     {
@@ -66,8 +64,8 @@ class DealController extends Controller
             }
 
             // Search by keyword
-            if (!empty($keyword)) {
-                $query->where('name', 'like', '%' . $keyword . '%');
+            if (! empty($keyword)) {
+                $query->where('name', 'like', '%'.$keyword.'%');
             }
 
             // Order by latest
@@ -89,46 +87,42 @@ class DealController extends Controller
                     'last_page' => $deals->lastPage(),
                 ],
             ], 200);
-
         } catch (\Exception $e) {
-            Log::error('Get Deals list failed: ' . $e->getMessage(), [
+            Log::error('Get Deals list failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Lấy danh sách Deal thất bại',
-                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ'
+                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ',
             ], 500);
         }
     }
 
     /**
-     * Get Deal detail with products
-     * 
+     * Get Deal detail with products.
+     *
      * GET /admin/api/deals/{id}
-     * 
-     * @param int $id
-     * @return JsonResponse
      */
     public function show(int $id): JsonResponse
     {
         try {
             $deal = Deal::with([
-                'products' => function($q) {
+                'products' => function ($q) {
                     $q->with(['product', 'variant']);
                 },
-                'sales' => function($q) {
+                'sales' => function ($q) {
                     $q->with(['product', 'variant']);
                 },
-                'user'
+                'user',
             ])->find($id);
 
-            if (!$deal) {
+            if (! $deal) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Deal không tồn tại'
+                    'message' => 'Deal không tồn tại',
                 ], 404);
             }
 
@@ -136,29 +130,25 @@ class DealController extends Controller
                 'success' => true,
                 'data' => new DealDetailResource($deal),
             ], 200);
-
         } catch (\Exception $e) {
-            Log::error('Get Deal detail failed: ' . $e->getMessage(), [
+            Log::error('Get Deal detail failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Lấy chi tiết Deal thất bại',
-                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ'
+                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ',
             ], 500);
         }
     }
 
     /**
-     * Create new Deal
-     * 
+     * Create new Deal.
+     *
      * POST /admin/api/deals
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function store(Request $request): JsonResponse
     {
@@ -197,28 +187,28 @@ class DealController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Dữ liệu không hợp lệ',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
             // Validate variants belong to products
             $validationErrors = $this->validateProductsAndVariants($request);
-            if (!empty($validationErrors)) {
+            if (! empty($validationErrors)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Dữ liệu không hợp lệ',
-                    'errors' => $validationErrors
+                    'errors' => $validationErrors,
                 ], 422);
             }
 
             // Check for conflicts
             $products = $request->get('products', []);
             $conflicts = $this->checkProductConflict($products);
-            if (!empty($conflicts)) {
+            if (! empty($conflicts)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Một số sản phẩm đã thuộc Deal khác đang hoạt động',
-                    'conflicts' => $conflicts
+                    'conflicts' => $conflicts,
                 ], 409);
             }
 
@@ -228,11 +218,11 @@ class DealController extends Controller
                 $request->get('sale_products', [])
             );
             $stockErrors = $this->productStockValidator->validateProductsStock($allProducts);
-            if (!empty($stockErrors)) {
+            if (! empty($stockErrors)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Một số sản phẩm không có tồn kho, không thể tham gia Deal',
-                    'errors' => $stockErrors
+                    'errors' => $stockErrors,
                 ], 422);
             }
 
@@ -292,13 +282,13 @@ class DealController extends Controller
 
                 // Load relationships
                 $deal->load([
-                    'products' => function($q) {
+                    'products' => function ($q) {
                         $q->with(['product', 'variant']);
                     },
-                    'sales' => function($q) {
+                    'sales' => function ($q) {
                         $q->with(['product', 'variant']);
                     },
-                    'user'
+                    'user',
                 ]);
 
                 return response()->json([
@@ -306,44 +296,38 @@ class DealController extends Controller
                     'message' => 'Tạo Deal thành công',
                     'data' => new DealDetailResource($deal),
                 ], 201);
-
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
-
         } catch (\Exception $e) {
-            Log::error('Create Deal failed: ' . $e->getMessage(), [
+            Log::error('Create Deal failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Tạo Deal thất bại',
-                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ'
+                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ',
             ], 500);
         }
     }
 
     /**
-     * Update Deal
-     * 
+     * Update Deal.
+     *
      * PUT /admin/api/deals/{id}
-     * 
-     * @param Request $request
-     * @param int $id
-     * @return JsonResponse
      */
     public function update(Request $request, int $id): JsonResponse
     {
         try {
             $deal = Deal::find($id);
 
-            if (!$deal) {
+            if (! $deal) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Deal không tồn tại'
+                    'message' => 'Deal không tồn tại',
                 ], 404);
             }
 
@@ -370,17 +354,17 @@ class DealController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Dữ liệu không hợp lệ',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
             // Validate variants belong to products
             $validationErrors = $this->validateProductsAndVariants($request);
-            if (!empty($validationErrors)) {
+            if (! empty($validationErrors)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Dữ liệu không hợp lệ',
-                    'errors' => $validationErrors
+                    'errors' => $validationErrors,
                 ], 422);
             }
 
@@ -388,11 +372,11 @@ class DealController extends Controller
             if ($request->has('products')) {
                 $products = $request->get('products', []);
                 $conflicts = $this->checkProductConflict($products, $id);
-                if (!empty($conflicts)) {
+                if (! empty($conflicts)) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Một số sản phẩm đã thuộc Deal khác đang hoạt động',
-                        'conflicts' => $conflicts
+                        'conflicts' => $conflicts,
                     ], 409);
                 }
             }
@@ -403,13 +387,13 @@ class DealController extends Controller
                     $request->get('products', []),
                     $request->get('sale_products', [])
                 );
-                if (!empty($allProducts)) {
+                if (! empty($allProducts)) {
                     $stockErrors = $this->productStockValidator->validateProductsStock($allProducts);
-                    if (!empty($stockErrors)) {
+                    if (! empty($stockErrors)) {
                         return response()->json([
                             'success' => false,
                             'message' => 'Một số sản phẩm không có tồn kho, không thể tham gia Deal',
-                            'errors' => $stockErrors
+                            'errors' => $stockErrors,
                         ], 422);
                     }
                 }
@@ -492,13 +476,13 @@ class DealController extends Controller
 
                 // Load relationships
                 $deal->load([
-                    'products' => function($q) {
+                    'products' => function ($q) {
                         $q->with(['product', 'variant']);
                     },
-                    'sales' => function($q) {
+                    'sales' => function ($q) {
                         $q->with(['product', 'variant']);
                     },
-                    'user'
+                    'user',
                 ]);
 
                 return response()->json([
@@ -506,44 +490,39 @@ class DealController extends Controller
                     'message' => 'Cập nhật Deal thành công',
                     'data' => new DealDetailResource($deal),
                 ], 200);
-
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
-
         } catch (\Exception $e) {
-            Log::error('Update Deal failed: ' . $e->getMessage(), [
+            Log::error('Update Deal failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Cập nhật Deal thất bại',
-                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ'
+                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ',
             ], 500);
         }
     }
 
     /**
-     * Delete Deal
-     * 
+     * Delete Deal.
+     *
      * DELETE /admin/api/deals/{id}
-     * 
-     * @param int $id
-     * @return JsonResponse
      */
     public function destroy(int $id): JsonResponse
     {
         try {
             $deal = Deal::find($id);
 
-            if (!$deal) {
+            if (! $deal) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Deal không tồn tại'
+                    'message' => 'Deal không tồn tại',
                 ], 404);
             }
 
@@ -566,35 +545,29 @@ class DealController extends Controller
                     'success' => true,
                     'message' => 'Xóa Deal thành công',
                 ], 200);
-
             } catch (\Exception $e) {
                 DB::rollBack();
                 throw $e;
             }
-
         } catch (\Exception $e) {
-            Log::error('Delete Deal failed: ' . $e->getMessage(), [
+            Log::error('Delete Deal failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Xóa Deal thất bại',
-                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ'
+                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ',
             ], 500);
         }
     }
 
     /**
-     * Update Deal status
-     * 
+     * Update Deal status.
+     *
      * PATCH /admin/api/deals/{id}/status
-     * 
-     * @param Request $request
-     * @param int $id
-     * @return JsonResponse
      */
     public function updateStatus(Request $request, int $id): JsonResponse
     {
@@ -607,16 +580,16 @@ class DealController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Dữ liệu không hợp lệ',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
             $deal = Deal::find($id);
 
-            if (!$deal) {
+            if (! $deal) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Deal không tồn tại'
+                    'message' => 'Deal không tồn tại',
                 ], 404);
             }
 
@@ -628,91 +601,87 @@ class DealController extends Controller
                 'message' => 'Cập nhật trạng thái thành công',
                 'data' => new DealResource($deal),
             ], 200);
-
         } catch (\Exception $e) {
-            Log::error('Update Deal status failed: ' . $e->getMessage(), [
+            Log::error('Update Deal status failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Cập nhật trạng thái thất bại',
-                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ'
+                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ',
             ], 500);
         }
     }
 
     /**
-     * Check if Deal is active
-     * 
-     * @param Deal $deal
-     * @return bool
+     * Check if Deal is active.
      */
     private function isDealActive(Deal $deal): bool
     {
         $now = strtotime(date('Y-m-d H:i:s'));
-        return $deal->status == '1' 
-            && $deal->start <= $now 
+
+        return $deal->status == '1'
+            && $deal->start <= $now
             && $deal->end >= $now;
     }
 
     /**
-     * Check for product conflicts with other active deals
-     * 
-     * @param array $products Mảng chứa ['product_id' => int, 'variant_id' => int|null]
-     * @param int|null $excludeDealId ID Deal cần loại trừ (khi update)
+     * Check for product conflicts with other active deals.
+     *
+     * @param  array  $products  Mảng chứa ['product_id' => int, 'variant_id' => int|null]
+     * @param  int|null  $excludeDealId  ID Deal cần loại trừ (khi update)
      * @return array Mảng các cặp (product_id, variant_id) bị xung đột
      */
     private function checkProductConflict(array $products, ?int $excludeDealId = null): array
     {
         $now = strtotime(date('Y-m-d H:i:s'));
         $conflicts = [];
-        
+
         foreach ($products as $product) {
             $productId = $product['product_id'];
             $variantId = $product['variant_id'] ?? null;
-            
+
             $query = ProductDeal::where('product_id', $productId)
-                ->whereHas('deal', function($q) use ($now) {
+                ->whereHas('deal', function ($q) use ($now) {
                     $q->where('status', '1')
-                      ->where('start', '<=', $now)
-                      ->where('end', '>=', $now);
+                        ->where('start', '<=', $now)
+                        ->where('end', '>=', $now);
                 });
-            
+
             if ($excludeDealId) {
                 $query->where('deal_id', '!=', $excludeDealId);
             }
-            
+
             // Check variant_id
             if ($variantId !== null) {
-                $query->where(function($q) use ($variantId) {
+                $query->where(function ($q) use ($variantId) {
                     $q->where('variant_id', $variantId)
-                      ->orWhereNull('variant_id'); // Nếu Deal khác không chỉ định variant, cũng xung đột
+                        ->orWhereNull('variant_id'); // Nếu Deal khác không chỉ định variant, cũng xung đột
                 });
             } else {
                 // Nếu không có variant_id, kiểm tra xem có Deal nào đã chỉ định variant của sản phẩm này không
                 $query->whereNull('variant_id');
             }
-            
+
             $existing = $query->first();
             if ($existing) {
                 $conflicts[] = [
                     'product_id' => $productId,
                     'variant_id' => $variantId,
-                    'conflict_deal_id' => $existing->deal_id
+                    'conflict_deal_id' => $existing->deal_id,
                 ];
             }
         }
-        
+
         return $conflicts;
     }
 
     /**
-     * Validate products and variants
-     * 
-     * @param Request $request
+     * Validate products and variants.
+     *
      * @return array Validation errors
      */
     private function validateProductsAndVariants(Request $request): array
@@ -732,17 +701,17 @@ class DealController extends Controller
                         if ($product->has_variants == 1) {
                             // Must have variant_id
                             if (empty($variantId)) {
-                                $errors["products.{$index}.variant_id"] = ["Sản phẩm có phân loại nhưng chưa chọn variant_id"];
+                                $errors["products.{$index}.variant_id"] = ['Sản phẩm có phân loại nhưng chưa chọn variant_id'];
                             } else {
                                 // Validate variant belongs to product
-                                if (!$this->validateVariantBelongsToProduct($productId, $variantId)) {
-                                    $errors["products.{$index}.variant_id"] = ["Phân loại không thuộc về sản phẩm này"];
+                                if (! $this->validateVariantBelongsToProduct($productId, $variantId)) {
+                                    $errors["products.{$index}.variant_id"] = ['Phân loại không thuộc về sản phẩm này'];
                                 }
                             }
                         } else {
                             // Should not have variant_id
-                            if (!empty($variantId)) {
-                                $errors["products.{$index}.variant_id"] = ["Sản phẩm không có phân loại"];
+                            if (! empty($variantId)) {
+                                $errors["products.{$index}.variant_id"] = ['Sản phẩm không có phân loại'];
                             }
                         }
                     }
@@ -763,17 +732,17 @@ class DealController extends Controller
                         if ($product->has_variants == 1) {
                             // Must have variant_id
                             if (empty($variantId)) {
-                                $errors["sale_products.{$index}.variant_id"] = ["Sản phẩm có phân loại nhưng chưa chọn variant_id"];
+                                $errors["sale_products.{$index}.variant_id"] = ['Sản phẩm có phân loại nhưng chưa chọn variant_id'];
                             } else {
                                 // Validate variant belongs to product
-                                if (!$this->validateVariantBelongsToProduct($productId, $variantId)) {
-                                    $errors["sale_products.{$index}.variant_id"] = ["Phân loại không thuộc về sản phẩm này"];
+                                if (! $this->validateVariantBelongsToProduct($productId, $variantId)) {
+                                    $errors["sale_products.{$index}.variant_id"] = ['Phân loại không thuộc về sản phẩm này'];
                                 }
                             }
                         } else {
                             // Should not have variant_id
-                            if (!empty($variantId)) {
-                                $errors["sale_products.{$index}.variant_id"] = ["Sản phẩm không có phân loại"];
+                            if (! empty($variantId)) {
+                                $errors["sale_products.{$index}.variant_id"] = ['Sản phẩm không có phân loại'];
                             }
                         }
                     }
@@ -785,31 +754,23 @@ class DealController extends Controller
     }
 
     /**
-     * Validate variant_id belongs to product_id
-     * 
-     * @param int $productId
-     * @param int|null $variantId
-     * @return bool
+     * Validate variant_id belongs to product_id.
      */
     private function validateVariantBelongsToProduct(int $productId, ?int $variantId = null): bool
     {
         if ($variantId === null) {
             return true; // NULL is valid
         }
-        
+
         $variant = Variant::where('id', $variantId)
             ->where('product_id', $productId)
             ->first();
-        
+
         return $variant !== null;
     }
 
     /**
-     * Get original price from variant or product
-     * 
-     * @param int $productId
-     * @param int|null $variantId
-     * @return float
+     * Get original price from variant or product.
      */
     private function getOriginalPrice(int $productId, ?int $variantId = null): float
     {
@@ -819,7 +780,7 @@ class DealController extends Controller
                 return (float) $variant->price;
             }
         }
-        
+
         // If no variant_id, get first variant of product
         $product = Product::find($productId);
         if ($product) {
@@ -828,17 +789,12 @@ class DealController extends Controller
                 return (float) $variant->price;
             }
         }
-        
+
         return 0;
     }
 
     /**
-     * Calculate savings amount
-     * 
-     * @param float $originalPrice
-     * @param float $dealPrice
-     * @param int $qty
-     * @return float
+     * Calculate savings amount.
      */
     private function calculateSavings(float $originalPrice, float $dealPrice, int $qty): float
     {

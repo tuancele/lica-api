@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\GoogleMerchant\Observers;
 
 use App\Modules\GoogleMerchant\Jobs\PushVariantToGmcJob;
@@ -23,19 +24,20 @@ class VariantObserver
 
     /**
      * Rule 3: Delete variant from GMC when deleted on website
-     * Use GmcOfferId to ensure consistent offerId generation
+     * Use GmcOfferId to ensure consistent offerId generation.
      */
     public function deleted(Variant $variant): void
     {
         try {
-            if (!$variant->product) {
+            if (! $variant->product) {
                 $variant->load('product');
             }
 
-            if (!$variant->product) {
+            if (! $variant->product) {
                 Log::warning('[GoogleMerchant][Observer] Variant product not found for deletion', [
                     'variant_id' => $variant->id,
                 ]);
+
                 return;
             }
 
@@ -69,6 +71,3 @@ class VariantObserver
         }
     }
 }
-
-
-

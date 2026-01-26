@@ -3,8 +3,8 @@
 namespace App\Enums;
 
 /**
- * Product Status Enum
- * 
+ * Product Status Enum.
+ *
  * Replaces magic strings like '1' and '0' with type-safe constants
  */
 enum ProductStatus: string
@@ -13,35 +13,29 @@ enum ProductStatus: string
     case INACTIVE = '0';
 
     /**
-     * Get human-readable label
-     * 
-     * @return string
+     * Get human-readable label.
      */
     public function label(): string
     {
-        return match($this) {
+        return match ($this) {
             self::ACTIVE => 'Hoạt động',
             self::INACTIVE => 'Không hoạt động',
         };
     }
 
     /**
-     * Get CSS class for status badge
-     * 
-     * @return string
+     * Get CSS class for status badge.
      */
     public function badgeClass(): string
     {
-        return match($this) {
+        return match ($this) {
             self::ACTIVE => 'badge-success',
             self::INACTIVE => 'badge-danger',
         };
     }
 
     /**
-     * Get all statuses as array for select dropdown
-     * 
-     * @return array
+     * Get all statuses as array for select dropdown.
      */
     public static function toArray(): array
     {
@@ -53,7 +47,7 @@ enum ProductStatus: string
 }
 
 /**
- * Product Type Enum
+ * Product Type Enum.
  */
 enum ProductType: string
 {
@@ -62,13 +56,11 @@ enum ProductType: string
     case POST = 'post';
 
     /**
-     * Get human-readable label
-     * 
-     * @return string
+     * Get human-readable label.
      */
     public function label(): string
     {
-        return match($this) {
+        return match ($this) {
             self::PRODUCT => 'Sản phẩm',
             self::TAXONOMY => 'Danh mục',
             self::POST => 'Bài viết',
@@ -77,7 +69,7 @@ enum ProductType: string
 }
 
 /**
- * Order Status Enum
+ * Order Status Enum.
  */
 enum OrderStatus: string
 {
@@ -87,13 +79,11 @@ enum OrderStatus: string
     case COMPLETED = '3';
 
     /**
-     * Get human-readable label
-     * 
-     * @return string
+     * Get human-readable label.
      */
     public function label(): string
     {
-        return match($this) {
+        return match ($this) {
             self::PENDING => 'Chờ xử lý',
             self::CONFIRMED => 'Đã xác nhận',
             self::CANCELLED => 'Đã hủy',
@@ -102,13 +92,11 @@ enum OrderStatus: string
     }
 
     /**
-     * Get CSS class for status badge
-     * 
-     * @return string
+     * Get CSS class for status badge.
      */
     public function badgeClass(): string
     {
-        return match($this) {
+        return match ($this) {
             self::PENDING => 'badge-warning',
             self::CONFIRMED => 'badge-info',
             self::CANCELLED => 'badge-danger',
@@ -118,7 +106,7 @@ enum OrderStatus: string
 }
 
 /**
- * Payment Status Enum
+ * Payment Status Enum.
  */
 enum PaymentStatus: int
 {
@@ -126,13 +114,11 @@ enum PaymentStatus: int
     case PAID = 1;
 
     /**
-     * Get human-readable label
-     * 
-     * @return string
+     * Get human-readable label.
      */
     public function label(): string
     {
-        return match($this) {
+        return match ($this) {
             self::UNPAID => 'Chưa thanh toán',
             self::PAID => 'Đã thanh toán',
         };
@@ -140,7 +126,7 @@ enum PaymentStatus: int
 }
 
 /**
- * Shipping Status Enum
+ * Shipping Status Enum.
  */
 enum ShippingStatus: int
 {
@@ -149,13 +135,11 @@ enum ShippingStatus: int
     case DELIVERED = 2;
 
     /**
-     * Get human-readable label
-     * 
-     * @return string
+     * Get human-readable label.
      */
     public function label(): string
     {
-        return match($this) {
+        return match ($this) {
             self::NOT_SHIPPED => 'Chưa giao hàng',
             self::SHIPPING => 'Đang giao hàng',
             self::DELIVERED => 'Đã giao hàng',
@@ -163,20 +147,20 @@ enum ShippingStatus: int
     }
 }
 
-/**
+/*
  * Usage Example:
- * 
+ *
  * // Instead of:
  * $product->status = '1';
  * if ($product->status == '1') { ... }
- * 
+ *
  * // Use:
  * $product->status = ProductStatus::ACTIVE->value;
  * if (ProductStatus::from($product->status) === ProductStatus::ACTIVE) { ... }
- * 
+ *
  * // In queries:
  * Product::where('status', ProductStatus::ACTIVE->value)->get();
- * 
+ *
  * // In views:
  * {{ ProductStatus::from($product->status)->label() }}
  * <span class="{{ ProductStatus::from($product->status)->badgeClass() }}">

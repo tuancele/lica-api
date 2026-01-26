@@ -1,22 +1,19 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Services\Cart\CartService;
-use App\Http\Requests\Cart\AddCartItemRequest;
-use App\Http\Requests\Cart\UpdateCartItemRequest;
-use App\Http\Requests\Cart\ApplyCouponRequest;
-use App\Http\Requests\Cart\CheckoutRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
 
 /**
- * Cart API V1 Controller
- * 
+ * Cart API V1 Controller.
+ *
  * Handles cart operations for mobile app
  */
 class CartController extends Controller
@@ -29,8 +26,8 @@ class CartController extends Controller
     }
 
     /**
-     * Get cart
-     * 
+     * Get cart.
+     *
      * GET /api/v1/cart
      */
     public function index(Request $request): JsonResponse
@@ -38,13 +35,14 @@ class CartController extends Controller
         try {
             $userId = auth('member')->id();
             $cart = $this->cartService->getCart($userId);
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $cart,
             ]);
         } catch (\Exception $e) {
-            Log::error('Get cart failed: ' . $e->getMessage());
+            Log::error('Get cart failed: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Lấy giỏ hàng thất bại',
@@ -54,8 +52,8 @@ class CartController extends Controller
     }
 
     /**
-     * Get cart page data (gio-hang)
-     * 
+     * Get cart page data (gio-hang).
+     *
      * GET /api/v1/cart/gio-hang
      * Returns full cart page data including sidebar, items, deals, etc.
      */
@@ -64,7 +62,7 @@ class CartController extends Controller
         try {
             $userId = auth('member')->id();
             $cart = $this->cartService->getCart($userId);
-            
+
             // Build response similar to cart page structure
             $response = [
                 'success' => true,
@@ -85,15 +83,15 @@ class CartController extends Controller
                         'title' => 'CỘNG GIỎ HÀNG',
                         'total_price_label' => 'Tổng giá trị đơn hàng',
                         'total_price' => $cart['summary']['subtotal'] ?? 0,
-                        'total_price_formatted' => number_format($cart['summary']['subtotal'] ?? 0) . 'đ',
+                        'total_price_formatted' => number_format($cart['summary']['subtotal'] ?? 0).'đ',
                         'discount' => $cart['summary']['discount'] ?? 0,
-                        'discount_formatted' => $cart['summary']['discount'] > 0 
-                            ? '-' . number_format($cart['summary']['discount']) . 'đ' 
+                        'discount_formatted' => $cart['summary']['discount'] > 0
+                            ? '-'.number_format($cart['summary']['discount']).'đ'
                             : '0đ',
                         'shipping_fee' => $cart['summary']['shipping_fee'] ?? 0,
-                        'shipping_fee_formatted' => number_format($cart['summary']['shipping_fee'] ?? 0) . 'đ',
+                        'shipping_fee_formatted' => number_format($cart['summary']['shipping_fee'] ?? 0).'đ',
                         'total' => $cart['summary']['total'] ?? 0,
-                        'total_formatted' => number_format($cart['summary']['total'] ?? 0) . 'đ',
+                        'total_formatted' => number_format($cart['summary']['total'] ?? 0).'đ',
                         'checkout_url' => '/cart/thanh-toan',
                         'checkout_button_text' => 'Tiến hành thanh toán',
                     ],
@@ -101,10 +99,11 @@ class CartController extends Controller
                     'is_empty' => empty($cart['items']) || count($cart['items']) === 0,
                 ],
             ];
-            
+
             return response()->json($response);
         } catch (\Exception $e) {
-            Log::error('Get cart page failed: ' . $e->getMessage());
+            Log::error('Get cart page failed: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Lấy thông tin giỏ hàng thất bại',
@@ -114,33 +113,33 @@ class CartController extends Controller
     }
 
     /**
-     * Add item to cart
-     * 
+     * Add item to cart.
+     *
      * POST /api/v1/cart/items
      */
     public function addItem(Request $request): JsonResponse
     {
         try {
             $userId = auth('member')->id();
-            
+
             // Handle combo (multiple items)
             if ($request->has('combo') && is_array($request->combo)) {
                 $totalQty = 0;
                 foreach ($request->combo as $item) {
-                    $variantId = (int)($item['variant_id'] ?? $item['id'] ?? 0);
-                    $qty = (int)($item['qty'] ?? 0);
-                    $isDeal = isset($item['is_deal']) ? (bool)$item['is_deal'] : false;
-                    
+                    $variantId = (int) ($item['variant_id'] ?? $item['id'] ?? 0);
+                    $qty = (int) ($item['qty'] ?? 0);
+                    $isDeal = isset($item['is_deal']) ? (bool) $item['is_deal'] : false;
+
                     if ($variantId > 0 && $qty > 0) {
                         $result = $this->cartService->addItem($variantId, $qty, $isDeal, $userId);
                         $totalQty = $result['total_qty'];
                     }
                 }
-                
+
                 // Ensure session is saved before returning response
                 session()->save();
                 \Illuminate\Support\Facades\Session::save();
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Thêm vào giỏ hàng thành công',
@@ -149,14 +148,14 @@ class CartController extends Controller
                     ],
                 ], 201);
             }
-            
+
             // Single item
             $validator = \Validator::make($request->all(), [
                 'variant_id' => 'required|integer|exists:variants,id',
                 'qty' => 'required|integer|min:1',
                 'is_deal' => 'nullable|boolean',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
@@ -164,10 +163,10 @@ class CartController extends Controller
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             // Bước 4: Nhận tham số force_refresh từ query string
-            $forceRefresh = (bool)$request->input('force_refresh', false);
-            
+            $forceRefresh = (bool) $request->input('force_refresh', false);
+
             $result = $this->cartService->addItem(
                 $request->variant_id,
                 $request->qty,
@@ -175,18 +174,19 @@ class CartController extends Controller
                 $userId,
                 $forceRefresh
             );
-            
+
             // Ensure session is saved before returning response
             session()->save();
             Session::save();
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Thêm vào giỏ hàng thành công',
                 'data' => $result,
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Add to cart failed: ' . $e->getMessage());
+            Log::error('Add to cart failed: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage() ?: 'Thêm vào giỏ hàng thất bại',
@@ -196,8 +196,8 @@ class CartController extends Controller
     }
 
     /**
-     * Update item quantity
-     * 
+     * Update item quantity.
+     *
      * PUT /api/v1/cart/items/{variant_id}
      */
     public function updateItem(Request $request, int $variantId): JsonResponse
@@ -206,7 +206,7 @@ class CartController extends Controller
             $validator = \Validator::make($request->all(), [
                 'qty' => 'required|integer|min:0',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
@@ -214,20 +214,21 @@ class CartController extends Controller
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $userId = auth('member')->id();
             $result = $this->cartService->updateItem($variantId, $request->qty, $userId);
-            
+
             // Ensure session is saved before returning response
             session()->save();
             Session::save();
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $result,
             ]);
         } catch (\Exception $e) {
-            Log::error('Update cart item failed: ' . $e->getMessage());
+            Log::error('Update cart item failed: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage() ?: 'Cập nhật giỏ hàng thất bại',
@@ -237,8 +238,8 @@ class CartController extends Controller
     }
 
     /**
-     * Remove item from cart
-     * 
+     * Remove item from cart.
+     *
      * DELETE /api/v1/cart/items/{variant_id}
      */
     public function removeItem(int $variantId): JsonResponse
@@ -252,13 +253,13 @@ class CartController extends Controller
                 'session_id' => session()->getId(),
                 'timestamp' => now()->toDateTimeString(),
             ]);
-            
+
             $userId = auth('member')->id();
-            
+
             // Get cart state before service call
             $oldCart = Session::has('cart') ? Session::get('cart') : null;
             $cartBefore = $oldCart ? new \App\Themes\Website\Models\Cart($oldCart) : null;
-            
+
             // DEBUG: Log before service call
             Log::info('[CART API] Before removeItem service call', [
                 'variant_id' => $variantId,
@@ -267,12 +268,12 @@ class CartController extends Controller
                 'cart_items_count' => $cartBefore ? count($cartBefore->items) : 0,
                 'cart_items_keys' => $cartBefore ? array_keys($cartBefore->items) : [],
             ]);
-            
+
             $result = $this->cartService->removeItem($variantId, $userId);
-            
+
             // Get cart state after service call
             $cartAfter = Session::has('cart') ? new \App\Themes\Website\Models\Cart(Session::get('cart')) : null;
-            
+
             // DEBUG: Log after service call
             Log::info('[CART API] After removeItem service call', [
                 'variant_id' => $variantId,
@@ -285,17 +286,17 @@ class CartController extends Controller
                 'cart_items_keys_before' => $cartBefore ? array_keys($cartBefore->items) : [],
                 'cart_items_keys_after' => $cartAfter ? array_keys($cartAfter->items) : [],
             ]);
-            
+
             // Ensure session is saved before returning response
             session()->save();
             Session::save();
-            
+
             // DEBUG: Log session save
             Log::info('[CART API] Session saved after removeItem', [
                 'variant_id' => $variantId,
                 'session_id' => session()->getId(),
             ]);
-            
+
             // DEBUG: Log response being sent
             Log::info('[CART API] Sending response', [
                 'variant_id' => $variantId,
@@ -305,7 +306,7 @@ class CartController extends Controller
                     'summary' => $result['summary'] ?? [],
                 ],
             ]);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Xóa sản phẩm thành công',
@@ -323,7 +324,7 @@ class CartController extends Controller
                 'session_id' => session()->getId(),
                 'timestamp' => now()->toDateTimeString(),
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage() ?: 'Xóa sản phẩm thất bại',
@@ -337,8 +338,8 @@ class CartController extends Controller
     }
 
     /**
-     * Apply coupon
-     * 
+     * Apply coupon.
+     *
      * POST /api/v1/cart/coupon/apply
      */
     public function applyCoupon(Request $request): JsonResponse
@@ -347,7 +348,7 @@ class CartController extends Controller
             $validator = \Validator::make($request->all(), [
                 'code' => 'required|string',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
@@ -355,21 +356,22 @@ class CartController extends Controller
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $userId = auth('member')->id();
             $result = $this->cartService->applyCoupon($request->code, $userId);
-            
+
             // Ensure session is saved before returning response
             session()->save();
             Session::save();
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Áp dụng mã thành công',
                 'data' => $result,
             ]);
         } catch (\Exception $e) {
-            Log::error('Apply coupon failed: ' . $e->getMessage());
+            Log::error('Apply coupon failed: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage() ?: 'Áp dụng mã thất bại',
@@ -379,8 +381,8 @@ class CartController extends Controller
     }
 
     /**
-     * Remove coupon
-     * 
+     * Remove coupon.
+     *
      * DELETE /api/v1/cart/coupon
      */
     public function removeCoupon(): JsonResponse
@@ -388,17 +390,18 @@ class CartController extends Controller
         try {
             $userId = auth('member')->id();
             $result = $this->cartService->removeCoupon($userId);
-            
+
             // Ensure session is saved before returning response
             session()->save();
             Session::save();
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $result,
             ]);
         } catch (\Exception $e) {
-            Log::error('Remove coupon failed: ' . $e->getMessage());
+            Log::error('Remove coupon failed: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Hủy mã thất bại',
@@ -408,8 +411,8 @@ class CartController extends Controller
     }
 
     /**
-     * Calculate shipping fee
-     * 
+     * Calculate shipping fee.
+     *
      * POST /api/v1/cart/shipping-fee
      */
     public function calculateShippingFee(Request $request): JsonResponse
@@ -421,7 +424,7 @@ class CartController extends Controller
                 'ward_id' => 'required|integer',
                 'address' => 'nullable|string',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
@@ -429,7 +432,7 @@ class CartController extends Controller
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $userId = auth('member')->id();
             $shippingFee = $this->cartService->calculateShippingFee([
                 'province_id' => $request->province_id,
@@ -437,27 +440,28 @@ class CartController extends Controller
                 'ward_id' => $request->ward_id,
                 'address' => $request->address ?? '',
             ], $userId);
-            
+
             // Get cart summary
             $cart = $this->cartService->getCart($userId);
             $discount = $cart['summary']['discount'] ?? 0;
             $subtotal = $cart['summary']['subtotal'] ?? 0;
-            
+
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'shipping_fee' => (float)$shippingFee,
+                    'shipping_fee' => (float) $shippingFee,
                     'free_ship' => $shippingFee == 0,
                     'summary' => [
                         'subtotal' => $subtotal,
                         'discount' => $discount,
-                        'shipping_fee' => (float)$shippingFee,
-                        'total' => (float)($subtotal - $discount + $shippingFee),
+                        'shipping_fee' => (float) $shippingFee,
+                        'total' => (float) ($subtotal - $discount + $shippingFee),
                     ],
                 ],
             ]);
         } catch (\Exception $e) {
-            Log::error('Calculate shipping fee failed: ' . $e->getMessage());
+            Log::error('Calculate shipping fee failed: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Tính phí vận chuyển thất bại',
@@ -467,8 +471,8 @@ class CartController extends Controller
     }
 
     /**
-     * Checkout
-     * 
+     * Checkout.
+     *
      * POST /api/v1/cart/checkout
      */
     public function checkout(Request $request): JsonResponse
@@ -485,7 +489,7 @@ class CartController extends Controller
                 'remark' => 'nullable|string',
                 'shipping_fee' => 'nullable|numeric|min:0',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
@@ -493,7 +497,7 @@ class CartController extends Controller
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $userId = auth('member')->id();
             $result = $this->cartService->checkout([
                 'full_name' => $request->full_name,
@@ -506,14 +510,15 @@ class CartController extends Controller
                 'remark' => $request->remark,
                 'shipping_fee' => $request->shipping_fee ?? 0,
             ], $userId);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Đặt hàng thành công',
                 'data' => $result,
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Checkout failed: ' . $e->getMessage());
+            Log::error('Checkout failed: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage() ?: 'Đặt hàng thất bại',

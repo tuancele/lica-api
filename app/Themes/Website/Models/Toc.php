@@ -1,10 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Themes\Website\Models;
 
-class Toc {
-
+class Toc
+{
     private $content;
     private $count;
     private $title;
@@ -13,84 +14,80 @@ class Toc {
     private $place = 'title';
     private $shortcode = "#<!--\[toc\]-->#is";
 
-
     /**
-     * @param string $content A post includes the headers.
+     * @param  string  $content  A post includes the headers.
      */
-    public function __construct($content) {
-
+    public function __construct($content)
+    {
         preg_match_all("#<[hH]([1-6])(.*?)>(.*?)<\/[hH][1-6]>#", $content, $match);
 
         $this->content = $content;
-        $this->count   = count($match[0]);
-        $this->title   = $match[0];
-        $this->level   = $match[1];
-        $this->text    = $match[3];
+        $this->count = count($match[0]);
+        $this->title = $match[0];
+        $this->level = $match[1];
+        $this->text = $match[3];
     }
-
 
     /**
      * Creates an array of table of contents data structure.
      *
      * @return array
      */
-    public function getDataToc() {
-
+    public function getDataToc()
+    {
         $toc = [];
 
         $count = $this->count;
         $level = $this->level;
-        $text  = $this->text;
+        $text = $this->text;
 
-
-        for ($i=0, $j=0; $i<$count; $i++, $j++) {
-
+        for ($i = 0, $j = 0; $i < $count; $i++, $j++) {
             // the first header
             if ($i === 0) {
-                $toc[$i]['list_open']  = true;
-                $toc[$i]['item_open']  = true;
-                $toc[$i]['text']       = $text[$i];
-                $toc[$i]['href']       = $this->getHref($text[$i]);
-                $toc[$i]['item_close'] = $level[$i] == $level[$i+1] or (!isset($level[$i+1]));
-                $toc[$i]['list_close'] = $level[$i] >  $level[$i+1] or (!isset($level[$i+1]));
+                $toc[$i]['list_open'] = true;
+                $toc[$i]['item_open'] = true;
+                $toc[$i]['text'] = $text[$i];
+                $toc[$i]['href'] = $this->getHref($text[$i]);
+                $toc[$i]['item_close'] = $level[$i] == $level[$i + 1] or (! isset($level[$i + 1]));
+                $toc[$i]['list_close'] = $level[$i] > $level[$i + 1] or (! isset($level[$i + 1]));
 
                 continue;
             }
 
             // the last header
-            if ($i == $count-1) {
-                $toc[$j]['list_open']  = $level[$i] > $level[$i-1];
-                $toc[$j]['item_open']  = true;
-                $toc[$j]['text']       = $text[$i];
-                $toc[$j]['href']       = $this->getHref($text[$i]);
+            if ($i == $count - 1) {
+                $toc[$j]['list_open'] = $level[$i] > $level[$i - 1];
+                $toc[$j]['item_open'] = true;
+                $toc[$j]['text'] = $text[$i];
+                $toc[$j]['href'] = $this->getHref($text[$i]);
                 $toc[$j]['item_close'] = true;
-                $toc[$j]['list_close'] = $level[$i] > $level[$i-1];
+                $toc[$j]['list_close'] = $level[$i] > $level[$i - 1];
 
-                ++$j;
-                $toc[$j]['list_open']  = false;
-                $toc[$j]['item_open']  = false;
-                $toc[$j]['text']       = "";
-                $toc[$j]['href']       = "";
+                $j++;
+                $toc[$j]['list_open'] = false;
+                $toc[$j]['item_open'] = false;
+                $toc[$j]['text'] = '';
+                $toc[$j]['href'] = '';
                 $toc[$j]['item_close'] = true;
                 $toc[$j]['list_close'] = true;
 
                 break;
             }
 
-            //other header
-            $toc[$j]['list_open']  = $level[$i] > $level[$i-1];
-            $toc[$j]['item_open']  = true;
-            $toc[$j]['text']       = $text[$i];
-            $toc[$j]['href']       = $this->getHref($text[$i]);
-            $toc[$j]['item_close'] = $level[$i] >= $level[$i+1];
-            $toc[$j]['list_close'] = $level[$i] >  $level[$i+1];
+            // other header
+            $toc[$j]['list_open'] = $level[$i] > $level[$i - 1];
+            $toc[$j]['item_open'] = true;
+            $toc[$j]['text'] = $text[$i];
+            $toc[$j]['href'] = $this->getHref($text[$i]);
+            $toc[$j]['item_close'] = $level[$i] >= $level[$i + 1];
+            $toc[$j]['list_close'] = $level[$i] > $level[$i + 1];
 
-            if ($level[$i] > $level[$i+1]) {
-                ++$j;
-                $toc[$j]['list_open']  = false;
-                $toc[$j]['item_open']  = false;
-                $toc[$j]['text']       = "";
-                $toc[$j]['href']       = "";
+            if ($level[$i] > $level[$i + 1]) {
+                $j++;
+                $toc[$j]['list_open'] = false;
+                $toc[$j]['item_open'] = false;
+                $toc[$j]['text'] = '';
+                $toc[$j]['href'] = '';
                 $toc[$j]['item_close'] = true;
                 $toc[$j]['list_close'] = false;
             }
@@ -99,87 +96,95 @@ class Toc {
         return $toc;
     }
 
-
     /**
      * Define the location of the table of contents in the article.
      *
-     * @param string $place A post includes the headers.
-     * It can take one of three values: "top", "title" or "shortcode".
-     * Top: places the table of contents at the beginning of the article.
-     * Title: places the table of contents before the first heading [default].
-     * Shortcode: places the table of contents at the label location.
+     * @param  string  $place  A post includes the headers.
+     *                         It can take one of three values: "top", "title" or "shortcode".
+     *                         Top: places the table of contents at the beginning of the article.
+     *                         Title: places the table of contents before the first heading [default].
+     *                         Shortcode: places the table of contents at the label location.
      */
-    public function setPlace($place) {
-
+    public function setPlace($place)
+    {
         $this->place = $place;
     }
-
 
     /**
      * Define the shortcode in the post.
      *
-     * @param string $shortcode A post includes the headers.
+     * @param  string  $shortcode  A post includes the headers.
      */
-    public function setShortcode($shortcode) {
-
-        $this->shortcode = "#" . preg_quote($shortcode) . "#is";
+    public function setShortcode($shortcode)
+    {
+        $this->shortcode = '#'.preg_quote($shortcode).'#is';
     }
-
 
     /**
      * Get a modified post.
      *
      * @return string
      */
-    public function getPost() {
-
+    public function getPost()
+    {
         $content = $this->content;
-        $count   = $this->count;
-        $level   = $this->level;
-        $title   = $this->title;
-        $text    = $this->text;
+        $count = $this->count;
+        $level = $this->level;
+        $title = $this->title;
+        $text = $this->text;
 
-        for ($i=0; $i<$count; $i++) {
-
+        for ($i = 0; $i < $count; $i++) {
             $tag_id = $this->getTagId($text[$i]);
 
             $new_title = "<h{$level[$i]}><span id=\"{$tag_id}\">"
-                       . $text[$i]
-                       . "</span></h{$level[$i]}>";
+                       .$text[$i]
+                       ."</span></h{$level[$i]}>";
 
-            $content = str_replace($title[$i],
-                                   $new_title,
-                                   $content);
+            $content = str_replace(
+                $title[$i],
+                $new_title,
+                $content
+            );
         }
 
         return $content;
     }
-
 
     /**
      * Get a generated table of contents.
      *
      * @return string
      */
-    public function getToc() {
+    public function getToc()
+    {
         ob_start();
         $dataToc = $this->getDataToc();
         echo '<div class="toc">';
         echo '<div class="toc-title"><p>Nội dung bài viết:</p><button class="btn-toc" type="button"><span></span><span></span><span></span></button></div>';
         echo '<div class="toc-content">';
-        foreach($dataToc as $item){
-            if ($item['list_open']) echo '<ol>';
-            if ($item['item_open']) echo '<li>';
-            if ($item['text']) echo '<a href="'.$item['href'] .'" title="'.$this->getTitle($item['text']).'">'.$this->getTitle($item['text']).'</a>';
-            if ($item['item_close']) echo '</li>';
-            if ($item['list_close']) echo '</ol>';
-        }   
+        foreach ($dataToc as $item) {
+            if ($item['list_open']) {
+                echo '<ol>';
+            }
+            if ($item['item_open']) {
+                echo '<li>';
+            }
+            if ($item['text']) {
+                echo '<a href="'.$item['href'].'" title="'.$this->getTitle($item['text']).'">'.$this->getTitle($item['text']).'</a>';
+            }
+            if ($item['item_close']) {
+                echo '</li>';
+            }
+            if ($item['list_close']) {
+                echo '</ol>';
+            }
+        }
         echo '</div>';
         echo '</div>';
         $toc = ob_get_clean();
+
         return $toc;
     }
-
 
     /**
      * Get a modified post with a generated table of contents.
@@ -187,45 +192,55 @@ class Toc {
      *
      * @return string
      */
-    public function getPostWithToc() {
+    public function getPostWithToc()
+    {
         switch ($this->place) {
-            case "top":
-                return $this->getToc() . $this->getPost();
-            case "title":
-                return preg_replace('#(?=<h\d*\s*)#is',
-                                     $this->getToc(),
-                                     $this->getPost(), 1);
-            case "shortcode":
-                return preg_replace($this->shortcode,
-                                    $this->getToc(),
-                                    $this->getPost(), 1);
+            case 'top':
+                return $this->getToc().$this->getPost();
+            case 'title':
+                return preg_replace(
+                    '#(?=<h\d*\s*)#is',
+                    $this->getToc(),
+                    $this->getPost(),
+                    1
+                );
+            case 'shortcode':
+                return preg_replace(
+                    $this->shortcode,
+                    $this->getToc(),
+                    $this->getPost(),
+                    1
+                );
         }
     }
 
-    protected function getTitle($str) {
+    protected function getTitle($str)
+    {
         $str = strip_tags($str);
-        $str = str_replace(['<strong>','</strong>','</span>','<span>','<b>','</b>','<a>','</a>','<i>','</i>','<li>','</li>','<u>','</u>'],'',$str);
+        $str = str_replace(['<strong>', '</strong>', '</span>', '<span>', '<b>', '</b>', '<a>', '</a>', '<i>', '</i>', '<li>', '</li>', '<u>', '</u>'], '', $str);
+
         return $str;
     }
 
     /**
-     * @access protected
      * @return string
      */
-    protected function getHref($str) {
+    protected function getHref($str)
+    {
         $str = strip_tags($str);
-        $str = str_replace(['<strong>','</strong>','</span>','<span>','<b>','</b>','<a>','</a>','<i>','</i>','<li>','</li>','<u>','</u>'],'',$str);
-        return "#" . str_replace(' ', '_', $str);
+        $str = str_replace(['<strong>', '</strong>', '</span>', '<span>', '<b>', '</b>', '<a>', '</a>', '<i>', '</i>', '<li>', '</li>', '<u>', '</u>'], '', $str);
+
+        return '#'.str_replace(' ', '_', $str);
     }
 
-
     /**
-     * @access protected
      * @return string
      */
-    protected function getTagId($str) {
+    protected function getTagId($str)
+    {
         $str = strip_tags($str);
-        $str = str_replace(['<strong>','</strong>','</span>','<span>','<b>','</b>','<a>','</a>','<i>','</i>','<li>','</li>','<u>','</u>'],'',$str);
+        $str = str_replace(['<strong>', '</strong>', '</span>', '<span>', '<b>', '</b>', '<a>', '</a>', '<i>', '</i>', '<li>', '</li>', '<u>', '</u>'], '', $str);
+
         return str_replace(' ', '_', $str);
     }
 }

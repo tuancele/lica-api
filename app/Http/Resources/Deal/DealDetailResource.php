@@ -1,23 +1,21 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Deal;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Deal Detail Resource for Admin API
- * 
+ * Deal Detail Resource for Admin API.
+ *
  * Extends DealResource with products and sale_products list
  */
 class DealDetailResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return array
      */
     public function toArray(Request $request): array
     {

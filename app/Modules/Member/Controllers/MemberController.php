@@ -1,16 +1,17 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Member\Controllers;
 
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use App\Modules\Member\Models\Member;
-use Validator;
-use Illuminate\Support\Facades\Auth;
-use App\Traits\Location;
-use App\Modules\Order\Models\Order;
 use App\Modules\Address\Models\Address;
+use App\Modules\Member\Models\Member;
+use App\Modules\Order\Models\Order;
+use App\Traits\Location;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Validator;
 
 class MemberController extends Controller
 {
@@ -40,32 +41,33 @@ class MemberController extends Controller
         active('member', 'member');
         $query = $this->model::query();
 
-        if ($request->get('status') != "") {
+        if ($request->get('status') != '') {
             $query->where('status', $request->get('status'));
         }
-        if ($request->get('keyword') != "") {
+        if ($request->get('keyword') != '') {
             $keyword = $request->get('keyword');
             $query->where(function ($q) use ($keyword) {
-                $q->where('first_name', 'like', '%' . $keyword . '%')
-                  ->orWhere('last_name', 'like', '%' . $keyword . '%')
-                  ->orWhere('email', 'like', '%' . $keyword . '%')
-                  ->orWhere('phone', 'like', '%' . $keyword . '%');
+                $q->where('first_name', 'like', '%'.$keyword.'%')
+                    ->orWhere('last_name', 'like', '%'.$keyword.'%')
+                    ->orWhere('email', 'like', '%'.$keyword.'%')
+                    ->orWhere('phone', 'like', '%'.$keyword.'%');
             });
         }
 
         $data['list'] = $query->orderBy('id', 'desc')->paginate(20)->appends([
             'keyword' => $request->get('keyword'),
-            'status' => $request->get('status')
+            'status' => $request->get('status'),
         ]);
 
-        return view($this->view . '::index', $data);
+        return view($this->view.'::index', $data);
     }
 
     public function create()
     {
         active('member', 'member');
         $data['province'] = $this->getProvince();
-        return view($this->view . '::create', $data);
+
+        return view($this->view.'::create', $data);
     }
 
     public function store(Request $request)
@@ -86,7 +88,7 @@ class MemberController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'status' => 'error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ]);
         }
 
@@ -99,7 +101,7 @@ class MemberController extends Controller
             'password' => bcrypt($request->password),
             'type' => '1',
             'user_id' => Auth::id(),
-            'created_at' => date('Y-m-d H:i:s')
+            'created_at' => date('Y-m-d H:i:s'),
         ]);
 
         if ($id > 0) {
@@ -114,18 +116,18 @@ class MemberController extends Controller
                 'address' => $request->address,
                 'email' => $request->email,
                 'is_default' => '1',
-                'created_at' => date('Y-m-d H:i:s')
+                'created_at' => date('Y-m-d H:i:s'),
             ]);
 
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Thêm thành công!',
-                'url' => route('member')
+                'url' => route('member'),
             ]);
         } else {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Thêm không thành công!'
+                'message' => 'Thêm không thành công!',
             ]);
         }
     }
@@ -134,7 +136,7 @@ class MemberController extends Controller
     {
         active('member', 'member');
         $member = Member::find($id);
-        if (!$member) {
+        if (! $member) {
             return redirect()->route('member');
         }
         $data['member'] = $member;
@@ -142,7 +144,8 @@ class MemberController extends Controller
         $data['order'] = Order::select('id', 'code', 'created_at')->where('member_id', $id)->orderBy('created_at', 'desc')->first();
         $data['income'] = Order::select('total', 'fee_ship', 'sale')->where([['member_id', $id], ['payment', '1'], ['ship', '2'], ['status', '1']])->get();
         $data['addresss'] = $member->address;
-        return view($this->view . '::view', $data);
+
+        return view($this->view.'::view', $data);
     }
 
     public function update(Request $request)
@@ -150,7 +153,7 @@ class MemberController extends Controller
         $validator = Validator::make($request->all(), [
             'first_name' => 'required|min:1|max:250',
             'last_name' => 'required|min:1|max:250',
-            'email' => 'required|unique:members,email,' . $request->id,
+            'email' => 'required|unique:members,email,'.$request->id,
             'phone' => 'required',
         ], [
             'first_name.required' => 'Họ không được bỏ trống.',
@@ -163,7 +166,7 @@ class MemberController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'status' => 'error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ]);
         }
 
@@ -172,21 +175,21 @@ class MemberController extends Controller
             'last_name' => $request->last_name,
             'email' => $request->email,
             'phone' => $request->phone,
-            'birthday' => ($request->birthday != "") ? date('Y-m-d', strtotime($request->birthday)) : null,
+            'birthday' => ($request->birthday != '') ? date('Y-m-d', strtotime($request->birthday)) : null,
             'status' => $request->status,
             'type' => '1',
-            'user_id' => Auth::id()
+            'user_id' => Auth::id(),
         ]);
 
         if ($update > 0) {
             return response()->json([
                 'status' => 'success',
-                'alert' => 'Cập nhật thành công!'
+                'alert' => 'Cập nhật thành công!',
             ]);
         } else {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Cập nhật không thành công!'
+                'message' => 'Cập nhật không thành công!',
             ]);
         }
     }
@@ -195,7 +198,8 @@ class MemberController extends Controller
     {
         $data['id'] = $req->id;
         $data['province'] = $this->getProvince();
-        return view($this->view . '::add_address', $data);
+
+        return view($this->view.'::add_address', $data);
     }
 
     public function addAddress(Request $request)
@@ -215,7 +219,7 @@ class MemberController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'status' => 'error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ]);
         }
 
@@ -230,18 +234,18 @@ class MemberController extends Controller
             'districtid' => $request->districtid,
             'provinceid' => $request->provinceid,
             'is_default' => '0',
-            'created_at' => date('Y-m-d H:i:s')
+            'created_at' => date('Y-m-d H:i:s'),
         ]);
 
         if ($id > 0) {
             return response()->json([
                 'status' => 'success',
-                'data' => $this->loadAddress($request->member_id)
+                'data' => $this->loadAddress($request->member_id),
             ]);
         } else {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Tạo địa chỉ mới không thành công!'
+                'message' => 'Tạo địa chỉ mới không thành công!',
             ]);
         }
     }
@@ -252,12 +256,12 @@ class MemberController extends Controller
         if ($del > 0) {
             return response()->json([
                 'status' => 'success',
-                'alert' => 'Xóa thành công!'
+                'alert' => 'Xóa thành công!',
             ]);
         } else {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Xóa địa chỉ không thành công!'
+                'message' => 'Xóa địa chỉ không thành công!',
             ]);
         }
     }
@@ -265,14 +269,15 @@ class MemberController extends Controller
     public function get_editaddress(Request $req)
     {
         $address = Address::find($req->id);
-        if (!$address) {
+        if (! $address) {
             return 'Không tìm thấy địa chỉ này';
         }
         $data['detail'] = $address;
         $data['province'] = $this->getProvince($address->provinceid);
         $data['district'] = $this->getDistrict($address->provinceid, $address->districtid);
         $data['ward'] = $this->getWard($address->districtid, $address->wardid);
-        return view($this->view . '::address', $data);
+
+        return view($this->view.'::address', $data);
     }
 
     public function editAddress(Request $request)
@@ -292,7 +297,7 @@ class MemberController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'status' => 'error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ]);
         }
 
@@ -310,12 +315,12 @@ class MemberController extends Controller
         if ($update > 0) {
             return response()->json([
                 'status' => 'success',
-                'data' => $this->loadAddress($request->member_id)
+                'data' => $this->loadAddress($request->member_id),
             ]);
         } else {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Sửa địa chỉ không thành công!'
+                'message' => 'Sửa địa chỉ không thành công!',
             ]);
         }
     }
@@ -334,7 +339,7 @@ class MemberController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'status' => 'error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ]);
         }
 
@@ -345,12 +350,12 @@ class MemberController extends Controller
         if ($update > 0) {
             return response()->json([
                 'status' => 'success',
-                'alert' => 'Thiết lập mật khẩu thành công!'
+                'alert' => 'Thiết lập mật khẩu thành công!',
             ]);
         } else {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Cập nhật không thành công!'
+                'message' => 'Cập nhật không thành công!',
             ]);
         }
     }
@@ -358,26 +363,27 @@ class MemberController extends Controller
     public function loadAddress($id)
     {
         $addresss = Address::where('member_id', $id)->get();
-        $html = "";
+        $html = '';
         if ($addresss->count() > 0) {
             foreach ($addresss as $address) {
                 $html .= '<tr>
-                   <td width="20%">' . $address->first_name . ' ' . $address->last_name . '</td>
-                   <td width="15%">' . $address->phone . '</td>';
+                   <td width="20%">'.$address->first_name.' '.$address->last_name.'</td>
+                   <td width="15%">'.$address->phone.'</td>';
                 $html .= '<td width="50%">';
-                $province = ($address->province) ? ', ' . $address->province->name : '';
-                $district = ($address->district) ? ', ' . $address->district->name : '';
+                $province = ($address->province) ? ', '.$address->province->name : '';
+                $district = ($address->district) ? ', '.$address->district->name : '';
                 $ward = ($address->ward) ? $address->ward->name : '';
-                $html .= '<p>' . $address->address . '</p>';
-                $html .= '<p>' . $ward . $district . $province . '</p>';
+                $html .= '<p>'.$address->address.'</p>';
+                $html .= '<p>'.$ward.$district.$province.'</p>';
                 $html .= '</td>';
                 $html .= '<td width="10%">
-                     <a class="btn btn-primary btn-xs btn_edit" title="Sửa" data-id="' . $address->id . '"><i class="fa fa-pencil-square-o" aria-hidden="true"></i></a>
-                    <a class="btn btn-danger btn-xs del_address" title="Xóa" data-id="' . $address->id . '"><i class="fa fa-trash-o" aria-hidden="true"></i></a>
+                     <a class="btn btn-primary btn-xs btn_edit" title="Sửa" data-id="'.$address->id.'"><i class="fa fa-pencil-square-o" aria-hidden="true"></i></a>
+                    <a class="btn btn-danger btn-xs del_address" title="Xóa" data-id="'.$address->id.'"><i class="fa fa-trash-o" aria-hidden="true"></i></a>
                    </td>
                  </tr>';
             }
         }
+
         return $html;
     }
 
@@ -387,16 +393,16 @@ class MemberController extends Controller
         if ($check) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Khách hàng đã có đơn hàng, không thể xóa!'
+                'message' => 'Khách hàng đã có đơn hàng, không thể xóa!',
             ]);
         } else {
             Member::findOrFail($request->id)->delete();
-            $url = ($request->page != "") ? '/admin/member?page=' . $request->page : '/admin/member';
-            
+            $url = ($request->page != '') ? '/admin/member?page='.$request->page : '/admin/member';
+
             return response()->json([
                 'status' => 'success',
                 'alert' => 'Xóa thành công!',
-                'url' => $url
+                'url' => $url,
             ]);
         }
     }
@@ -407,22 +413,23 @@ class MemberController extends Controller
         if (empty($check)) {
             return response()->json([
                 'status' => 'error',
-                'errors' => ['alert' => ['0' => 'Chưa chọn dữ liệu cần thao tác!']]
+                'errors' => ['alert' => ['0' => 'Chưa chọn dữ liệu cần thao tác!']],
             ]);
         }
         $action = $request->action;
         if ($action == 2) {
             $total = 0;
             foreach ($check as $key => $value) {
-                if (!Order::where('member_id', $value)->exists()) {
+                if (! Order::where('member_id', $value)->exists()) {
                     Member::where('id', $value)->delete();
                     $total++;
                 }
             }
+
             return response()->json([
                 'status' => 'success',
-                'alert' => 'Đã xóa thành công ' . $total . ' khách hàng!',
-                'url' => '/admin/member'
+                'alert' => 'Đã xóa thành công '.$total.' khách hàng!',
+                'url' => '/admin/member',
             ]);
         }
     }

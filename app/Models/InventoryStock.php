@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -52,7 +53,7 @@ class InventoryStock extends Model
     /**
      * Boot the model
      * Ensure flash_sale_hold and deal_hold never go negative
-     * Note: available_stock is a generated column, calculated as: GREATEST(0, physical_stock - reserved_stock)
+     * Note: available_stock is a generated column, calculated as: GREATEST(0, physical_stock - reserved_stock).
      */
     protected static function boot()
     {
@@ -76,7 +77,7 @@ class InventoryStock extends Model
             }
 
             // Ensure physical_stock is never negative (unless warehouse allows it)
-            if ($inventoryStock->physical_stock < 0 && !($inventoryStock->warehouse && $inventoryStock->warehouse->allow_negative_stock)) {
+            if ($inventoryStock->physical_stock < 0 && ! ($inventoryStock->warehouse && $inventoryStock->warehouse->allow_negative_stock)) {
                 $inventoryStock->physical_stock = 0;
             }
         });
@@ -128,16 +129,16 @@ class InventoryStock extends Model
     */
 
     /**
-     * Check if stock is low (at or below threshold)
+     * Check if stock is low (at or below threshold).
      */
     public function getIsLowStockAttribute(): bool
     {
-        return $this->physical_stock > 0 
+        return $this->physical_stock > 0
             && $this->physical_stock <= $this->low_stock_threshold;
     }
 
     /**
-     * Check if out of stock
+     * Check if out of stock.
      */
     public function getIsOutOfStockAttribute(): bool
     {
@@ -145,16 +146,17 @@ class InventoryStock extends Model
     }
 
     /**
-     * Get sellable stock (available - promotional holds)
+     * Get sellable stock (available - promotional holds).
      */
     public function getSellableStockAttribute(): int
     {
         $sellable = $this->available_stock - $this->flash_sale_hold - $this->deal_hold;
+
         return max(0, $sellable);
     }
 
     /**
-     * Get total stock value
+     * Get total stock value.
      */
     public function getStockValueAttribute(): float
     {
@@ -205,7 +207,7 @@ class InventoryStock extends Model
     */
 
     /**
-     * Increase physical stock
+     * Increase physical stock.
      */
     public function increaseStock(int $quantity): bool
     {
@@ -213,19 +215,19 @@ class InventoryStock extends Model
     }
 
     /**
-     * Decrease physical stock
+     * Decrease physical stock.
      */
     public function decreaseStock(int $quantity): bool
     {
-        if ($this->physical_stock < $quantity && !$this->warehouse->allow_negative_stock) {
+        if ($this->physical_stock < $quantity && ! $this->warehouse->allow_negative_stock) {
             return false;
         }
-        
+
         return $this->decrement('physical_stock', $quantity);
     }
 
     /**
-     * Increase reserved stock
+     * Increase reserved stock.
      */
     public function increaseReserved(int $quantity): bool
     {
@@ -233,33 +235,34 @@ class InventoryStock extends Model
     }
 
     /**
-     * Decrease reserved stock
+     * Decrease reserved stock.
      */
     public function decreaseReserved(int $quantity): bool
     {
         $newReserved = max(0, $this->reserved_stock - $quantity);
+
         return $this->update(['reserved_stock' => $newReserved]);
     }
 
     /**
-     * Update average cost using weighted average method
+     * Update average cost using weighted average method.
      */
     public function updateAverageCost(int $newQuantity, float $newCost): void
     {
         $currentValue = $this->physical_stock * $this->average_cost;
         $newValue = $newQuantity * $newCost;
         $totalQuantity = $this->physical_stock + $newQuantity;
-        
+
         if ($totalQuantity > 0) {
             $this->average_cost = ($currentValue + $newValue) / $totalQuantity;
         }
-        
+
         $this->last_cost = $newCost;
         $this->save();
     }
 
     /**
-     * Check if quantity is available
+     * Check if quantity is available.
      */
     public function hasAvailable(int $quantity): bool
     {
@@ -267,7 +270,7 @@ class InventoryStock extends Model
     }
 
     /**
-     * Check if quantity can be reserved
+     * Check if quantity can be reserved.
      */
     public function canReserve(int $quantity): bool
     {
@@ -275,7 +278,7 @@ class InventoryStock extends Model
     }
 
     /**
-     * Get or create stock record for warehouse + variant
+     * Get or create stock record for warehouse + variant.
      */
     public static function getOrCreate(int $warehouseId, int $variantId): self
     {

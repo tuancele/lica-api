@@ -1,15 +1,16 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Unit\Repositories;
 
-use Tests\TestCase;
-use App\Repositories\Product\ProductRepository;
-use App\Modules\Product\Models\Product;
 use App\Enums\ProductStatus;
 use App\Enums\ProductType;
+use App\Modules\Product\Models\Product;
+use App\Repositories\Product\ProductRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Tests\TestCase;
 
 class ProductRepositoryTest extends TestCase
 {
@@ -20,7 +21,7 @@ class ProductRepositoryTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->repository = new ProductRepository(new Product());
+        $this->repository = new ProductRepository(new Product);
     }
 
     /** @test */

@@ -1,17 +1,18 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Themes\Website\Controllers;
 
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
+use App\Modules\Product\Models\Variant;
 use App\Services\Cart\CartService;
 use App\Services\Pricing\PriceEngineServiceInterface;
 use App\Services\Warehouse\WarehouseServiceInterface;
-use App\Modules\Product\Models\Variant;
 use App\Themes\Website\Models\Cart;
-use Illuminate\Support\Facades\Session;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Validator;
 
 class CartControllerV2 extends Controller
@@ -62,6 +63,7 @@ class CartControllerV2 extends Controller
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return redirect('/')->with('error', 'Không thể tải giỏ hàng');
         }
     }
@@ -86,6 +88,7 @@ class CartControllerV2 extends Controller
                     'errors' => $validator->errors()->toArray(),
                     'request_data' => $request->all(),
                 ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Dữ liệu không hợp lệ',
@@ -122,6 +125,7 @@ class CartControllerV2 extends Controller
                 'trace' => $e->getTraceAsString(),
                 'request_data' => $request->all(),
             ]);
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage() ?: 'Thêm vào giỏ hàng thất bại',
@@ -149,6 +153,7 @@ class CartControllerV2 extends Controller
                     'variant_id' => $variantId,
                     'qty' => $request->qty,
                 ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Dữ liệu không hợp lệ',
@@ -179,6 +184,7 @@ class CartControllerV2 extends Controller
                 'variant_id' => $variantId,
                 'qty' => $request->qty ?? null,
             ]);
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage() ?: 'Cập nhật giỏ hàng thất bại',
@@ -217,6 +223,7 @@ class CartControllerV2 extends Controller
                 'line' => $e->getLine(),
                 'variant_id' => $variantId,
             ]);
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage() ?: 'Xóa sản phẩm thất bại',
@@ -250,6 +257,7 @@ class CartControllerV2 extends Controller
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Lấy thông tin giỏ hàng thất bại',
@@ -262,23 +270,23 @@ class CartControllerV2 extends Controller
         try {
             $oldCart = Session::has('cart') ? Session::get('cart') : null;
             $cart = new Cart($oldCart);
-            
+
             $products = $cart->items ?? [];
             $totalPrice = 0;
-            
+
             foreach ($products as $variantId => $item) {
                 $variant = Variant::with(['product', 'color', 'size'])->find($variantId);
-                if (!$variant || !$variant->product) {
+                if (! $variant || ! $variant->product) {
                     continue;
                 }
-                
-                $quantity = (int)($item['qty'] ?? 1);
+
+                $quantity = (int) ($item['qty'] ?? 1);
                 $priceWithQuantity = $this->priceEngine->calculatePriceWithQuantity(
                     $variant->product->id,
                     $variantId,
                     $quantity
                 );
-                
+
                 $totalPrice += $priceWithQuantity['total_price'];
             }
 
@@ -287,7 +295,8 @@ class CartControllerV2 extends Controller
                 'totalPrice' => $totalPrice,
             ]);
         } catch (\Exception $e) {
-            Log::error('[CartV2] Get failed: ' . $e->getMessage());
+            Log::error('[CartV2] Get failed: '.$e->getMessage());
+
             return view('Website::cart.get', [
                 'products' => [],
                 'totalPrice' => 0,
@@ -305,14 +314,14 @@ class CartControllerV2 extends Controller
                 'session_id' => Session::getId(),
                 'has_combo' => $request->has('combo'),
             ]);
-            
+
             if ($request->has('combo') && is_array($request->combo)) {
                 $totalQty = 0;
                 foreach ($request->combo as $item) {
-                    $variantId = (int)($item['id'] ?? $item['variant_id'] ?? 0);
-                    $qty = (int)($item['qty'] ?? 0);
-                    $isDeal = isset($item['is_deal']) ? (bool)$item['is_deal'] : false;
-                    
+                    $variantId = (int) ($item['id'] ?? $item['variant_id'] ?? 0);
+                    $qty = (int) ($item['qty'] ?? 0);
+                    $isDeal = isset($item['is_deal']) ? (bool) $item['is_deal'] : false;
+
                     if ($variantId > 0 && $qty > 0) {
                         try {
                             Log::info('[CartV2] addCart combo item', [
@@ -331,6 +340,7 @@ class CartControllerV2 extends Controller
                                 'qty' => $qty,
                                 'is_deal' => $isDeal,
                             ]);
+
                             return response()->json([
                                 'status' => 'error',
                                 'message' => $e->getMessage() ?: 'Thêm sản phẩm vào giỏ hàng thất bại',
@@ -338,43 +348,45 @@ class CartControllerV2 extends Controller
                         }
                     }
                 }
-                
+
                 session()->save();
-                
+
                 Log::info('[CartV2] addCart combo success', [
                     'total_qty' => $totalQty,
                 ]);
-                
+
                 return response()->json([
                     'status' => 'success',
                     'total' => $totalQty,
                 ]);
             }
-            
-            $variantId = (int)($request->variant_id ?? $request->id ?? 0);
-            $qty = (int)($request->qty ?? 1);
-            $isDeal = isset($request->is_deal) ? (bool)$request->is_deal : false;
-            
+
+            $variantId = (int) ($request->variant_id ?? $request->id ?? 0);
+            $qty = (int) ($request->qty ?? 1);
+            $isDeal = isset($request->is_deal) ? (bool) $request->is_deal : false;
+
             Log::info('[CartV2] addCart single item', [
                 'variant_id' => $variantId,
                 'qty' => $qty,
                 'is_deal' => $isDeal,
             ]);
-            
+
             if ($variantId <= 0) {
                 Log::warning('[CartV2] addCart missing variant_id', [
                     'request_data' => $request->all(),
                 ]);
+
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Thiếu thông tin sản phẩm',
                 ], 400);
             }
-            
+
             if ($qty <= 0) {
                 Log::warning('[CartV2] addCart invalid qty', [
                     'qty' => $qty,
                 ]);
+
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Số lượng không hợp lệ',
@@ -384,17 +396,17 @@ class CartControllerV2 extends Controller
             try {
                 $result = $this->cartService->addItem($variantId, $qty, $isDeal, $userId);
                 session()->save();
-                
+
                 $variant = Variant::with('product')->find($variantId);
                 $productName = $variant && $variant->product ? $variant->product->name : 'Sản phẩm';
-                
+
                 Log::info('[CartV2] addCart success', [
                     'variant_id' => $variantId,
                     'qty' => $qty,
                     'product_name' => $productName,
                     'total_qty' => $result['total_qty'] ?? 0,
                 ]);
-                
+
                 return response()->json([
                     'status' => 'success',
                     'name' => $productName,
@@ -410,6 +422,7 @@ class CartControllerV2 extends Controller
                     'qty' => $qty,
                     'is_deal' => $isDeal,
                 ]);
+
                 return response()->json([
                     'status' => 'error',
                     'message' => $e->getMessage() ?: 'Thêm vào giỏ hàng thất bại',
@@ -423,6 +436,7 @@ class CartControllerV2 extends Controller
                 'trace' => $e->getTraceAsString(),
                 'request_data' => $request->all(),
             ]);
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Thêm vào giỏ hàng thất bại',
@@ -434,24 +448,26 @@ class CartControllerV2 extends Controller
     {
         try {
             $userId = auth('member')->id();
-            $variantId = (int)($request->id ?? 0);
-            
+            $variantId = (int) ($request->id ?? 0);
+
             Log::info('[CartV2] delCart called', [
                 'variant_id' => $variantId,
                 'user_id' => $userId,
                 'session_id' => Session::getId(),
                 'request_data' => $request->all(),
             ]);
-            
+
             if ($variantId <= 0) {
                 Log::warning('[CartV2] delCart invalid variant_id', [
                     'variant_id' => $variantId,
                 ]);
+
                 return response()->json([
                     'status' => 'error',
                     'message' => 'ID không hợp lệ',
                 ], 400);
             }
+
             return $this->removeItem($variantId);
         } catch (\Exception $e) {
             Log::error('[CartV2] delCart exception', [
@@ -460,6 +476,7 @@ class CartControllerV2 extends Controller
                 'line' => $e->getLine(),
                 'request_data' => $request->all(),
             ]);
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Xóa sản phẩm thất bại',
@@ -471,9 +488,9 @@ class CartControllerV2 extends Controller
     {
         try {
             $userId = auth('member')->id();
-            $variantId = (int)($request->id ?? 0);
-            $qty = (int)($request->qty ?? 0);
-            
+            $variantId = (int) ($request->id ?? 0);
+            $qty = (int) ($request->qty ?? 0);
+
             Log::info('[CartV2] updateCart called', [
                 'variant_id' => $variantId,
                 'qty' => $qty,
@@ -481,11 +498,12 @@ class CartControllerV2 extends Controller
                 'session_id' => Session::getId(),
                 'request_data' => $request->all(),
             ]);
-            
+
             if ($variantId <= 0) {
                 Log::warning('[CartV2] updateCart invalid variant_id', [
                     'variant_id' => $variantId,
                 ]);
+
                 return response()->json([
                     'status' => 'error',
                     'message' => 'ID không hợp lệ',
@@ -494,20 +512,20 @@ class CartControllerV2 extends Controller
 
             $request->merge(['qty' => $qty]);
             $result = $this->updateItem($request, $variantId);
-            
+
             if ($result->getStatusCode() === 200) {
                 $data = json_decode($result->getContent(), true);
                 $oldCart = Session::has('cart') ? Session::get('cart') : null;
                 $cart = new Cart($oldCart);
                 $sale = Session::has('ss_counpon') ? Session::get('ss_counpon')['sale'] : 0;
-                
+
                 Log::info('[CartV2] updateCart success', [
                     'variant_id' => $variantId,
                     'qty' => $qty,
                     'total_qty' => $cart->totalQty,
                     'total_price' => $cart->totalPrice,
                 ]);
-                
+
                 return response()->json([
                     'total' => $cart->totalQty,
                     'price' => number_format($cart->totalPrice),
@@ -515,7 +533,7 @@ class CartControllerV2 extends Controller
                     'totalPrice' => number_format($cart->totalPrice - $sale),
                 ]);
             }
-            
+
             return $result;
         } catch (\Exception $e) {
             Log::error('[CartV2] updateCart exception', [
@@ -524,6 +542,7 @@ class CartControllerV2 extends Controller
                 'line' => $e->getLine(),
                 'request_data' => $request->all(),
             ]);
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Cập nhật giỏ hàng thất bại',
@@ -531,4 +550,3 @@ class CartControllerV2 extends Controller
         }
     }
 }
-

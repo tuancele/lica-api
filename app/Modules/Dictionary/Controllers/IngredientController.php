@@ -1,75 +1,87 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Dictionary\Controllers;
-use Illuminate\Http\Request;
+
 use App\Http\Controllers\Controller;
-use App\Modules\Dictionary\Models\IngredientPaulas;
-use App\Modules\Dictionary\Models\IngredientCategory;
+use App\Jobs\DictionaryIngredientCrawlJob;
 use App\Modules\Dictionary\Models\IngredientBenefit;
+use App\Modules\Dictionary\Models\IngredientCategory;
+use App\Modules\Dictionary\Models\IngredientPaulas;
 use App\Modules\Dictionary\Models\IngredientRate;
 use App\Modules\Product\Models\Product;
+use Drnxloc\LaravelHtmlDom\HtmlDomParser;
+use Exception;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use App\Jobs\DictionaryIngredientCrawlJob;
-use Drnxloc\LaravelHtmlDom\HtmlDomParser;
-use Validator;
-use Exception;
-use Illuminate\Http\JsonResponse;
 
 class IngredientController extends Controller
 {
     private $model;
     private $controller = 'ingredient';
     private $view = 'Dictionary';
-    public function __construct(IngredientPaulas $model){
+
+    public function __construct(IngredientPaulas $model)
+    {
         $this->model = $model;
     }
+
     public function index(Request $request)
     {
-        active('dictionary','ingredient');
+        active('dictionary', 'ingredient');
         $data['posts'] = $this->model::where(function ($query) use ($request) {
-            if($request->get('status') != "") {
-	            $query->where('status', $request->get('status'));
+            if ($request->get('status') != '') {
+                $query->where('status', $request->get('status'));
             }
-            if($request->get('keyword') != "") {
-	            $query->where('name','like','%'.$request->get('keyword').'%');
-	        }
-        })->orderBy('created_at','desc')->paginate(20)->appends(['keyword' => $request->get('keyword'),'status' => $request->get('status')]);
-        return view($this->view.'::ingredient.index',$data);
+            if ($request->get('keyword') != '') {
+                $query->where('name', 'like', '%'.$request->get('keyword').'%');
+            }
+        })->orderBy('created_at', 'desc')->paginate(20)->appends(['keyword' => $request->get('keyword'), 'status' => $request->get('status')]);
+
+        return view($this->view.'::ingredient.index', $data);
     }
-    public function create(){
-        //$this->authorize('post-create');
-        active('dictionary','ingredient');
-        $data['categories'] = IngredientCategory::where('status','1')->orderBy('sort','asc')->get();
-        $data['rates'] = IngredientRate::where('status','1')->orderBy('sort','asc')->get();
-        $data['benefits'] = IngredientBenefit::where('status','1')->orderBy('sort','asc')->get();
-        return view($this->view.'::ingredient.create',$data);
+
+    public function create()
+    {
+        // $this->authorize('post-create');
+        active('dictionary', 'ingredient');
+        $data['categories'] = IngredientCategory::where('status', '1')->orderBy('sort', 'asc')->get();
+        $data['rates'] = IngredientRate::where('status', '1')->orderBy('sort', 'asc')->get();
+        $data['benefits'] = IngredientBenefit::where('status', '1')->orderBy('sort', 'asc')->get();
+
+        return view($this->view.'::ingredient.create', $data);
     }
-    public function edit($id){
-        active('dictionary','ingredient');
+
+    public function edit($id)
+    {
+        active('dictionary', 'ingredient');
         $post = $this->model::find($id);
-        //$this->authorize($post,'post-edit');
-        if(!isset($post) && empty($post)){
+        // $this->authorize($post,'post-edit');
+        if (! isset($post) && empty($post)) {
             return redirect()->route('post');
         }
         $data['detail'] = $post;
-        $data['categories'] = IngredientCategory::where('status','1')->orderBy('sort','asc')->get();
-        $data['rates'] = IngredientRate::where('status','1')->orderBy('sort','asc')->get();
-        $data['benefits'] = IngredientBenefit::where('status','1')->orderBy('sort','asc')->get();
+        $data['categories'] = IngredientCategory::where('status', '1')->orderBy('sort', 'asc')->get();
+        $data['rates'] = IngredientRate::where('status', '1')->orderBy('sort', 'asc')->get();
+        $data['benefits'] = IngredientBenefit::where('status', '1')->orderBy('sort', 'asc')->get();
         $data['dcat'] = is_array($post->cat_id) ? $post->cat_id : json_decode($post->cat_id ?? '[]', true);
         $data['dben'] = is_array($post->benefit_id) ? $post->benefit_id : json_decode($post->benefit_id ?? '[]', true);
-        $data['products'] = Product::select('id','name','image')->where([['status','1'],['type','product'],['ingredient','like','%'.$post->name.'%']])->get(); 
-        return view($this->view.'::ingredient.edit',$data);
+        $data['products'] = Product::select('id', 'name', 'image')->where([['status', '1'], ['type', 'product'], ['ingredient', 'like', '%'.$post->name.'%']])->get();
+
+        return view($this->view.'::ingredient.edit', $data);
     }
 
-    public function crawl(){
-        active('dictionary','ingredient');
-        
-        $link = "https://www.paulaschoice.com/ingredient-dictionary?csortb1=ingredientNotRated&csortd1=1&csortb2=ingredientRating&csortd2=2&csortb3=name&csortd3=1&start=0&sz=1&ajax=true";
-        
+    public function crawl()
+    {
+        active('dictionary', 'ingredient');
+
+        $link = 'https://www.paulaschoice.com/ingredient-dictionary?csortb1=ingredientNotRated&csortd1=1&csortb2=ingredientRating&csortd2=2&csortb3=name&csortd3=1&start=0&sz=1&ajax=true';
+
         Log::info('DictionaryIngredientCrawlJob crawl page accessed', [
             'user_id' => Auth::id(),
             'url' => $link,
@@ -84,7 +96,7 @@ class IngredientController extends Controller
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
         curl_close($ch);
-        
+
         $fetchTime = round((microtime(true) - $startTime) * 1000, 2);
 
         if ($error) {
@@ -96,12 +108,13 @@ class IngredientController extends Controller
             ]);
             $data['page'] = 0;
             $data['total'] = 0;
-            return view($this->view.'::ingredient.crawl',$data);
+
+            return view($this->view.'::ingredient.crawl', $data);
         }
 
         $api = json_decode($content, true);
-        
-        if (!is_array($api) || !isset($api['paging']['total'])) {
+
+        if (! is_array($api) || ! isset($api['paging']['total'])) {
             Log::warning('DictionaryIngredientCrawlJob crawl page invalid response', [
                 'url' => $link,
                 'http_code' => $httpCode,
@@ -109,11 +122,12 @@ class IngredientController extends Controller
             ]);
             $data['page'] = 0;
             $data['total'] = 0;
-            return view($this->view.'::ingredient.crawl',$data);
+
+            return view($this->view.'::ingredient.crawl', $data);
         }
 
         $total = $api['paging']['total'];
-        $page = ceil($total/2000);
+        $page = ceil($total / 2000);
         $data['page'] = $page;
         $data['total'] = $total;
 
@@ -124,14 +138,15 @@ class IngredientController extends Controller
             'fetch_time_ms' => $fetchTime,
         ]);
 
-        return view($this->view.'::ingredient.crawl',$data); 
+        return view($this->view.'::ingredient.crawl', $data);
     }
 
-    public function getData(Request $request){
-        try{
+    public function getData(Request $request)
+    {
+        try {
             $i = $request->offset;
             $rerult = '';
-            $link = "https://www.paulaschoice.com/ingredient-dictionary?start=".$i."&sz=2000&ajax=true";
+            $link = 'https://www.paulaschoice.com/ingredient-dictionary?start='.$i.'&sz=2000&ajax=true';
             $ch = curl_init($link);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             $content = curl_exec($ch);
@@ -139,16 +154,16 @@ class IngredientController extends Controller
             $api = json_decode($content, true);
             $pages = $api['paging'];
             $ingredients = $api['ingredients'];
-            $status = "";
+            $status = '';
             $j = 0;
-            if(isset($ingredients) && !empty($ingredients)){
+            if (isset($ingredients) && ! empty($ingredients)) {
                 foreach ($ingredients as $key => $value) {
-                    $check = $this->model::where('slug',$value['id'])->first();
-                    if(isset($check) && !empty($check)){
+                    $check = $this->model::where('slug', $value['id'])->first();
+                    if (isset($check) && ! empty($check)) {
                         $url = 'https://www.paulaschoice.com'.$value['url'].'&ajax=true';
-                        $this->detail($url,$check->id);
-                        $status = "<span>Cập nhật thành công</span>";
-                    }else{
+                        $this->detail($url, $check->id);
+                        $status = '<span>Cập nhật thành công</span>';
+                    } else {
                         $id = $this->model::insertGetId(
                             [
                                 'name' => $value['name'],
@@ -157,35 +172,36 @@ class IngredientController extends Controller
                                 'status' => '1',
                                 'seo_description' => $value['description'],
                                 'seo_title' => $value['name'],
-                                'user_id'=> Auth::id(),
-                                'created_at' => date('Y-m-d H:i:s')
+                                'user_id' => Auth::id(),
+                                'created_at' => date('Y-m-d H:i:s'),
                             ]
                         );
-                        if($id > 0){
+                        if ($id > 0) {
                             $url = 'https://www.paulaschoice.com'.$value['url'].'&ajax=true';
-                            $this->detail($url,$id);
+                            $this->detail($url, $id);
                         }
-                        $status = "<span>Thêm thành công</span>";
-                    } 
+                        $status = '<span>Thêm thành công</span>';
+                    }
                     $j++;
-                    $rerult .= '<p>'.$j.' - Thành phần: '.$value['name']. ' - '.$status.'</p>';
-                }  
+                    $rerult .= '<p>'.$j.' - Thành phần: '.$value['name'].' - '.$status.'</p>';
+                }
             }
+
             return response()->json([
                 'status' => 'success',
-                'message' => $rerult
+                'message' => $rerult,
             ]);
-        }catch (Exception $e) {
+        } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ]);
         }
     }
 
     private function crawlStateKey(int $userId, int $offset): string
     {
-        return 'dictionary_ingredient_crawl:' . $userId . ':' . $offset;
+        return 'dictionary_ingredient_crawl:'.$userId.':'.$offset;
     }
 
     public function crawlStart(Request $request): JsonResponse
@@ -197,6 +213,7 @@ class IngredientController extends Controller
                     'offset' => $offset,
                     'user_id' => Auth::id(),
                 ]);
+
                 return response()->json(['success' => false, 'message' => 'Invalid offset'], 422);
             }
 
@@ -205,11 +222,12 @@ class IngredientController extends Controller
                 Log::warning('DictionaryIngredientCrawlJob unauthenticated request', [
                     'offset' => $offset,
                 ]);
+
                 return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
             }
 
             $crawlId = (string) Str::uuid();
-            $key = 'dictionary_ingredient_crawl_job:' . $crawlId;
+            $key = 'dictionary_ingredient_crawl_job:'.$crawlId;
 
             Cache::put($key, [
                 'crawl_id' => $crawlId,
@@ -238,12 +256,12 @@ class IngredientController extends Controller
             $queueDriver = config('queue.default');
             $job = DictionaryIngredientCrawlJob::dispatch($crawlId, $userId, $offset, 100)
                 ->onQueue('dictionary-crawl');
-            
+
             // Only use afterResponse if queue driver is not sync
             if ($queueDriver !== 'sync') {
                 $job->afterResponse();
             }
-            
+
             Log::debug('DictionaryIngredientCrawlJob job dispatched', [
                 'crawl_id' => $crawlId,
                 'queue_driver' => $queueDriver,
@@ -264,6 +282,7 @@ class IngredientController extends Controller
                 'user_id' => Auth::id(),
                 'offset' => $request->offset ?? null,
             ]);
+
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -287,14 +306,14 @@ class IngredientController extends Controller
 
             $key = $this->crawlStateKey($userId, $offset);
             $cached = Cache::get($key);
-            if (!$cached || !isset($cached['state'], $cached['items'])) {
+            if (! $cached || ! isset($cached['state'], $cached['items'])) {
                 return response()->json(['success' => false, 'message' => 'Crawl not started'], 409);
             }
 
             $state = $cached['state'];
             $items = $cached['items'];
 
-            if (!empty($state['done'])) {
+            if (! empty($state['done'])) {
                 return response()->json(['success' => true, 'data' => $this->crawlPublicState($state, 0, [])]);
             }
 
@@ -330,15 +349,15 @@ class IngredientController extends Controller
                     }
 
                     if ($id && $url) {
-                        $detailUrl = 'https://www.paulaschoice.com' . $url . '&ajax=true';
+                        $detailUrl = 'https://www.paulaschoice.com'.$url.'&ajax=true';
                         $this->detail($detailUrl, $id);
                     }
 
-                    $line = ($i + 1) . '/' . $total . ' - ' . $name . ' - ' . $status;
+                    $line = ($i + 1).'/'.$total.' - '.$name.' - '.$status;
                     $newLogs[] = $line;
                 } catch (Exception $e) {
                     $state['error'] = $e->getMessage();
-                    $line = ($i + 1) . '/' . $total . ' - ' . $name . ' - error: ' . $e->getMessage();
+                    $line = ($i + 1).'/'.$total.' - '.$name.' - error: '.$e->getMessage();
                     $newLogs[] = $line;
                 }
             }
@@ -373,56 +392,60 @@ class IngredientController extends Controller
     {
         try {
             $crawlId = (string) ($request->crawl_id ?? '');
-            
+
             $userId = (int) (Auth::id() ?? 0);
             if ($userId <= 0) {
                 Log::warning('DictionaryIngredientCrawlJob crawlCancel unauthenticated', [
                     'crawl_id' => $crawlId,
                 ]);
+
                 return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
             }
-            
+
             if ($crawlId === '') {
                 Log::warning('DictionaryIngredientCrawlJob crawlCancel missing crawl_id', [
                     'user_id' => $userId,
                 ]);
+
                 return response()->json(['success' => false, 'message' => 'Missing crawl_id'], 422);
             }
-            
-            $key = 'dictionary_ingredient_crawl_job:' . $crawlId;
+
+            $key = 'dictionary_ingredient_crawl_job:'.$crawlId;
             $state = Cache::get($key);
-            if (!is_array($state)) {
+            if (! is_array($state)) {
                 Log::warning('DictionaryIngredientCrawlJob crawlCancel not found', [
                     'crawl_id' => $crawlId,
                     'user_id' => $userId,
                 ]);
+
                 return response()->json(['success' => false, 'message' => 'Crawl not found'], 404);
             }
-            
+
             if ((int) ($state['user_id'] ?? 0) !== $userId) {
                 Log::warning('DictionaryIngredientCrawlJob crawlCancel forbidden', [
                     'crawl_id' => $crawlId,
                     'user_id' => $userId,
                     'state_user_id' => $state['user_id'] ?? null,
                 ]);
+
                 return response()->json(['success' => false, 'message' => 'Forbidden'], 403);
             }
-            
+
             // Check if already done or cancelled
-            if (!empty($state['done']) || !empty($state['cancelled'])) {
+            if (! empty($state['done']) || ! empty($state['cancelled'])) {
                 return response()->json([
                     'success' => true,
                     'message' => 'Crawl already stopped',
                     'data' => ['crawl_id' => $crawlId, 'status' => $state['status'] ?? 'unknown'],
                 ]);
             }
-            
+
             // Mark as cancelled
             $state['cancelled'] = true;
             $state['status'] = 'cancelling';
             $state['updated_at'] = time();
             Cache::put($key, $state, now()->addHours(6));
-            
+
             Log::info('DictionaryIngredientCrawlJob crawl cancelled', [
                 'crawl_id' => $crawlId,
                 'user_id' => $userId,
@@ -430,7 +453,7 @@ class IngredientController extends Controller
                 'processed' => $state['processed'] ?? 0,
                 'total' => $state['total'] ?? 0,
             ]);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Crawl cancellation requested',
@@ -446,6 +469,7 @@ class IngredientController extends Controller
                 'crawl_id' => $request->crawl_id ?? null,
                 'user_id' => Auth::id(),
             ]);
+
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -461,6 +485,7 @@ class IngredientController extends Controller
                 Log::warning('DictionaryIngredientCrawlJob crawlStatus unauthenticated', [
                     'crawl_id' => $crawlId,
                 ]);
+
                 return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
             }
 
@@ -468,16 +493,18 @@ class IngredientController extends Controller
                 Log::warning('DictionaryIngredientCrawlJob crawlStatus missing crawl_id', [
                     'user_id' => $userId,
                 ]);
+
                 return response()->json(['success' => false, 'message' => 'Missing crawl_id'], 422);
             }
 
-            $key = 'dictionary_ingredient_crawl_job:' . $crawlId;
+            $key = 'dictionary_ingredient_crawl_job:'.$crawlId;
             $state = Cache::get($key);
-            if (!is_array($state)) {
+            if (! is_array($state)) {
                 Log::warning('DictionaryIngredientCrawlJob crawlStatus not found', [
                     'crawl_id' => $crawlId,
                     'user_id' => $userId,
                 ]);
+
                 return response()->json(['success' => false, 'message' => 'Crawl not found'], 404);
             }
             if ((int) ($state['user_id'] ?? 0) !== $userId) {
@@ -486,11 +513,12 @@ class IngredientController extends Controller
                     'user_id' => $userId,
                     'state_user_id' => $state['user_id'] ?? null,
                 ]);
+
                 return response()->json(['success' => false, 'message' => 'Forbidden'], 403);
             }
 
             $logs = $state['logs'] ?? [];
-            if (!is_array($logs)) {
+            if (! is_array($logs)) {
                 $logs = [];
             }
 
@@ -498,10 +526,10 @@ class IngredientController extends Controller
             $newLogs = array_slice($logs, $since);
 
             $responseData = $this->crawlPublicState($state, count($newLogs), $newLogs, $since + count($newLogs));
-            
+
             // Log status check periodically (every 10 requests or when done/error)
             $logStatus = false;
-            if ($since === 0 || !empty($state['done']) || !empty($state['error'])) {
+            if ($since === 0 || ! empty($state['done']) || ! empty($state['error'])) {
                 $logStatus = true;
             }
 
@@ -513,7 +541,7 @@ class IngredientController extends Controller
                     'processed' => $responseData['processed'] ?? 0,
                     'total' => $responseData['total'] ?? 0,
                     'done' => $responseData['done'] ?? false,
-                    'has_error' => !empty($responseData['error']),
+                    'has_error' => ! empty($responseData['error']),
                 ]);
             }
 
@@ -528,6 +556,7 @@ class IngredientController extends Controller
                 'crawl_id' => $request->crawl_id ?? null,
                 'user_id' => Auth::id(),
             ]);
+
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -538,7 +567,7 @@ class IngredientController extends Controller
         $cursor = (int) ($state['processed'] ?? 0);
         $startedAt = (int) ($state['started_at'] ?? time());
         $elapsed = max(0, time() - $startedAt);
-        $done = !empty($state['done']);
+        $done = ! empty($state['done']);
         $error = $state['error'] ?? null;
 
         return [
@@ -548,7 +577,7 @@ class IngredientController extends Controller
             'processed' => $cursor,
             'done' => $done,
             'error' => $error,
-            'cancelled' => !empty($state['cancelled']),
+            'cancelled' => ! empty($state['cancelled']),
             'elapsed' => $elapsed,
             'step_processed' => $stepCount,
             'logs' => $newLogs,
@@ -579,6 +608,7 @@ class IngredientController extends Controller
                 'http_code' => $httpCode,
                 'fetch_time_ms' => $fetchTime,
             ]);
+
             return [];
         }
 
@@ -592,13 +622,14 @@ class IngredientController extends Controller
         }
 
         $decoded = json_decode((string) $content, true);
-        if (!is_array($decoded)) {
+        if (! is_array($decoded)) {
             Log::warning('DictionaryIngredientCrawlJob invalid JSON (Controller)', [
                 'url' => $url,
                 'http_code' => $httpCode,
                 'content_length' => $contentLength,
                 'content_preview' => substr($content ?? '', 0, 200),
             ]);
+
             return [];
         }
 
@@ -620,19 +651,22 @@ class IngredientController extends Controller
                 }
             }
             $text = trim(implode(' ', $parts));
+
             return $text;
         }
         if (is_scalar($value)) {
             return trim((string) $value);
         }
+
         return '';
     }
 
     private function buildDescription($sections): string
     {
-        if (!is_array($sections)) {
+        if (! is_array($sections)) {
             $text = $this->normalizeString($sections);
-            return $text !== '' ? '<p>' . $text . '</p>' : '';
+
+            return $text !== '' ? '<p>'.$text.'</p>' : '';
         }
 
         $content = '';
@@ -641,43 +675,47 @@ class IngredientController extends Controller
             if (is_string($texts)) {
                 $t = $this->normalizeString($texts);
                 if ($t !== '') {
-                    $content .= '<p>' . $t . '</p>';
+                    $content .= '<p>'.$t.'</p>';
                 }
                 continue;
             }
-            if (is_array($texts) && !empty($texts)) {
+            if (is_array($texts) && ! empty($texts)) {
                 $last = end($texts);
                 $t = $this->normalizeString($last);
                 if ($t !== '') {
-                    $content .= '<p>' . $t . '</p>';
+                    $content .= '<p>'.$t.'</p>';
                 }
             }
         }
+
         return $content;
     }
 
     private function buildReferences($references): string
     {
-        if (!is_array($references)) {
+        if (! is_array($references)) {
             $t = $this->normalizeString($references);
-            return $t !== '' ? '<p>' . $t . '</p>' : '';
+
+            return $t !== '' ? '<p>'.$t.'</p>' : '';
         }
 
         $content = '';
         foreach ($references as $ref) {
             $t = $this->normalizeString($ref);
             if ($t !== '') {
-                $content .= '<p>' . $t . '</p>';
+                $content .= '<p>'.$t.'</p>';
             }
         }
+
         return $content;
     }
 
     private function buildGlance($points): string
     {
-        if (!is_array($points)) {
+        if (! is_array($points)) {
             $t = $this->normalizeString($points);
-            return $t !== '' ? '<ul><li>' . $t . '</li></ul>' : '';
+
+            return $t !== '' ? '<ul><li>'.$t.'</li></ul>' : '';
         }
 
         $items = [];
@@ -690,20 +728,24 @@ class IngredientController extends Controller
         if (empty($items)) {
             return '';
         }
-        return '<ul><li>' . implode('</li><li>', $items) . '</li></ul>';
+
+        return '<ul><li>'.implode('</li><li>', $items).'</li></ul>';
     }
 
-    public function getDom($link){
+    public function getDom($link)
+    {
         $ch = curl_init($link);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         $content = curl_exec($ch);
         curl_close($ch);
         $dom = HtmlDomParser::str_get_html($content);
+
         return $dom;
     }
 
-    public function detail($link,$id){
-        try{
+    public function detail($link, $id)
+    {
+        try {
             Log::debug('DictionaryIngredientCrawlJob detail fetch started', [
                 'ingredient_id' => $id,
                 'url' => $link,
@@ -719,9 +761,10 @@ class IngredientController extends Controller
                     'url' => $link,
                     'fetch_time_ms' => $fetchTime,
                 ]);
+
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Empty response from remote'
+                    'message' => 'Empty response from remote',
                 ]);
             }
 
@@ -734,7 +777,7 @@ class IngredientController extends Controller
             $benefitIds = $this->getBenefit($rooms['benefits'] ?? []);
             $rateId = $this->getRate($rooms['rating'] ?? '');
 
-            $this->model::where('id',$id)->update(
+            $this->model::where('id', $id)->update(
                 [
                     'name' => $rooms['name'] ?? '',
                     'rate_id' => $rateId,
@@ -756,68 +799,75 @@ class IngredientController extends Controller
                 'rate_id' => $rateId,
                 'categories_count' => count($catIds),
                 'benefits_count' => count($benefitIds),
-                'has_content' => !empty($content2),
-                'has_reference' => !empty($reference),
-                'has_glance' => !empty($glance),
+                'has_content' => ! empty($content2),
+                'has_reference' => ! empty($reference),
+                'has_glance' => ! empty($glance),
                 'fetch_time_ms' => $fetchTime,
                 'total_time_ms' => $processTime,
             ]);
-        }catch (Exception $e) {
+        } catch (Exception $e) {
             Log::error('DictionaryIngredientCrawlJob detail exception', [
                 'ingredient_id' => $id,
                 'url' => $link,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
                 'status' => 'error',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ]);
         }
     }
 
-    public function getBenefit($benefits){
-        $array = array();
-        if(isset($benefits) && !empty($benefits)){
+    public function getBenefit($benefits)
+    {
+        $array = [];
+        if (isset($benefits) && ! empty($benefits)) {
             foreach ($benefits as $key => $value) {
-                $detail = IngredientBenefit::where('name',$value['name'])->first();
-                if(isset($detail) && !empty($detail)){
+                $detail = IngredientBenefit::where('name', $value['name'])->first();
+                if (isset($detail) && ! empty($detail)) {
                     array_push($array, strval($detail->id));
                 }
             }
         }
+
         return $array;
     }
 
-    public function getCategory($categories){
-        $array = array();
-        if(isset($categories) && !empty($categories)){
+    public function getCategory($categories)
+    {
+        $array = [];
+        if (isset($categories) && ! empty($categories)) {
             foreach ($categories as $key => $value) {
-                $detail = IngredientCategory::where('name',$value['name'])->first();
-                if(isset($detail) && !empty($detail)){
+                $detail = IngredientCategory::where('name', $value['name'])->first();
+                if (isset($detail) && ! empty($detail)) {
                     array_push($array, strval($detail->id));
                 }
             }
         }
+
         return $array;
     }
 
-    public function getRate($rate){
+    public function getRate($rate)
+    {
         $rateName = $this->normalizeString($rate);
-        if($rateName != ""){
-            $detail = IngredientRate::where('name',$rateName)->first();
-            if(isset($detail) && !empty($detail)){
+        if ($rateName != '') {
+            $detail = IngredientRate::where('name', $rateName)->first();
+            if (isset($detail) && ! empty($detail)) {
                 return $detail->id;
-            }else{
+            } else {
                 return '0';
             }
-        }else{
+        } else {
             return '0';
         }
     }
 
-    public function updateIngredient(){
-        try{
+    public function updateIngredient()
+    {
+        try {
             $link = 'https://www.paulaschoice.com/ingredient-dictionary/ingredient-aha.html?sz=2000&fdid=ingredients&start=0&ajax=true';
             $id = '23';
             $ch = curl_init($link);
@@ -827,37 +877,37 @@ class IngredientController extends Controller
             $rooms = json_decode($content, true);
             $description = $rooms['description'];
             $content2 = '';
-            if(isset($description) && !empty($description)){
+            if (isset($description) && ! empty($description)) {
                 foreach ($description as $key => $value) {
-                    $stt = count($value['text'])-1;
-                    $content2 .='<p>'.$value['text'][$stt].'</p>';
+                    $stt = count($value['text']) - 1;
+                    $content2 .= '<p>'.$value['text'][$stt].'</p>';
                 }
             }
-           
+
             $reference = '';
             $references = $rooms['references'];
-            if(isset($references) && !empty($references)){
+            if (isset($references) && ! empty($references)) {
                 foreach ($references as $key1 => $val1) {
-                    $reference .='<p>'.$val1.'</p>';
+                    $reference .= '<p>'.$val1.'</p>';
                 }
             }
             $disclaimer = '';
             $strings = $rooms['strings'];
-            if(isset($strings) && !empty($strings)){
-                if(isset($strings['disclaimer'])){
+            if (isset($strings) && ! empty($strings)) {
+                if (isset($strings['disclaimer'])) {
                     $disclaimer = $strings['disclaimer'];
                 }
             }
             $glance = '';
-            if(isset($rooms['keyPoints']) && !empty($rooms['keyPoints'])){
+            if (isset($rooms['keyPoints']) && ! empty($rooms['keyPoints'])) {
                 $keyPoints = $rooms['keyPoints'];
                 $glance .= '<ul>';
                 foreach ($keyPoints as $key2 => $val2) {
-                    $glance .='<li>'.$val2.'</li>';
+                    $glance .= '<li>'.$val2.'</li>';
                 }
                 $glance .= '</ul>';
             }
-            $this->model::where('id',$id)->update(
+            $this->model::where('id', $id)->update(
                 [
                     'name' => $rooms['name'],
                     'rate_id' => $this->getRate($rooms['rating']),
@@ -870,10 +920,10 @@ class IngredientController extends Controller
                     'benefit_id' => json_encode($this->getBenefit($rooms['benefits'])),
                 ]
             );
-        }catch (Exception $e) {
+        } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ]);
         }
     }
@@ -922,7 +972,7 @@ class IngredientController extends Controller
                 $decoded = json_decode($ids, true);
                 $ids = is_array($decoded) ? $decoded : [];
             }
-            if (!is_array($ids)) {
+            if (! is_array($ids)) {
                 $ids = [];
             }
 
@@ -953,7 +1003,7 @@ class IngredientController extends Controller
                 $decoded = json_decode($ids, true);
                 $ids = is_array($decoded) ? $decoded : [];
             }
-            if (!is_array($ids)) {
+            if (! is_array($ids)) {
                 $ids = [];
             }
 

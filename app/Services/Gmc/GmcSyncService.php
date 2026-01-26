@@ -1,10 +1,10 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Gmc;
 
 use App\Modules\Product\Models\Variant;
-use Google\Service\ShoppingContent;
 use Illuminate\Support\Facades\Log;
 
 class GmcSyncService
@@ -23,7 +23,7 @@ class GmcSyncService
         $debug = (bool) config('gmc.debug', false);
 
         $variant->loadMissing(['product.brand']);
-        if (!$variant->product) {
+        if (! $variant->product) {
             throw new \RuntimeException('Variant product is missing.');
         }
 
@@ -36,7 +36,7 @@ class GmcSyncService
             $productLength = $gmcProduct->getProductLength();
             $productWidth = $gmcProduct->getProductWidth();
             $productHeight = $gmcProduct->getProductHeight();
-            
+
             Log::info('[GMC] Prepared product for sync', [
                 'variant_id' => $variant->id,
                 'product_id' => $variant->product->id,
@@ -106,5 +106,3 @@ class GmcSyncService
         return ['offer_id' => $offerId, 'sent' => true];
     }
 }
-
-

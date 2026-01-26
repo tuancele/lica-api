@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Requests\Taxonomy;
 
 use Illuminate\Foundation\Http\FormRequest;
@@ -18,7 +19,7 @@ class UpdateTaxonomyRequest extends FormRequest
 
         return [
             'name' => ['required', 'string', 'min:1', 'max:250'],
-            'slug' => ['required', 'string', 'min:1', 'max:250', 'unique:posts,slug,' . $id],
+            'slug' => ['required', 'string', 'min:1', 'max:250', 'unique:posts,slug,'.$id],
             'image' => ['nullable', 'string', 'max:500'],
             'content' => ['nullable', 'string'],
             'status' => ['required', 'integer', 'in:0,1'],
@@ -31,4 +32,3 @@ class UpdateTaxonomyRequest extends FormRequest
         ];
     }
 }
-

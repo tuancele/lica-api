@@ -1,16 +1,15 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\User;
-use App\Modules\Product\Models\Product;
-use App\Modules\Product\Models\Variant;
 use App\Enums\ProductStatus;
 use App\Enums\ProductType;
+use App\Modules\Product\Models\Product;
+use App\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Session;
+use Tests\TestCase;
 
 class ProductControllerTest extends TestCase
 {
@@ -21,7 +20,7 @@ class ProductControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         // Create a test user
         $this->user = User::create([
             'name' => 'Test User',
@@ -86,7 +85,7 @@ class ProductControllerTest extends TestCase
         $response->assertJson([
             'status' => 'success',
         ]);
-        
+
         $this->assertDatabaseHas('posts', [
             'name' => 'New Product',
             'slug' => 'new-product',
@@ -161,7 +160,7 @@ class ProductControllerTest extends TestCase
         $response->assertJson([
             'status' => 'success',
         ]);
-        
+
         $this->assertDatabaseHas('posts', [
             'id' => $product->id,
             'name' => 'Updated Product',
@@ -188,7 +187,7 @@ class ProductControllerTest extends TestCase
         $response->assertJson([
             'status' => 'success',
         ]);
-        
+
         $this->assertDatabaseMissing('posts', [
             'id' => $product->id,
         ]);

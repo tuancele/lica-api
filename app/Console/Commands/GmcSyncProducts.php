@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Modules\Product\Models\Variant;
@@ -22,12 +23,13 @@ class GmcSyncProducts extends Command
 
         if (count($variantIds) === 0) {
             $this->error('No variant_id provided.');
+
             return self::INVALID;
         }
 
         foreach ($variantIds as $variantId) {
             $variant = Variant::with(['product.brand'])->find($variantId);
-            if (!$variant || !$variant->product) {
+            if (! $variant || ! $variant->product) {
                 $this->warn("Variant not found: {$variantId}");
                 continue;
             }
@@ -40,6 +42,3 @@ class GmcSyncProducts extends Command
         return self::SUCCESS;
     }
 }
-
-
-

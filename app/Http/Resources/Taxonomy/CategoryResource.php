@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Taxonomy;
 
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -21,7 +22,7 @@ class CategoryResource extends JsonResource
 
         $imageUrl = '';
         if ($rawImage !== '') {
-            if (preg_match_all('#https?://[^\s"\']+#', $rawImage, $matches) && !empty($matches[0])) {
+            if (preg_match_all('#https?://[^\s"\']+#', $rawImage, $matches) && ! empty($matches[0])) {
                 // Use the last absolute URL found
                 $imageUrl = (string) end($matches[0]);
             } elseif (str_starts_with($rawImage, 'http://') || str_starts_with($rawImage, 'https://')) {
@@ -50,4 +51,3 @@ class CategoryResource extends JsonResource
         ];
     }
 }
-

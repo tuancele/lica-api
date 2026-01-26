@@ -5,9 +5,9 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/**
+/*
  * Migration to update old products to new Shopee-style variant model
- * 
+ *
  * This migration:
  * 1. Sets option1_value for variants based on color/size combination
  * 2. Sets stock for variants based on product.stock
@@ -18,13 +18,13 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('variants') || !Schema::hasTable('posts')) {
+        if (! Schema::hasTable('variants') || ! Schema::hasTable('posts')) {
             return;
         }
 
         // Step 1: Update variants with option1_value, stock, and position
         // First, update stock based on product.stock
-        DB::statement("
+        DB::statement('
             UPDATE variants v
             INNER JOIN posts p ON v.product_id = p.id
             SET v.stock = CASE
@@ -33,7 +33,7 @@ return new class extends Migration
                 ELSE v.stock
             END
             WHERE v.stock IS NULL OR v.stock = 0
-        ");
+        ');
 
         // Step 2: Update option1_value based on color/size
         // Try to get color and size names if tables exist
@@ -76,7 +76,7 @@ return new class extends Migration
 
         // Step 3: Update position (ordered by id within each product)
         // Use a temporary table approach to avoid MySQL error 1093
-        DB::statement("
+        DB::statement('
             CREATE TEMPORARY TABLE IF NOT EXISTS temp_variant_positions AS
             SELECT 
                 v.id,
@@ -85,16 +85,16 @@ return new class extends Migration
                  WHERE v2.product_id = v.product_id 
                  AND v2.id <= v.id) - 1 as new_position
             FROM variants v
-        ");
-        
-        DB::statement("
+        ');
+
+        DB::statement('
             UPDATE variants v
             INNER JOIN temp_variant_positions t ON v.id = t.id
             SET v.position = t.new_position
             WHERE v.position IS NULL
-        ");
-        
-        DB::statement("DROP TEMPORARY TABLE IF EXISTS temp_variant_positions");
+        ');
+
+        DB::statement('DROP TEMPORARY TABLE IF EXISTS temp_variant_positions');
 
         // Step 4: Update products: set has_variants = 1 if product has variants
         DB::statement("
@@ -150,11 +150,11 @@ return new class extends Migration
         // This migration is data migration, cannot be fully reversed
         // But we can reset some fields if needed
         if (Schema::hasTable('variants')) {
-            DB::statement("
+            DB::statement('
                 UPDATE variants 
                 SET option1_value = NULL, stock = 0, position = 0
                 WHERE option1_value IS NOT NULL
-            ");
+            ');
         }
 
         if (Schema::hasTable('posts')) {

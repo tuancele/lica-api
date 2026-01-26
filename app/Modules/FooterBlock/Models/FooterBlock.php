@@ -1,25 +1,27 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\FooterBlock\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
 class FooterBlock extends Model
 {
-    protected $table = "footer_blocks";
-    
+    protected $table = 'footer_blocks';
+
     protected $fillable = [
         'title',
         'tags',
         'links',
         'status',
         'sort',
-        'user_id'
+        'user_id',
     ];
 
-    public function user(){
-        return $this->belongsTo('App\User','user_id','id');
+    public function user()
+    {
+        return $this->belongsTo('App\User', 'user_id', 'id');
     }
 
     protected $casts = [
@@ -36,6 +38,7 @@ class FooterBlock extends Model
             return $value;
         }
         $decoded = json_decode($value, true);
+
         return is_array($decoded) ? $decoded : [];
     }
 
@@ -48,6 +51,7 @@ class FooterBlock extends Model
             return $value;
         }
         $decoded = json_decode($value, true);
+
         return is_array($decoded) ? $decoded : [];
     }
 }

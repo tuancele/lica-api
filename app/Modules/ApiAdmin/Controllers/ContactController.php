@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
@@ -17,26 +18,32 @@ class ContactController extends Controller
     {
         try {
             $filters = [];
-            if ($request->has('status') && $request->status !== '') $filters['status'] = $request->status;
-            if ($request->has('keyword') && $request->keyword !== '') $filters['keyword'] = $request->keyword;
-            
+            if ($request->has('status') && $request->status !== '') {
+                $filters['status'] = $request->status;
+            }
+            if ($request->has('keyword') && $request->keyword !== '') {
+                $filters['keyword'] = $request->keyword;
+            }
+
             $perPage = (int) $request->get('limit', 20);
             $perPage = $perPage > 0 && $perPage <= 100 ? $perPage : 20;
-            
+
             $query = Contact::query();
-            if (isset($filters['status'])) $query->where('status', $filters['status']);
+            if (isset($filters['status'])) {
+                $query->where('status', $filters['status']);
+            }
             if (isset($filters['keyword'])) {
                 $keyword = $filters['keyword'];
                 $query->where(function ($q) use ($keyword) {
-                    $q->where('name', 'like', '%' . $keyword . '%')
-                      ->orWhere('email', 'like', '%' . $keyword . '%')
-                      ->orWhere('phone', 'like', '%' . $keyword . '%');
+                    $q->where('name', 'like', '%'.$keyword.'%')
+                        ->orWhere('email', 'like', '%'.$keyword.'%')
+                        ->orWhere('phone', 'like', '%'.$keyword.'%');
                 });
             }
             $query->orderBy('id', 'desc');
-            
+
             $contacts = $query->paginate($perPage);
-            
+
             return response()->json([
                 'success' => true,
                 'data' => ContactResource::collection($contacts->items()),
@@ -48,7 +55,8 @@ class ContactController extends Controller
                 ],
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get contacts list failed: ' . $e->getMessage());
+            Log::error('Get contacts list failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get contacts list'], 500);
         }
     }
@@ -57,13 +65,16 @@ class ContactController extends Controller
     {
         try {
             $contact = Contact::find($id);
-            if (!$contact) return response()->json(['success' => false, 'message' => 'Contact not found'], 404);
-            
+            if (! $contact) {
+                return response()->json(['success' => false, 'message' => 'Contact not found'], 404);
+            }
+
             $contact->update(['status' => '1']);
-            
+
             return response()->json(['success' => true, 'data' => new ContactResource($contact->fresh())], 200);
         } catch (\Exception $e) {
-            Log::error('Get contact details failed: ' . $e->getMessage());
+            Log::error('Get contact details failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get contact details'], 500);
         }
     }
@@ -72,11 +83,15 @@ class ContactController extends Controller
     {
         try {
             $contact = Contact::find($id);
-            if (!$contact) return response()->json(['success' => false, 'message' => 'Contact not found'], 404);
+            if (! $contact) {
+                return response()->json(['success' => false, 'message' => 'Contact not found'], 404);
+            }
             $contact->delete();
+
             return response()->json(['success' => true, 'message' => 'Contact deleted successfully'], 200);
         } catch (\Exception $e) {
-            Log::error('Delete contact failed: ' . $e->getMessage());
+            Log::error('Delete contact failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to delete contact'], 500);
         }
     }
@@ -89,13 +104,16 @@ class ContactController extends Controller
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
             $contact = Contact::find($id);
-            if (!$contact) return response()->json(['success' => false, 'message' => 'Contact not found'], 404);
+            if (! $contact) {
+                return response()->json(['success' => false, 'message' => 'Contact not found'], 404);
+            }
             $contact->update(['status' => $request->status]);
+
             return response()->json(['success' => true, 'message' => 'Contact status updated successfully', 'data' => new ContactResource($contact->fresh())], 200);
         } catch (\Exception $e) {
-            Log::error('Update contact status failed: ' . $e->getMessage());
+            Log::error('Update contact status failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to update contact status'], 500);
         }
     }
 }
-

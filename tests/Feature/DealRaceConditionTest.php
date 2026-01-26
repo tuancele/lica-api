@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Feature;
 
 use App\Modules\Deal\Models\Deal;
@@ -29,7 +30,7 @@ class DealRaceConditionTest extends TestCase
 
     private function getOrCreateUserId(): int
     {
-        if (!Schema::hasTable('users')) {
+        if (! Schema::hasTable('users')) {
             // Fallback for minimal environments
             Schema::create('users', function ($table) {
                 $table->increments('id');
@@ -47,7 +48,7 @@ class DealRaceConditionTest extends TestCase
 
         $data = [
             'name' => 'Test User',
-            'email' => 'test-' . time() . '@example.com',
+            'email' => 'test-'.time().'@example.com',
             'password' => bcrypt('password'),
             'created_at' => now(),
             'updated_at' => now(),
@@ -59,6 +60,7 @@ class DealRaceConditionTest extends TestCase
         } catch (\Throwable $e) {
             // Try without timestamps if schema differs
             unset($data['created_at'], $data['updated_at']);
+
             return (int) DB::table('users')->insertGetId($data);
         }
     }
@@ -70,15 +72,18 @@ class DealRaceConditionTest extends TestCase
         $this->ensureTables();
 
         // Fake Inventory service to always succeed
-        $this->app->instance(InventoryServiceInterface::class, new class implements InventoryServiceInterface {
+        $this->app->instance(InventoryServiceInterface::class, new class implements InventoryServiceInterface
+        {
             public function processOrder(array $orderItems): array
             {
                 return ['success' => true];
             }
+
             public function getAvailableStock(int $productId, ?int $variantId = null): int
             {
                 return 10;
             }
+
             public function validateFlashSaleStock(int $productId, ?int $variantId, int $flashStockLimit): array
             {
                 return [];
@@ -86,7 +91,8 @@ class DealRaceConditionTest extends TestCase
         });
 
         // Fake PriceEngine to simplify price calculation
-        $this->app->instance(PriceEngineServiceInterface::class, new class implements PriceEngineServiceInterface {
+        $this->app->instance(PriceEngineServiceInterface::class, new class implements PriceEngineServiceInterface
+        {
             public function calculateDisplayPrice(int $productId, ?int $variantId = null): array
             {
                 return [
@@ -97,6 +103,7 @@ class DealRaceConditionTest extends TestCase
                     'discount_percent' => 0,
                 ];
             }
+
             public function calculatePriceWithQuantity(int $productId, ?int $variantId = null, int $quantity = 1): array
             {
                 return [
@@ -106,6 +113,7 @@ class DealRaceConditionTest extends TestCase
                     'warning' => null,
                 ];
             }
+
             public function setWarehouseService(WarehouseServiceInterface $warehouseService): void
             {
                 // no-op
@@ -113,87 +121,108 @@ class DealRaceConditionTest extends TestCase
         });
 
         // Fake Warehouse service (đầy đủ chữ ký)
-        $this->app->instance(WarehouseServiceInterface::class, new class implements WarehouseServiceInterface {
+        $this->app->instance(WarehouseServiceInterface::class, new class implements WarehouseServiceInterface
+        {
             private function paginator(): LengthAwarePaginator
             {
                 return new \Illuminate\Pagination\LengthAwarePaginator([], 0, 10);
             }
+
             public function getInventory(array $filters = [], int $perPage = 10): LengthAwarePaginator
             {
                 return $this->paginator();
             }
+
             public function getVariantInventory(int $variantId): array
             {
                 return [];
             }
+
             public function getImportReceipts(array $filters = [], int $perPage = 10): LengthAwarePaginator
             {
                 return $this->paginator();
             }
+
             public function getImportReceipt(int $id): Warehouse
             {
-                return new Warehouse();
+                return new Warehouse;
             }
+
             public function createImportReceipt(array $data): Warehouse
             {
-                return new Warehouse();
+                return new Warehouse;
             }
+
             public function updateImportReceipt(int $id, array $data): Warehouse
             {
-                return new Warehouse();
+                return new Warehouse;
             }
+
             public function deleteImportReceipt(int $id): bool
             {
                 return true;
             }
+
             public function getExportReceipts(array $filters = [], int $perPage = 10): LengthAwarePaginator
             {
                 return $this->paginator();
             }
+
             public function getExportReceipt(int $id): Warehouse
             {
-                return new Warehouse();
+                return new Warehouse;
             }
+
             public function createExportReceipt(array $data): Warehouse
             {
-                return new Warehouse();
+                return new Warehouse;
             }
+
             public function updateExportReceipt(int $id, array $data): Warehouse
             {
-                return new Warehouse();
+                return new Warehouse;
             }
+
             public function deleteExportReceipt(int $id): bool
             {
                 return true;
             }
+
             public function searchProducts(string $keyword, int $limit = 50): array
             {
                 return [];
             }
+
             public function getProductVariants(int $productId): array
             {
                 return [];
             }
+
             public function getVariantStock(int $variantId): array
             {
                 return ['current_stock' => 5];
             }
+
             public function getVariantPrice(int $variantId, string $type = 'export'): array
             {
                 return ['price' => 100];
             }
+
             public function getQuantityStatistics(array $filters = [], int $perPage = 10): LengthAwarePaginator
             {
                 return $this->paginator();
             }
+
             public function getRevenueStatistics(array $filters = [], int $perPage = 10): LengthAwarePaginator
             {
                 return $this->paginator();
             }
+
             public function getSummaryStatistics(array $filters = []): array
             {
                 return [];
             }
+
             public function deductStock(int $variantId, int $quantity, string $reason = 'order'): bool
             {
                 return true;
@@ -203,16 +232,16 @@ class DealRaceConditionTest extends TestCase
 
     protected function tearDown(): void
     {
-        if (!empty($this->createdSaleDealIds)) {
+        if (! empty($this->createdSaleDealIds)) {
             DB::table('deal_sales')->whereIn('id', $this->createdSaleDealIds)->delete();
         }
-        if (!empty($this->createdDealIds)) {
+        if (! empty($this->createdDealIds)) {
             DB::table('deals')->whereIn('id', $this->createdDealIds)->delete();
         }
-        if (!empty($this->createdVariantIds)) {
+        if (! empty($this->createdVariantIds)) {
             DB::table('variants')->whereIn('id', $this->createdVariantIds)->delete();
         }
-        if (!empty($this->createdProductIds)) {
+        if (! empty($this->createdProductIds)) {
             DB::table('posts')->whereIn('id', $this->createdProductIds)->delete();
         }
         parent::tearDown();
@@ -223,7 +252,7 @@ class DealRaceConditionTest extends TestCase
      */
     private function ensureTables(): void
     {
-        if (!Schema::hasTable('deals')) {
+        if (! Schema::hasTable('deals')) {
             Schema::create('deals', function ($table) {
                 $table->increments('id');
                 $table->string('name');
@@ -235,7 +264,7 @@ class DealRaceConditionTest extends TestCase
                 $table->timestamps();
             });
         }
-        if (!Schema::hasTable('deal_sales')) {
+        if (! Schema::hasTable('deal_sales')) {
             Schema::create('deal_sales', function ($table) {
                 $table->increments('id');
                 $table->unsignedInteger('deal_id');
@@ -248,7 +277,7 @@ class DealRaceConditionTest extends TestCase
                 $table->timestamps();
             });
         }
-        if (!Schema::hasTable('posts')) {
+        if (! Schema::hasTable('posts')) {
             Schema::create('posts', function ($table) {
                 $table->increments('id');
                 $table->string('name');
@@ -260,7 +289,7 @@ class DealRaceConditionTest extends TestCase
                 $table->timestamps();
             });
         }
-        if (!Schema::hasTable('variants')) {
+        if (! Schema::hasTable('variants')) {
             Schema::create('variants', function ($table) {
                 $table->increments('id');
                 $table->unsignedInteger('product_id');
@@ -280,7 +309,7 @@ class DealRaceConditionTest extends TestCase
 
         $product = Product::create([
             'name' => 'Deal Product',
-            'slug' => 'deal-product-' . uniqid(),
+            'slug' => 'deal-product-'.uniqid(),
             'status' => 1,
             'type' => 'product',
             'has_variants' => 1,
@@ -346,4 +375,3 @@ class DealRaceConditionTest extends TestCase
         $this->assertEquals(1, SaleDeal::first()->buy);
     }
 }
-

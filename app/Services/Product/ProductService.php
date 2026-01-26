@@ -1,30 +1,30 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Product;
 
+use App\Enums\ProductStatus;
+use App\Enums\ProductType;
+use App\Exceptions\ProductCreationException;
+use App\Exceptions\ProductDeletionException;
+use App\Exceptions\ProductNotFoundException;
+use App\Exceptions\ProductUpdateException;
+use App\Modules\Dictionary\Models\IngredientPaulas;
+use App\Modules\Order\Models\OrderDetail;
+use App\Modules\Product\Models\Product;
+use App\Modules\Product\Models\Variant;
+use App\Modules\Redirection\Models\Redirection;
 use App\Repositories\Product\ProductRepositoryInterface;
 use App\Services\Image\ImageServiceInterface;
 use App\Services\Warehouse\WarehouseServiceInterface;
-use App\Modules\Product\Models\Product;
-use App\Modules\Product\Models\Variant;
-use App\Modules\Dictionary\Models\IngredientPaulas;
-use App\Modules\Redirection\Models\Redirection;
-use App\Modules\Order\Models\OrderDetail;
-use App\Enums\ProductStatus;
-use App\Enums\ProductType;
-use App\Exceptions\ProductNotFoundException;
-use App\Exceptions\ProductCreationException;
-use App\Exceptions\ProductUpdateException;
-use App\Exceptions\ProductDeletionException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Auth;
 
 /**
- * Service class for Product business logic
- * 
+ * Service class for Product business logic.
+ *
  * This service handles all product-related business operations,
  * separating business logic from controllers and data access.
  */
@@ -37,16 +37,16 @@ class ProductService implements ProductServiceInterface
     ) {}
 
     /**
-     * Create a new product
-     * 
-     * @param array $data Product data
-     * @return Product
+     * Create a new product.
+     *
+     * @param  array  $data  Product data
+     *
      * @throws \Exception
      */
     public function createProduct(array $data): Product
     {
         DB::beginTransaction();
-        
+
         try {
             // Process gallery images (create: không có existing gallery)
             $gallery = $this->imageService->processGallery(
@@ -54,13 +54,13 @@ class ProductService implements ProductServiceInterface
                 $data['r2_session_key'] ?? null,
                 []
             );
-            
+
             // Get main image from gallery
             $image = $this->imageService->getMainImage($gallery);
-            
+
             // Process ingredients
             $ingredient = $this->processIngredients($data['ingredient'] ?? '');
-            
+
             // Prepare product data
             $productData = [
                 'name' => $data['name'],
@@ -75,7 +75,7 @@ class ProductService implements ProductServiceInterface
                 'origin_id' => $data['origin_id'] ?? null,
                 'status' => $data['status'] ?? ProductStatus::ACTIVE->value,
                 'type' => ProductType::PRODUCT->value,
-                'has_variants' => (int)($data['has_variants'] ?? 0),
+                'has_variants' => (int) ($data['has_variants'] ?? 0),
                 'option1_name' => ($data['has_variants'] ?? 0) ? ($data['option1_name'] ?? null) : null,
                 'feature' => $data['feature'] ?? '0',
                 'best' => $data['best'] ?? '0',
@@ -92,23 +92,23 @@ class ProductService implements ProductServiceInterface
                 'width' => $data['width'] ?? 0,
                 'height' => $data['height'] ?? 0,
             ];
-            
+
             // Create product
             $product = $this->repository->create($productData);
 
-            $hasVariants = (int)($data['has_variants'] ?? 0) === 1;
+            $hasVariants = (int) ($data['has_variants'] ?? 0) === 1;
             $createdVariants = [];
-            
+
             if ($hasVariants) {
                 $createdVariants = $this->syncVariantsFromJson($product->id, $data['variants_json'] ?? '', $image);
             } else {
                 // Create default variant (single product)
                 $variant = $this->createDefaultVariant($product->id, [
-                    'sku' => $data['sku'] ?? 'SKU-' . time() . '-' . rand(10, 99),
+                    'sku' => $data['sku'] ?? 'SKU-'.time().'-'.rand(10, 99),
                     'image' => $image,
                     'price' => $this->parsePrice($data['price'] ?? 0),
                     'weight' => $data['weight'] ?? 0,
-                    'stock' => (int)($data['stock_qty'] ?? 0),
+                    'stock' => (int) ($data['stock_qty'] ?? 0),
                 ]);
                 if ($variant) {
                     // Reload variant to ensure we have fresh data
@@ -116,21 +116,21 @@ class ProductService implements ProductServiceInterface
                     $createdVariants[] = $variant;
                 }
             }
-            
+
             DB::commit();
-            
+
             // Reload product to ensure fresh data
             $product->refresh();
-            
+
             // Auto create import receipt if initial stock > 0
             // Load all variants for the product to ensure we have complete data
             // Use fresh() to ensure we get the latest data from database
             $allVariants = Variant::where('product_id', $product->id)->get();
-            
+
             Log::info('Loaded variants for import receipt creation', [
                 'product_id' => $product->id,
                 'variants_count' => $allVariants->count(),
-                'variants' => $allVariants->map(function($v) {
+                'variants' => $allVariants->map(function ($v) {
                     return [
                         'id' => $v->id,
                         'sku' => $v->sku,
@@ -139,9 +139,9 @@ class ProductService implements ProductServiceInterface
                     ];
                 })->toArray(),
             ]);
-            
+
             $this->createInitialStockImportReceipt($product, $allVariants->all());
-            
+
             // Clear cache (selective clearing instead of flush)
             Cache::forget("product:{$product->id}");
             // Only use tags if cache driver supports it
@@ -149,55 +149,54 @@ class ProductService implements ProductServiceInterface
                 Cache::tags(['products:list'])->flush();
             } catch (\Exception $e) {
                 // Cache driver doesn't support tags, use regular flush for list cache
-                Cache::forget("products:list:*");
+                Cache::forget('products:list:*');
             }
-            
+
             // Clear session URLs
             $this->imageService->clearSessionUrls($data['r2_session_key'] ?? null);
-            
+
             Log::info('Product created successfully', [
                 'product_id' => $product->id,
-                'user_id' => auth()->id()
+                'user_id' => auth()->id(),
             ]);
-            
+
             return $product;
-            
         } catch (\Exception $e) {
             DB::rollBack();
-            
+
             Log::error('Product creation failed', [
                 'error' => $e->getMessage(),
-                'data' => $data
+                'data' => $data,
             ]);
-            
+
             throw new ProductCreationException($e->getMessage());
         }
     }
 
     /**
-     * Update an existing product
-     * 
-     * @param int $id Product ID
-     * @param array $data Updated product data
-     * @return Product
+     * Update an existing product.
+     *
+     * @param  int  $id  Product ID
+     * @param  array  $data  Updated product data
+     *
      * @throws ProductNotFoundException|ProductUpdateException
      */
     public function updateProduct(int $id, array $data): Product
     {
         $product = $this->repository->find($id);
-        
-        if (!$product) {
+
+        if (! $product) {
             throw new ProductNotFoundException("Product with ID {$id} not found");
         }
-        
+
         DB::beginTransaction();
-        
+
         try {
             // Process gallery images
             // Truyền thêm gallery hiện tại từ DB để tránh mất ảnh cũ nếu vì lý do nào đó
             // form không gửi đủ imageOther[]. Session chỉ chứa ảnh mới upload.
             $existingGallery = [];
-            if (!empty($product->gallery)) {
+            if (! empty($product->gallery)) {
                 $decoded = json_decode($product->gallery, true);
                 $existingGallery = is_array($decoded) ? $decoded : [];
             }
@@ -208,7 +207,7 @@ class ProductService implements ProductServiceInterface
             // - Xóa ảnh phải explicit qua imageOtherRemoved[] để không bị restore.
             // - Nếu form không gửi imageOther[] (user không đụng vào gallery), dùng gallery hiện tại từ DB.
             $formImages = $data['imageOther'] ?? [];
-            if (!is_array($formImages)) {
+            if (! is_array($formImages)) {
                 $formImages = [];
             }
             // Loại bỏ giá trị rỗng / null trước khi xử lý
@@ -217,7 +216,7 @@ class ProductService implements ProductServiceInterface
             }));
 
             $removed = $data['imageOtherRemoved'] ?? [];
-            if (!is_array($removed)) {
+            if (! is_array($removed)) {
                 $removed = [];
             }
             $removed = array_values(array_filter($removed, function ($v) {
@@ -225,17 +224,17 @@ class ProductService implements ProductServiceInterface
             }));
 
             // Remove deleted from existing and form list
-            if (!empty($removed)) {
+            if (! empty($removed)) {
                 $existingGallery = array_values(array_diff($existingGallery, $removed));
                 $formImages = array_values(array_diff($formImages, $removed));
             }
 
             $useExisting = empty($formImages);
 
-            if (!$useExisting) {
+            if (! $useExisting) {
                 // If DOM/serialize missed some existing images, append them back (but not those removed)
                 foreach ($existingGallery as $oldUrl) {
-                    if (!in_array($oldUrl, $formImages, true)) {
+                    if (! in_array($oldUrl, $formImages, true)) {
                         $formImages[] = $oldUrl;
                     }
                 }
@@ -246,18 +245,18 @@ class ProductService implements ProductServiceInterface
                 $data['r2_session_key'] ?? null,
                 $useExisting ? $existingGallery : []
             );
-            
+
             // Get main image from gallery
             $image = $this->imageService->getMainImage($gallery) ?? $product->image;
-            
+
             // Process ingredients
-            $ingredient = isset($data['ingredient']) 
+            $ingredient = isset($data['ingredient'])
                 ? $this->processIngredients($data['ingredient'])
                 : $product->ingredient;
-            
+
             // Store old slug for redirection
             $oldSlug = $product->slug;
-            
+
             // Prepare update data
             $updateData = [
                 'name' => $data['name'],
@@ -271,8 +270,8 @@ class ProductService implements ProductServiceInterface
                 'brand_id' => $data['brand_id'] ?? $product->brand_id,
                 'origin_id' => $data['origin_id'] ?? $product->origin_id,
                 'status' => $data['status'] ?? $product->status,
-                'has_variants' => (int)($data['has_variants'] ?? ($product->has_variants ?? 0)),
-                'option1_name' => ((int)($data['has_variants'] ?? ($product->has_variants ?? 0)) === 1) ? ($data['option1_name'] ?? $product->option1_name) : null,
+                'has_variants' => (int) ($data['has_variants'] ?? ($product->has_variants ?? 0)),
+                'option1_name' => ((int) ($data['has_variants'] ?? ($product->has_variants ?? 0)) === 1) ? ($data['option1_name'] ?? $product->option1_name) : null,
                 'feature' => $data['feature'] ?? $product->feature,
                 'best' => $data['best'] ?? $product->best,
                 'stock' => $data['stock'] ?? $product->stock,
@@ -287,12 +286,12 @@ class ProductService implements ProductServiceInterface
                 'width' => $data['width'] ?? $product->width,
                 'height' => $data['height'] ?? $product->height,
             ];
-            
+
             // Update product
             $this->repository->update($id, $updateData);
 
             // Sync variants
-            $hasVariants = (int)($data['has_variants'] ?? 0) === 1;
+            $hasVariants = (int) ($data['has_variants'] ?? 0) === 1;
             if ($hasVariants) {
                 $this->syncVariantsFromJson($id, $data['variants_json'] ?? '', $image);
             } else {
@@ -300,18 +299,18 @@ class ProductService implements ProductServiceInterface
                     'sku' => $data['sku'] ?? null,
                     'price' => $this->parsePrice($data['price'] ?? 0),
                     'weight' => $data['weight'] ?? 0,
-                    'stock' => (int)($data['stock_qty'] ?? 0),
+                    'stock' => (int) ($data['stock_qty'] ?? 0),
                     'image' => $image,
                 ]);
             }
-            
+
             // Handle slug change (create redirection)
             if ($oldSlug !== $data['slug']) {
                 $this->handleSlugChange($oldSlug, $data['slug']);
             }
-            
+
             DB::commit();
-            
+
             // Clear cache (selective clearing instead of flush)
             Cache::forget("product:{$id}");
             Cache::forget("product:{$id}:relations");
@@ -321,60 +320,59 @@ class ProductService implements ProductServiceInterface
             } catch (\Exception $e) {
                 // Cache driver doesn't support tags, skip
             }
-            
+
             // Clear session URLs
             $this->imageService->clearSessionUrls($data['r2_session_key'] ?? null);
-            
+
             Log::info('Product updated successfully', [
                 'product_id' => $id,
-                'user_id' => auth()->id()
+                'user_id' => auth()->id(),
             ]);
-            
+
             return $this->repository->find($id);
-            
         } catch (\Exception $e) {
             DB::rollBack();
-            
+
             Log::error('Product update failed', [
                 'product_id' => $id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
-            
+
             throw new ProductUpdateException($e->getMessage());
         }
     }
 
     /**
-     * Delete a product
-     * 
-     * @param int $id Product ID
-     * @return bool
+     * Delete a product.
+     *
+     * @param  int  $id  Product ID
+     *
      * @throws ProductNotFoundException|ProductDeletionException
      */
     public function deleteProduct(int $id): bool
     {
         $product = $this->repository->find($id);
-        
-        if (!$product) {
+
+        if (! $product) {
             throw new ProductNotFoundException("Product with ID {$id} not found");
         }
-        
+
         // Check if product has orders
         if ($this->hasOrders($id)) {
             throw new ProductDeletionException('Không thể xóa sản phẩm đã có đơn hàng');
         }
-        
+
         DB::beginTransaction();
-        
+
         try {
             // Delete variants first
             Variant::where('product_id', $id)->delete();
-            
+
             // Delete product
             $this->repository->delete($id);
-            
+
             DB::commit();
-            
+
             // Clear cache (selective clearing instead of flush)
             Cache::forget("product:{$id}");
             Cache::forget("product:{$id}:relations");
@@ -384,49 +382,46 @@ class ProductService implements ProductServiceInterface
             } catch (\Exception $e) {
                 // Cache driver doesn't support tags, skip
             }
-            
+
             Log::info('Product deleted successfully', [
                 'product_id' => $id,
-                'user_id' => auth()->id()
+                'user_id' => auth()->id(),
             ]);
-            
+
             return true;
-            
         } catch (\Exception $e) {
             DB::rollBack();
-            
+
             Log::error('Product deletion failed', [
                 'product_id' => $id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
-            
+
             throw new ProductDeletionException($e->getMessage());
         }
     }
 
     /**
-     * Get product with all relations
-     * 
-     * @param int $id Product ID
-     * @return Product
+     * Get product with all relations.
+     *
+     * @param  int  $id  Product ID
+     *
      * @throws ProductNotFoundException
      */
     public function getProductWithRelations(int $id): Product
     {
         $product = $this->repository->findWithRelations($id);
-        
-        if (!$product) {
+
+        if (! $product) {
             throw new ProductNotFoundException("Product with ID {$id} not found");
         }
-        
+
         return $product;
     }
 
     /**
-     * Get paginated products with filters
-     * 
-     * @param array $filters
-     * @param int $perPage
+     * Get paginated products with filters.
+     *
      * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator
      */
     public function getProducts(array $filters = [], int $perPage = 10)
@@ -435,23 +430,19 @@ class ProductService implements ProductServiceInterface
     }
 
     /**
-     * Create default variant for product
-     * 
-     * @param int $productId
-     * @param array $data
-     * @return Variant|null
+     * Create default variant for product.
      */
     private function createDefaultVariant(int $productId, array $data): ?Variant
     {
-        $stock = (int)($data['stock'] ?? 0);
-        
+        $stock = (int) ($data['stock'] ?? 0);
+
         Log::info('Creating default variant', [
             'product_id' => $productId,
             'sku' => $data['sku'] ?? 'N/A',
             'stock' => $stock,
             'price' => $data['price'] ?? 0,
         ]);
-        
+
         $variant = Variant::create([
             'sku' => $data['sku'],
             'product_id' => $productId,
@@ -465,31 +456,28 @@ class ProductService implements ProductServiceInterface
             'position' => 0,
             'user_id' => auth()->id(),
         ]);
-        
+
         // Reload to ensure we have the saved data
         $variant->refresh();
-        
+
         Log::info('Default variant created', [
             'variant_id' => $variant->id,
             'stock_saved' => $variant->stock,
             'stock_expected' => $stock,
         ]);
-        
+
         return $variant;
     }
 
     /**
-     * Sync variants from variants_json (Shopee style 1-level)
+     * Sync variants from variants_json (Shopee style 1-level).
      *
-     * @param int $productId
-     * @param string $variantsJson
-     * @param string|null $fallbackImage
      * @return array Array of created/updated Variant models
      */
     private function syncVariantsFromJson(int $productId, string $variantsJson, ?string $fallbackImage = null): array
     {
         $payload = json_decode($variantsJson, true);
-        if (!is_array($payload) || !isset($payload['variants']) || !is_array($payload['variants'])) {
+        if (! is_array($payload) || ! isset($payload['variants']) || ! is_array($payload['variants'])) {
             throw new \InvalidArgumentException('Dữ liệu phân loại không hợp lệ (variants_json).');
         }
 
@@ -500,25 +488,25 @@ class ProductService implements ProductServiceInterface
 
         // Get product slug for auto-generating SKU if needed
         $product = Product::find($productId);
-        $productSlug = $product ? $product->slug : 'product-' . $productId;
+        $productSlug = $product ? $product->slug : 'product-'.$productId;
 
         // Auto-generate SKU for empty ones and validate uniqueness in payload
         $seenSku = [];
         foreach ($variants as $pos => &$v) {
-            $sku = trim((string)($v['sku'] ?? ''));
+            $sku = trim((string) ($v['sku'] ?? ''));
             if ($sku === '') {
                 // Auto-generate SKU: {product-slug}-{option1_value}-{position}
-                $optionValue = trim((string)($v['option1_value'] ?? ''));
+                $optionValue = trim((string) ($v['option1_value'] ?? ''));
                 $safeOption = preg_replace('/[^a-z0-9]+/i', '-', strtolower($optionValue));
                 $safeOption = trim($safeOption, '-');
                 if ($safeOption === '') {
                     $safeOption = 'variant';
                 }
-                $sku = $productSlug . '-' . $safeOption . '-' . ($pos + 1);
+                $sku = $productSlug.'-'.$safeOption.'-'.($pos + 1);
                 $v['sku'] = $sku; // Update in array for later use
             }
             if (in_array($sku, $seenSku, true)) {
-                throw new \InvalidArgumentException('SKU bị trùng trong danh sách phân loại: ' . $sku);
+                throw new \InvalidArgumentException('SKU bị trùng trong danh sách phân loại: '.$sku);
             }
             $seenSku[] = $sku;
         }
@@ -529,9 +517,9 @@ class ProductService implements ProductServiceInterface
         $createdVariants = [];
 
         foreach ($variants as $pos => $v) {
-            $variantId = isset($v['id']) && $v['id'] !== '' ? (int)$v['id'] : null;
-            $optionValue = trim((string)($v['option1_value'] ?? ''));
-            $sku = trim((string)($v['sku'] ?? ''));
+            $variantId = isset($v['id']) && $v['id'] !== '' ? (int) $v['id'] : null;
+            $optionValue = trim((string) ($v['option1_value'] ?? ''));
+            $sku = trim((string) ($v['sku'] ?? ''));
 
             // If SKU is still empty after auto-generation, generate again with position
             if ($sku === '') {
@@ -540,11 +528,13 @@ class ProductService implements ProductServiceInterface
                 if ($safeOption === '') {
                     $safeOption = 'variant';
                 }
-                $sku = $productSlug . '-' . $safeOption . '-' . ($pos + 1);
+                $sku = $productSlug.'-'.$safeOption.'-'.($pos + 1);
             }
 
-            $image = trim((string)($v['image'] ?? ''));
-            if ($image === '') $image = $fallbackImage;
+            $image = trim((string) ($v['image'] ?? ''));
+            if ($image === '') {
+                $image = $fallbackImage;
+            }
 
             $data = [
                 'sku' => $sku,
@@ -553,8 +543,8 @@ class ProductService implements ProductServiceInterface
                 'image' => $image,
                 'weight' => 0,
                 'price' => $this->parsePrice($v['price'] ?? 0),
-                'stock' => (int)($v['stock'] ?? 0),
-                'position' => (int)($v['position'] ?? $pos),
+                'stock' => (int) ($v['stock'] ?? 0),
+                'position' => (int) ($v['position'] ?? $pos),
                 'user_id' => auth()->id(),
             ];
 
@@ -566,7 +556,7 @@ class ProductService implements ProductServiceInterface
                     $baseSku = $sku;
                     $counter = 1;
                     while (Variant::where('sku', $sku)->where('id', '!=', $variantId)->exists()) {
-                        $sku = $baseSku . '-' . $counter;
+                        $sku = $baseSku.'-'.$counter;
                         $counter++;
                     }
                     $data['sku'] = $sku;
@@ -578,7 +568,7 @@ class ProductService implements ProductServiceInterface
                 $baseSku = $sku;
                 $counter = 1;
                 while (Variant::where('sku', $sku)->exists()) {
-                    $sku = $baseSku . '-' . $counter;
+                    $sku = $baseSku.'-'.$counter;
                     $counter++;
                 }
                 $data['sku'] = $sku;
@@ -597,24 +587,25 @@ class ProductService implements ProductServiceInterface
             }
             Variant::whereIn('id', $toDelete->all())->delete();
         }
-        
+
         return $createdVariants;
     }
 
     /**
-     * Sync to single/default variant (no variants mode)
+     * Sync to single/default variant (no variants mode).
      */
     private function syncSingleVariant(int $productId, array $data): void
     {
         $variants = Variant::where('product_id', $productId)->orderBy('position', 'asc')->get();
         if ($variants->count() === 0) {
             $this->createDefaultVariant($productId, [
-                'sku' => $data['sku'] ?? ('SKU-' . time() . '-' . rand(10, 99)),
+                'sku' => $data['sku'] ?? ('SKU-'.time().'-'.rand(10, 99)),
                 'image' => $data['image'] ?? null,
                 'price' => $data['price'] ?? 0,
                 'weight' => $data['weight'] ?? 0,
                 'stock' => $data['stock'] ?? 0,
             ]);
+
             return;
         }
 
@@ -633,7 +624,7 @@ class ProductService implements ProductServiceInterface
         $variant = $variants->first();
         $sku = $data['sku'] ?? $variant->sku;
         if ($sku && Variant::where('sku', $sku)->where('id', '!=', $variant->id)->exists()) {
-            throw new \InvalidArgumentException('SKU đã tồn tại: ' . $sku);
+            throw new \InvalidArgumentException('SKU đã tồn tại: '.$sku);
         }
 
         Variant::where('id', $variant->id)->update([
@@ -642,26 +633,22 @@ class ProductService implements ProductServiceInterface
             'image' => $data['image'] ?? $variant->image,
             'price' => $data['price'] ?? $variant->price,
             'weight' => $data['weight'] ?? $variant->weight,
-            'stock' => (int)($data['stock'] ?? ($variant->stock ?? 0)),
+            'stock' => (int) ($data['stock'] ?? ($variant->stock ?? 0)),
             'position' => 0,
             'user_id' => auth()->id(),
         ]);
     }
 
     /**
-     * Handle slug change by creating redirection
-     * 
-     * @param string $oldSlug
-     * @param string $newSlug
-     * @return void
+     * Handle slug change by creating redirection.
      */
     private function handleSlugChange(string $oldSlug, string $newSlug): void
     {
         try {
             // Check if redirection already exists
             $exists = Redirection::where('link_from', url($oldSlug))->exists();
-            
-            if (!$exists) {
+
+            if (! $exists) {
                 Redirection::create([
                     'link_from' => url($oldSlug),
                     'link_to' => url($newSlug),
@@ -672,23 +659,20 @@ class ProductService implements ProductServiceInterface
             }
         } catch (\Exception $e) {
             // Log error but don't stop the process
-            Log::error("Failed to create redirection: " . $e->getMessage());
+            Log::error('Failed to create redirection: '.$e->getMessage());
         }
     }
 
     /**
-     * Check if product has orders
-     * 
-     * @param int $productId
-     * @return bool
+     * Check if product has orders.
      */
     private function hasOrders(int $productId): bool
     {
         // Check if orderdetail table exists
-        if (!\Illuminate\Support\Facades\Schema::hasTable('orderdetail')) {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('orderdetail')) {
             return false;
         }
-        
+
         try {
             return OrderDetail::where('product_id', $productId)->exists();
         } catch (\Exception $e) {
@@ -699,10 +683,7 @@ class ProductService implements ProductServiceInterface
 
     /**
      * Process ingredients - convert plain text to linked ingredients
-     * Uses IngredientPaulas from /admin/dictionary/ingredient
-     * 
-     * @param string|null $content
-     * @return string
+     * Uses IngredientPaulas from /admin/dictionary/ingredient.
      */
     private function processIngredients(?string $content): string
     {
@@ -718,15 +699,15 @@ class ProductService implements ProductServiceInterface
 
         // Strip tags to work with plain text
         $cleanContent = strip_tags($content);
-        
+
         // Split by comma (standard ingredient separator)
         $parts = preg_split('/,\s*/', $cleanContent);
-        
+
         // Filter empty
-        $parts = array_filter($parts, function($value) { 
-            return trim($value) !== ''; 
+        $parts = array_filter($parts, function ($value) {
+            return trim($value) !== '';
         });
-        
+
         if (empty($parts)) {
             return $content;
         }
@@ -737,7 +718,7 @@ class ProductService implements ProductServiceInterface
                 ->select('id', 'name', 'slug')
                 ->get();
         });
-        
+
         // Build lookup map: lowercase name => ingredient object
         $ingMap = [];
         foreach ($ingredients as $ing) {
@@ -751,12 +732,12 @@ class ProductService implements ProductServiceInterface
         foreach ($parts as $part) {
             $trimPart = trim($part);
             $lowerPart = mb_strtolower($trimPart, 'UTF-8');
-            
+
             // Try exact match first
             if (isset($ingMap[$lowerPart])) {
                 $ing = $ingMap[$lowerPart];
                 // Link format: /ingredient-dictionary/{slug}
-                $processedParts[] = '<a href="/ingredient-dictionary/' . htmlspecialchars($ing->slug, ENT_QUOTES, 'UTF-8') . '" class="item_ingredient" data-id="' . htmlspecialchars($ing->slug, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($ing->name, ENT_QUOTES, 'UTF-8') . '</a>';
+                $processedParts[] = '<a href="/ingredient-dictionary/'.htmlspecialchars($ing->slug, ENT_QUOTES, 'UTF-8').'" class="item_ingredient" data-id="'.htmlspecialchars($ing->slug, ENT_QUOTES, 'UTF-8').'">'.htmlspecialchars($ing->name, ENT_QUOTES, 'UTF-8').'</a>';
             } else {
                 // Try partial match (ingredient name contains the part, or vice versa)
                 $matched = false;
@@ -764,14 +745,14 @@ class ProductService implements ProductServiceInterface
                     // Check if ingredient name contains the part, or part contains ingredient name
                     if (mb_strpos($lowerName, $lowerPart) !== false || mb_strpos($lowerPart, $lowerName) !== false) {
                         // Prefer longer matches (more specific)
-                        if (!$matched || mb_strlen($ing->name) > mb_strlen($matched->name)) {
+                        if (! $matched || mb_strlen($ing->name) > mb_strlen($matched->name)) {
                             $matched = $ing;
                         }
                     }
                 }
-                
+
                 if ($matched) {
-                    $processedParts[] = '<a href="/ingredient-dictionary/' . htmlspecialchars($matched->slug, ENT_QUOTES, 'UTF-8') . '" class="item_ingredient" data-id="' . htmlspecialchars($matched->slug, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($trimPart, ENT_QUOTES, 'UTF-8') . '</a>';
+                    $processedParts[] = '<a href="/ingredient-dictionary/'.htmlspecialchars($matched->slug, ENT_QUOTES, 'UTF-8').'" class="item_ingredient" data-id="'.htmlspecialchars($matched->slug, ENT_QUOTES, 'UTF-8').'">'.htmlspecialchars($trimPart, ENT_QUOTES, 'UTF-8').'</a>';
                 } else {
                     // No match found, keep original text
                     $processedParts[] = htmlspecialchars($trimPart, ENT_QUOTES, 'UTF-8');
@@ -783,30 +764,27 @@ class ProductService implements ProductServiceInterface
     }
 
     /**
-     * Parse price string to float
-     * 
-     * @param mixed $price
-     * @return float
+     * Parse price string to float.
+     *
+     * @param  mixed  $price
      */
     private function parsePrice($price): float
     {
         if (is_numeric($price)) {
             return (float) $price;
         }
-        
+
         if (is_string($price)) {
             return (float) str_replace(',', '', $price);
         }
-        
+
         return 0.0;
     }
 
     /**
-     * Auto create import receipt for initial stock when creating product
-     * 
-     * @param Product $product
-     * @param array $variants Array of Variant models
-     * @return void
+     * Auto create import receipt for initial stock when creating product.
+     *
+     * @param  array  $variants  Array of Variant models
      */
     private function createInitialStockImportReceipt(Product $product, array $variants): void
     {
@@ -824,11 +802,11 @@ class ProductService implements ProductServiceInterface
                 if ($variant instanceof Variant) {
                     // Reload variant to ensure we have the latest data
                     $variant->refresh();
-                    
-                    $stock = (int)($variant->stock ?? 0);
+
+                    $stock = (int) ($variant->stock ?? 0);
                     $variantId = $variant->id ?? null;
-                    $price = (float)($variant->price ?? 0);
-                    
+                    $price = (float) ($variant->price ?? 0);
+
                     Log::info('Checking variant for stock', [
                         'variant_id' => $variantId,
                         'stock' => $stock,
@@ -842,7 +820,7 @@ class ProductService implements ProductServiceInterface
                             'price' => $variant->price,
                         ],
                     ]);
-                    
+
                     if ($variantId && $stock > 0) {
                         $variantsWithStock[] = [
                             'variant' => $variant,
@@ -872,6 +850,7 @@ class ProductService implements ProductServiceInterface
                 Log::info('No variants with stock > 0, skipping import receipt creation', [
                     'product_id' => $product->id,
                 ]);
+
                 return; // No stock to import
             }
 
@@ -892,16 +871,17 @@ class ProductService implements ProductServiceInterface
                 Log::warning('No valid items prepared for import receipt', [
                     'product_id' => $product->id,
                 ]);
+
                 return;
             }
 
             // Generate import receipt code
-            $importCode = 'NH-PRODUCT-' . $product->id . '-' . time();
-            
+            $importCode = 'NH-PRODUCT-'.$product->id.'-'.time();
+
             // Ensure code is unique
             $counter = 1;
             while (\App\Modules\Warehouse\Models\Warehouse::where('code', $importCode)->exists()) {
-                $importCode = 'NH-PRODUCT-' . $product->id . '-' . time() . '-' . $counter;
+                $importCode = 'NH-PRODUCT-'.$product->id.'-'.time().'-'.$counter;
                 $counter++;
             }
 
@@ -915,7 +895,7 @@ class ProductService implements ProductServiceInterface
             // Create import receipt using WarehouseService
             $warehouse = $this->warehouseService->createImportReceipt([
                 'code' => $importCode,
-                'subject' => 'Nhập hàng ban đầu cho sản phẩm: ' . $product->name,
+                'subject' => 'Nhập hàng ban đầu cho sản phẩm: '.$product->name,
                 'content' => 'Tự động tạo phiếu nhập hàng khi tạo sản phẩm mới',
                 'vat_invoice' => '', // Không có VAT invoice cho nhập hàng ban đầu
                 'items' => $items,
@@ -928,7 +908,6 @@ class ProductService implements ProductServiceInterface
                 'warehouse_id' => $warehouse->id ?? null,
                 'variants_count' => count($items),
             ]);
-
         } catch (\Exception $e) {
             // Log error but don't fail product creation
             Log::error('Failed to auto create import receipt for new product', [

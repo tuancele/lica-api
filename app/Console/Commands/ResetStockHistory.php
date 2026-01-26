@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
@@ -36,12 +37,14 @@ class ResetStockHistory extends Command
         if ($this->option('dry-run')) {
             $this->info('🔍 DRY-RUN MODE: Chỉ hiển thị những gì sẽ được thực hiện');
             $this->showSummary();
+
             return 0;
         }
 
-        if (!$this->option('confirm')) {
-            if (!$this->confirm('Bạn có chắc chắn muốn tiếp tục?', false)) {
+        if (! $this->option('confirm')) {
+            if (! $this->confirm('Bạn có chắc chắn muốn tiếp tục?', false)) {
                 $this->info('Đã hủy.');
+
                 return 0;
             }
         }
@@ -114,7 +117,7 @@ class ResetStockHistory extends Command
         } catch (\Exception $e) {
             DB::statement('SET FOREIGN_KEY_CHECKS = 1');
 
-            $this->error('❌ Lỗi khi reset: ' . $e->getMessage());
+            $this->error('❌ Lỗi khi reset: '.$e->getMessage());
             Log::error('Stock history reset failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
@@ -125,7 +128,7 @@ class ResetStockHistory extends Command
     }
 
     /**
-     * Show summary of what would be affected
+     * Show summary of what would be affected.
      */
     private function showSummary(): void
     {
@@ -163,7 +166,7 @@ class ResetStockHistory extends Command
     }
 
     /**
-     * Get summary of inventory_stocks
+     * Get summary of inventory_stocks.
      */
     private function getSummary(): array
     {
@@ -177,7 +180,7 @@ class ResetStockHistory extends Command
             ')
             ->first();
 
-        if (!$result) {
+        if (! $result) {
             return [
                 'total_records' => 0,
                 'total_physical' => 0,
@@ -196,4 +199,3 @@ class ResetStockHistory extends Command
         ];
     }
 }
-

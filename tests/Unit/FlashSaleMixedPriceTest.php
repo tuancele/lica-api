@@ -1,27 +1,27 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
-use App\Services\Pricing\PriceEngineService;
 use App\Services\Inventory\InventoryService;
+use App\Services\Pricing\PriceEngineService;
 use App\Services\Warehouse\WarehouseServiceInterface;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Mockery;
+use Tests\TestCase;
 
 /**
- * Unit Test cho Flash Sale Mixed Pricing
- * 
+ * Unit Test cho Flash Sale Mixed Pricing.
+ *
  * Test Scenario 2: Mua vượt hạn mức Flash Sale
  * - Sản phẩm A có 100 tồn kho
  * - Flash Sale 5 sản phẩm giá 100k, giá thường 150k
  * - User đặt mua 15 sản phẩm
- * 
+ *
  * Kỳ vọng:
  * 1. Tổng tiền = (5 × 100k) + (10 × 150k) = 2.000k
  * 2. Tồn kho Flash Sale (buy) = 5
@@ -53,7 +53,7 @@ class FlashSaleMixedPriceTest extends TestCase
 
     private function ensureTables(): void
     {
-        if (!Schema::hasTable('posts')) {
+        if (! Schema::hasTable('posts')) {
             Schema::create('posts', function (Blueprint $table) {
                 $table->increments('id');
                 $table->string('name')->nullable();
@@ -66,7 +66,7 @@ class FlashSaleMixedPriceTest extends TestCase
             });
         }
 
-        if (!Schema::hasTable('variants')) {
+        if (! Schema::hasTable('variants')) {
             Schema::create('variants', function (Blueprint $table) {
                 $table->increments('id');
                 $table->unsignedInteger('product_id');
@@ -83,7 +83,7 @@ class FlashSaleMixedPriceTest extends TestCase
             });
         }
 
-        if (!Schema::hasTable('flashsales')) {
+        if (! Schema::hasTable('flashsales')) {
             Schema::create('flashsales', function (Blueprint $table) {
                 $table->increments('id');
                 $table->string('name')->nullable();
@@ -94,7 +94,7 @@ class FlashSaleMixedPriceTest extends TestCase
             });
         }
 
-        if (!Schema::hasTable('productsales')) {
+        if (! Schema::hasTable('productsales')) {
             Schema::create('productsales', function (Blueprint $table) {
                 $table->increments('id');
                 $table->unsignedInteger('flashsale_id');
@@ -115,7 +115,7 @@ class FlashSaleMixedPriceTest extends TestCase
     }
 
     /**
-     * Test Scenario 2: Mua vượt hạn mức Flash Sale
+     * Test Scenario 2: Mua vượt hạn mức Flash Sale.
      */
     public function test_mixed_pricing_when_exceeding_flash_sale_limit(): void
     {
@@ -128,7 +128,7 @@ class FlashSaleMixedPriceTest extends TestCase
 
             $productId = (int) DB::table('posts')->insertGetId([
                 'name' => 'Product A',
-                'slug' => 'product-a-' . $now,
+                'slug' => 'product-a-'.$now,
                 'type' => 'product',
                 'status' => '1',
                 'has_variants' => 0,
@@ -139,7 +139,7 @@ class FlashSaleMixedPriceTest extends TestCase
 
             $variantId = (int) DB::table('variants')->insertGetId([
                 'product_id' => $productId,
-                'sku' => 'SKU-A-' . $now,
+                'sku' => 'SKU-A-'.$now,
                 'price' => 150000, // Normal 150k
                 'stock' => 100,
                 'position' => 0,
@@ -213,7 +213,7 @@ class FlashSaleMixedPriceTest extends TestCase
 
             // Assert: Kiểm tra price_breakdown
             $this->assertCount(2, $priceResult['price_breakdown'], 'Phải có 2 loại giá trong breakdown');
-            
+
             $flashBreakdown = $priceResult['price_breakdown'][0];
             $this->assertEquals('flashsale', $flashBreakdown['type']);
             $this->assertEquals(5, $flashBreakdown['quantity']);
@@ -238,7 +238,7 @@ class FlashSaleMixedPriceTest extends TestCase
                     'variant_id' => $variantId,
                     'quantity' => 15,
                     'order_type' => 'flashsale',
-                ]
+                ],
             ];
 
             $processResult = $this->inventoryService->processOrder($orderItems);
@@ -260,14 +260,13 @@ class FlashSaleMixedPriceTest extends TestCase
             // Assert 4: Kiểm tra warning trong kết quả
             $this->assertArrayHasKey('warnings', $processResult, 'Kết quả phải có warnings');
             $this->assertNotEmpty($processResult['warnings'], 'Phải có ít nhất 1 warning');
-
         } catch (\Exception $e) {
             throw $e;
         }
     }
 
     /**
-     * Test: Mua trong hạn mức Flash Sale (không vượt mức)
+     * Test: Mua trong hạn mức Flash Sale (không vượt mức).
      */
     public function test_normal_pricing_when_within_flash_sale_limit(): void
     {
@@ -280,7 +279,7 @@ class FlashSaleMixedPriceTest extends TestCase
 
             $productId = (int) DB::table('posts')->insertGetId([
                 'name' => 'Product B',
-                'slug' => 'product-b-' . $now,
+                'slug' => 'product-b-'.$now,
                 'type' => 'product',
                 'status' => '1',
                 'has_variants' => 0,
@@ -291,7 +290,7 @@ class FlashSaleMixedPriceTest extends TestCase
 
             $variantId = (int) DB::table('variants')->insertGetId([
                 'product_id' => $productId,
-                'sku' => 'SKU-B-' . $now,
+                'sku' => 'SKU-B-'.$now,
                 'price' => 150000,
                 'stock' => 100,
                 'position' => 0,
@@ -354,7 +353,7 @@ class FlashSaleMixedPriceTest extends TestCase
                     'variant_id' => $variantId,
                     'quantity' => 5,
                     'order_type' => 'flashsale',
-                ]
+                ],
             ];
 
             $processResult = $this->inventoryService->processOrder($orderItems);
@@ -367,7 +366,6 @@ class FlashSaleMixedPriceTest extends TestCase
                 ->where('variant_id', $variantId)
                 ->value('buy');
             $this->assertEquals(5, $buy);
-
         } catch (\Exception $e) {
             throw $e;
         }

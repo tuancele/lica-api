@@ -1,20 +1,18 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Themes\Website\Controllers;
 
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use App\Services\Cart\CartService;
-use App\Modules\Promotion\Models\Promotion;
 use App\Modules\Address\Models\Address;
 use App\Modules\Location\Models\Province;
-use App\Modules\Pick\Models\Pick;
-use Illuminate\Support\Facades\Session;
+use App\Modules\Promotion\Models\Promotion;
+use App\Services\Cart\CartService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\DB;
-use GuzzleHttp\Client;
 
 class CheckoutControllerV2 extends Controller
 {
@@ -26,34 +24,33 @@ class CheckoutControllerV2 extends Controller
     }
 
     /**
-     * Parse location ID from string format (e.g., "01TTT" -> 1) or return integer as is
-     * 
-     * @param mixed $id
-     * @return int|null
+     * Parse location ID from string format (e.g., "01TTT" -> 1) or return integer as is.
+     *
+     * @param  mixed  $id
      */
     private function parseLocationId($id): ?int
     {
         if (is_null($id)) {
             return null;
         }
-        
+
         if (is_int($id)) {
             return $id;
         }
-        
+
         if (is_string($id)) {
             // Handle format like "01TTT", "008HH", "00328"
             // Extract numeric part from beginning
             if (preg_match('/^(\d+)/', $id, $matches)) {
-                return (int)$matches[1];
+                return (int) $matches[1];
             }
-            
+
             // Try direct conversion
             if (is_numeric($id)) {
-                return (int)$id;
+                return (int) $id;
             }
         }
-        
+
         return null;
     }
 
@@ -67,8 +64,9 @@ class CheckoutControllerV2 extends Controller
                 'has_cart' => Session::has('cart'),
             ]);
 
-            if (!Session::has('cart')) {
+            if (! Session::has('cart')) {
                 Log::warning('[CheckoutV2] index empty cart');
+
                 return redirect()->route('cart.v2.index')->with('error', 'Giỏ hàng của bạn đã trống');
             }
 
@@ -76,6 +74,7 @@ class CheckoutControllerV2 extends Controller
 
             if (empty($cartData['items'])) {
                 Log::warning('[CheckoutV2] index cart has no items');
+
                 return redirect()->route('cart.v2.index')->with('error', 'Giỏ hàng của bạn đã trống');
             }
 
@@ -91,11 +90,11 @@ class CheckoutControllerV2 extends Controller
             $promotions = Promotion::where([
                 ['status', '1'],
                 ['end', '>=', date('Y-m-d')],
-                ['order_sale', '<=', $cartData['summary']['subtotal'] ?? 0]
+                ['order_sale', '<=', $cartData['summary']['subtotal'] ?? 0],
             ])->limit(8)->get();
 
-            $token = md5(Session::getId() . 'checkout_secure_v2');
-            
+            $token = md5(Session::getId().'checkout_secure_v2');
+
             $shippingFee = 0;
             if ($address && $address->provinceid && $address->districtid && $address->wardid) {
                 try {
@@ -110,12 +109,12 @@ class CheckoutControllerV2 extends Controller
                         'ward_id' => $address->wardid,
                         'address' => $address->address ?? '',
                     ], $userId);
-                    
+
                     $subtotal = $cartData['summary']['subtotal'] ?? 0;
                     $discount = $cartData['summary']['discount'] ?? 0;
                     $cartData['summary']['shipping_fee'] = $shippingFee;
                     $cartData['summary']['total'] = $subtotal - $discount + $shippingFee;
-                    
+
                     Log::info('[CheckoutV2] index initial shipping fee calculated', [
                         'shipping_fee' => $shippingFee,
                         'subtotal' => $subtotal,
@@ -151,6 +150,7 @@ class CheckoutControllerV2 extends Controller
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return redirect()->route('cart.v2.index')->with('error', 'Không thể tải trang thanh toán');
         }
     }
@@ -174,6 +174,7 @@ class CheckoutControllerV2 extends Controller
                     'errors' => $validator->errors()->toArray(),
                     'code' => $request->code,
                 ]);
+
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Mã giảm giá không hợp lệ',
@@ -184,6 +185,7 @@ class CheckoutControllerV2 extends Controller
                 Log::warning('[CheckoutV2] applyCoupon already has coupon', [
                     'existing_coupon' => Session::get('ss_counpon'),
                 ]);
+
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Mã giảm giá không được dùng chung với mã khác',
@@ -203,12 +205,12 @@ class CheckoutControllerV2 extends Controller
                 $cart = $this->cartService->getCart($userId);
                 $discount = $cart['summary']['discount'] ?? 0;
                 $subtotal = $cart['summary']['subtotal'] ?? 0;
-                $feeship = (float)($request->feeship ?? 0);
-                
+                $feeship = (float) ($request->feeship ?? 0);
+
                 return response()->json([
                     'status' => 'success',
-                    'sale' => number_format($discount) . 'đ',
-                    'total' => number_format($subtotal - $discount + $feeship) . 'đ',
+                    'sale' => number_format($discount).'đ',
+                    'total' => number_format($subtotal - $discount + $feeship).'đ',
                     'id' => Session::get('ss_counpon')['id'] ?? null,
                     'code' => $request->code,
                     'message' => 'Áp dụng mã thành công',
@@ -227,6 +229,7 @@ class CheckoutControllerV2 extends Controller
                 'line' => $e->getLine(),
                 'code' => $request->code ?? null,
             ]);
+
             return response()->json([
                 'status' => 'error',
                 'message' => $e->getMessage() ?: 'Áp dụng mã thất bại',
@@ -234,7 +237,7 @@ class CheckoutControllerV2 extends Controller
         }
     }
 
-    public function removeCoupon(Request $request = null)
+    public function removeCoupon(?Request $request = null)
     {
         try {
             $userId = auth('member')->id();
@@ -255,11 +258,11 @@ class CheckoutControllerV2 extends Controller
             if ($request && $request->has('legacy_format')) {
                 $cart = $this->cartService->getCart($userId);
                 $subtotal = $cart['summary']['subtotal'] ?? 0;
-                $feeship = (float)($request->feeship ?? 0);
-                
+                $feeship = (float) ($request->feeship ?? 0);
+
                 return response()->json([
                     'status' => 'success',
-                    'total' => number_format($subtotal + $feeship) . 'đ',
+                    'total' => number_format($subtotal + $feeship).'đ',
                 ]);
             }
 
@@ -273,6 +276,7 @@ class CheckoutControllerV2 extends Controller
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Hủy mã thất bại',
@@ -304,6 +308,7 @@ class CheckoutControllerV2 extends Controller
                     'errors' => $validator->errors()->toArray(),
                     'request_data' => $request->all(),
                 ]);
+
                 return response()->json([
                     'success' => false,
                     'status' => 'false',
@@ -313,29 +318,30 @@ class CheckoutControllerV2 extends Controller
             }
 
             $userId = auth('member')->id();
-            
+
             // Parse to integer, handle both string format (e.g., "01TTT") and integer input
             $provinceIdRaw = $request->province_id ?? $request->province;
             $districtIdRaw = $request->district_id ?? $request->district;
             $wardIdRaw = $request->ward_id ?? $request->ward;
-            
+
             $provinceId = $this->parseLocationId($provinceIdRaw);
             $districtId = $this->parseLocationId($districtIdRaw);
             $wardId = $this->parseLocationId($wardIdRaw);
-            
+
             Log::info('[CheckoutV2] calculateShippingFee address parsed', [
                 'province_id' => $provinceId,
                 'district_id' => $districtId,
                 'ward_id' => $wardId,
                 'address' => $request->address ?? '',
             ]);
-            
-            if (!$provinceId || !$districtId || !$wardId) {
+
+            if (! $provinceId || ! $districtId || ! $wardId) {
                 Log::warning('[CheckoutV2] calculateShippingFee missing address info', [
                     'province_id' => $provinceId,
                     'district_id' => $districtId,
                     'ward_id' => $wardId,
                 ]);
+
                 return response()->json([
                     'success' => false,
                     'status' => 'false',
@@ -393,7 +399,7 @@ class CheckoutControllerV2 extends Controller
                 throw $e;
             }
 
-            if (!is_array($cart) || !isset($cart['summary'])) {
+            if (! is_array($cart) || ! isset($cart['summary'])) {
                 Log::warning('[CheckoutV2] calculateShippingFee cart structure invalid', [
                     'cart_type' => gettype($cart),
                     'cart_is_array' => is_array($cart),
@@ -404,22 +410,22 @@ class CheckoutControllerV2 extends Controller
 
             $discount = $cart['summary']['discount'] ?? 0;
             $subtotal = $cart['summary']['subtotal'] ?? 0;
-            
+
             Log::info('[CheckoutV2] calculateShippingFee cart summary extracted', [
                 'discount' => $discount,
                 'subtotal' => $subtotal,
             ]);
 
             // Ensure shippingFee is numeric
-            $shippingFee = is_numeric($shippingFee) ? (float)$shippingFee : 0.0;
-            $discount = is_numeric($discount) ? (float)$discount : 0.0;
-            $subtotal = is_numeric($subtotal) ? (float)$subtotal : 0.0;
+            $shippingFee = is_numeric($shippingFee) ? (float) $shippingFee : 0.0;
+            $discount = is_numeric($discount) ? (float) $discount : 0.0;
+            $subtotal = is_numeric($subtotal) ? (float) $subtotal : 0.0;
 
             $summary = [
                 'subtotal' => $subtotal,
                 'discount' => $discount,
                 'shipping_fee' => $shippingFee,
-                'total' => (float)($subtotal - $discount + $shippingFee),
+                'total' => (float) ($subtotal - $discount + $shippingFee),
             ];
 
             Log::info('[CheckoutV2] calculateShippingFee summary', [
@@ -437,7 +443,7 @@ class CheckoutControllerV2 extends Controller
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'shipping_fee' => (float)$shippingFee,
+                    'shipping_fee' => (float) $shippingFee,
                     'free_ship' => $shippingFee == 0,
                     'summary' => $summary,
                 ],
@@ -450,6 +456,7 @@ class CheckoutControllerV2 extends Controller
                 'trace' => $e->getTraceAsString(),
                 'request_data' => $request->all(),
             ]);
+
             return response()->json([
                 'success' => false,
                 'status' => 'false',
@@ -469,12 +476,13 @@ class CheckoutControllerV2 extends Controller
                 'request_data' => $request->except(['token']),
             ]);
 
-            $token = md5(Session::getId() . 'checkout_secure_v2');
+            $token = md5(Session::getId().'checkout_secure_v2');
             if ($request->token !== $token) {
                 Log::warning('[CheckoutV2] checkout invalid token', [
                     'expected_token' => $token,
                     'received_token' => $request->token,
                 ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Phiên giao dịch không hợp lệ',
@@ -485,18 +493,18 @@ class CheckoutControllerV2 extends Controller
             $provinceIdRaw = $request->province_id;
             $districtIdRaw = $request->district_id;
             $wardIdRaw = $request->ward_id;
-            
+
             $provinceId = $this->parseLocationId($provinceIdRaw);
             $districtId = $this->parseLocationId($districtIdRaw);
             $wardId = $this->parseLocationId($wardIdRaw);
-            
+
             // Merge parsed values back to request for validation
             $request->merge([
                 'province_id' => $provinceId,
                 'district_id' => $districtId,
                 'ward_id' => $wardId,
             ]);
-            
+
             $validator = Validator::make($request->all(), [
                 'full_name' => 'required|string|max:255',
                 'phone' => 'required|string|max:20',
@@ -513,6 +521,7 @@ class CheckoutControllerV2 extends Controller
                     'errors' => $validator->errors()->toArray(),
                     'request_data' => $request->all(),
                 ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Vui lòng điền đầy đủ thông tin giao hàng',
@@ -520,8 +529,9 @@ class CheckoutControllerV2 extends Controller
                 ], 400);
             }
 
-            if (!Session::has('cart')) {
+            if (! Session::has('cart')) {
                 Log::warning('[CheckoutV2] checkout empty cart');
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Giỏ hàng trống',
@@ -564,6 +574,7 @@ class CheckoutControllerV2 extends Controller
                 'trace' => $e->getTraceAsString(),
                 'request_data' => $request->all(),
             ]);
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage() ?: 'Đặt hàng thất bại',
@@ -575,12 +586,12 @@ class CheckoutControllerV2 extends Controller
     {
         try {
             $code = $request->code;
-            if (!$code) {
+            if (! $code) {
                 return redirect('/');
             }
 
             $order = \App\Modules\Order\Models\Order::where('code', $code)->first();
-            if (!$order) {
+            if (! $order) {
                 return redirect('/');
             }
 
@@ -591,7 +602,8 @@ class CheckoutControllerV2 extends Controller
                 'products' => $products,
             ]);
         } catch (\Exception $e) {
-            Log::error('[CheckoutV2] Result failed: ' . $e->getMessage());
+            Log::error('[CheckoutV2] Result failed: '.$e->getMessage());
+
             return redirect('/');
         }
     }
@@ -600,7 +612,7 @@ class CheckoutControllerV2 extends Controller
     {
         try {
             $keyword = $request->q;
-            if (!$keyword) {
+            if (! $keyword) {
                 return response()->json(['results' => []]);
             }
 
@@ -623,7 +635,7 @@ class CheckoutControllerV2 extends Controller
 
                 $mapped = [];
                 foreach ($data as $loc) {
-                    $fullName = $loc->ward_name . ', ' . $loc->district_name . ', ' . $loc->province_name;
+                    $fullName = $loc->ward_name.', '.$loc->district_name.', '.$loc->province_name;
                     $mapped[] = [
                         'id' => $loc->wardid,
                         'text' => $fullName,
@@ -633,9 +645,10 @@ class CheckoutControllerV2 extends Controller
                         'district_id' => $loc->districtid,
                         'district_name' => $loc->district_name,
                         'province_id' => $loc->provinceid,
-                        'province_name' => $loc->province_name
+                        'province_name' => $loc->province_name,
                     ];
                 }
+
                 return $mapped;
             });
 
@@ -659,16 +672,19 @@ class CheckoutControllerV2 extends Controller
                         'district_id' => $loc['district_id'],
                         'district_name' => $loc['district_name'],
                         'province_id' => $loc['province_id'],
-                        'province_name' => $loc['province_name']
+                        'province_name' => $loc['province_name'],
                     ];
                     $count++;
                 }
-                if ($count >= 20) break;
+                if ($count >= 20) {
+                    break;
+                }
             }
 
             return response()->json(['results' => $results]);
         } catch (\Exception $e) {
-            Log::error('[CheckoutV2] Search location failed: ' . $e->getMessage());
+            Log::error('[CheckoutV2] Search location failed: '.$e->getMessage());
+
             return response()->json(['results' => []]);
         }
     }
@@ -676,7 +692,7 @@ class CheckoutControllerV2 extends Controller
     public function loadPromotion()
     {
         try {
-            if (!Session::has('cart')) {
+            if (! Session::has('cart')) {
                 return 'Không có dữ liệu';
             }
 
@@ -687,16 +703,16 @@ class CheckoutControllerV2 extends Controller
             $promotions = Promotion::where([
                 ['status', '1'],
                 ['end', '>=', date('Y-m-d')],
-                ['order_sale', '<=', $subtotal]
+                ['order_sale', '<=', $subtotal],
             ])->limit(10)->get();
 
             return view('Website::cart.promotion', [
                 'list' => $promotions,
             ]);
         } catch (\Exception $e) {
-            Log::error('[CheckoutV2] Load promotion failed: ' . $e->getMessage());
+            Log::error('[CheckoutV2] Load promotion failed: '.$e->getMessage());
+
             return 'Không có dữ liệu';
         }
     }
 }
-

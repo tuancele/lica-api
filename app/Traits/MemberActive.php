@@ -1,14 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Traits;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Config;
+
 use App\Modules\Member\Models\MemberActivation;
 use Illuminate\Support\Str;
 
-trait MemberActive{
-
+trait MemberActive
+{
     protected function getToken()
     {
         return hash_hmac('sha256', Str::random(40), config('app.key'));
@@ -16,23 +16,22 @@ trait MemberActive{
 
     public function createActivation($member)
     {
-
         $activation = $this->getActivation($member);
 
-        if (!$activation) {
+        if (! $activation) {
             return $this->createToken($member);
         }
-        return $this->regenerateToken($member);
 
+        return $this->regenerateToken($member);
     }
 
     private function regenerateToken($member)
     {
-
         $token = $this->getToken();
         MemberActivation::where('member_id', $member->id)->update([
-            'activation_code' => $token
+            'activation_code' => $token,
         ]);
+
         return $token;
     }
 
@@ -41,8 +40,9 @@ trait MemberActive{
         $token = $this->getToken();
         MemberActivation::insert([
             'member_id' => $member->id,
-            'activation_code' => $token
+            'activation_code' => $token,
         ]);
+
         return $token;
     }
 

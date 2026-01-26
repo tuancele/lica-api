@@ -12,12 +12,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (!Schema::hasTable('productsales')) {
+        if (! Schema::hasTable('productsales')) {
             return;
         }
 
         Schema::table('productsales', function (Blueprint $table) {
-            if (!Schema::hasColumn('productsales', 'user_id')) {
+            if (! Schema::hasColumn('productsales', 'user_id')) {
                 $table->unsignedBigInteger('user_id')->nullable()->after('buy');
                 $table->foreign('user_id')->references('id')->on('users')->onDelete('set null');
             }
@@ -29,7 +29,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        if (!Schema::hasTable('productsales')) {
+        if (! Schema::hasTable('productsales')) {
             return;
         }
 

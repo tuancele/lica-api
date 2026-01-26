@@ -1,15 +1,16 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Feature\ApiAdmin;
 
-use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\TestCase;
 
 /**
- * Comprehensive API Test Suite - Dry Run Mode
- * 
+ * Comprehensive API Test Suite - Dry Run Mode.
+ *
  * This test suite validates all newly created Admin API endpoints
  * without making actual database changes (dry-run mode)
  */
@@ -21,7 +22,7 @@ class AllApiTestSuite extends TestCase
     {
         parent::setUp();
         $this->withoutMiddleware();
-        
+
         // Enable dry-run mode - prevent actual database writes
         DB::beginTransaction();
     }
@@ -34,7 +35,7 @@ class AllApiTestSuite extends TestCase
     }
 
     /**
-     * Test all GET endpoints return 200 status
+     * Test all GET endpoints return 200 status.
      */
     public function test_all_list_endpoints_respond(): void
     {
@@ -70,8 +71,8 @@ class AllApiTestSuite extends TestCase
         ];
 
         foreach ($endpoints as $endpoint) {
-            $response = $this->getJson($endpoint . '?limit=1');
-            
+            $response = $this->getJson($endpoint.'?limit=1');
+
             $this->assertContains(
                 $response->status(),
                 [200, 404, 422],
@@ -81,7 +82,7 @@ class AllApiTestSuite extends TestCase
     }
 
     /**
-     * Test all endpoints return proper JSON structure
+     * Test all endpoints return proper JSON structure.
      */
     public function test_all_endpoints_return_json_structure(): void
     {
@@ -92,19 +93,19 @@ class AllApiTestSuite extends TestCase
         ];
 
         foreach ($endpoints as $endpoint) {
-            $response = $this->getJson($endpoint . '?limit=1');
-            
+            $response = $this->getJson($endpoint.'?limit=1');
+
             if ($response->status() === 200) {
                 $response->assertJsonStructure([
                     'success',
-                    'data'
+                    'data',
                 ]);
             }
         }
     }
 
     /**
-     * Test validation errors return 422
+     * Test validation errors return 422.
      */
     public function test_validation_errors_return_422(): void
     {
@@ -130,7 +131,7 @@ class AllApiTestSuite extends TestCase
     }
 
     /**
-     * Test 404 for non-existent resources
+     * Test 404 for non-existent resources.
      */
     public function test_404_for_nonexistent_resources(): void
     {
@@ -144,7 +145,7 @@ class AllApiTestSuite extends TestCase
 
         foreach ($endpoints as $endpoint) {
             $response = $this->getJson($endpoint);
-            
+
             $this->assertContains(
                 $response->status(),
                 [404, 500],
@@ -154,7 +155,7 @@ class AllApiTestSuite extends TestCase
     }
 
     /**
-     * Test pagination structure
+     * Test pagination structure.
      */
     public function test_pagination_structure(): void
     {
@@ -165,11 +166,11 @@ class AllApiTestSuite extends TestCase
         ];
 
         foreach ($endpoints as $endpoint) {
-            $response = $this->getJson($endpoint . '?limit=5');
-            
+            $response = $this->getJson($endpoint.'?limit=5');
+
             if ($response->status() === 200) {
                 $data = $response->json();
-                
+
                 if (isset($data['pagination'])) {
                     $this->assertArrayHasKey('current_page', $data['pagination']);
                     $this->assertArrayHasKey('per_page', $data['pagination']);
@@ -180,7 +181,7 @@ class AllApiTestSuite extends TestCase
     }
 
     /**
-     * Test filter parameters work correctly
+     * Test filter parameters work correctly.
      */
     public function test_filter_parameters(): void
     {
@@ -192,7 +193,7 @@ class AllApiTestSuite extends TestCase
 
         foreach ($endpoints as $endpoint) {
             $response = $this->getJson($endpoint);
-            
+
             $this->assertContains(
                 $response->status(),
                 [200, 404, 422],
@@ -201,4 +202,3 @@ class AllApiTestSuite extends TestCase
         }
     }
 }
-

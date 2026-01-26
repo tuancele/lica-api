@@ -1,16 +1,14 @@
 <?php
 
 declare(strict_types=1);
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 
 class CreatePostsTable extends Migration
 {
     /**
      * Run the migrations.
-     *
-     * @return void
      */
     public function up()
     {
@@ -24,7 +22,7 @@ class CreatePostsTable extends Migration
             $table->smallInteger('status')->nullable();
             $table->integer('view')->nullable();
             $table->integer('user_id')->nullable();
-			$table->string('type', 20)->nullable();
+            $table->string('type', 20)->nullable();
             $table->string('seo_title', 100)->nullable();
             $table->string('seo_description', 300)->nullable();
             $table->integer('cat_id')->nullable();
@@ -34,8 +32,6 @@ class CreatePostsTable extends Migration
 
     /**
      * Reverse the migrations.
-     *
-     * @return void
      */
     public function down()
     {

@@ -1,14 +1,15 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Slider\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
 class Slider extends Model
 {
-    protected $table = "medias";
-    
+    protected $table = 'medias';
+
     /**
      * The attributes that are mass assignable.
      *
@@ -25,7 +26,7 @@ class Slider extends Model
         'display',
         'sort',
     ];
-    
+
     /**
      * Get the user that created the slider.
      */

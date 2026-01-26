@@ -1,19 +1,19 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Recommendation\Models\UserBehavior;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class AnalyticsController extends Controller
 {
     /**
-     * 获取用户浏览历史
+     * 获取用户浏览历史.
      */
     public function getUserHistory(Request $request): JsonResponse
     {
@@ -33,7 +33,7 @@ class AnalyticsController extends Controller
 
         $behaviors = $query->limit($limit)->get();
 
-        $history = $behaviors->map(function($behavior) {
+        $history = $behaviors->map(function ($behavior) {
             return [
                 'product_id' => $behavior->product_id,
                 'product_name' => $behavior->product->name ?? null,
@@ -56,7 +56,7 @@ class AnalyticsController extends Controller
     }
 
     /**
-     * 分析用户偏好
+     * 分析用户偏好.
      */
     public function getUserPreferences(Request $request): JsonResponse
     {
@@ -64,7 +64,7 @@ class AnalyticsController extends Controller
         $userId = $request->get('user_id');
 
         $behaviors = UserBehavior::where('behavior_type', UserBehavior::TYPE_VIEW)
-            ->where(function($query) use ($sessionId, $userId) {
+            ->where(function ($query) use ($sessionId, $userId) {
                 if ($userId) {
                     $query->where('user_id', $userId);
                 } elseif ($sessionId) {
@@ -99,8 +99,8 @@ class AnalyticsController extends Controller
         $preferences['favorite_ingredients'] = $ingredients->sortDesc()->take(20)->toArray();
 
         $totalDuration = $behaviors->sum('duration');
-        $preferences['average_session_duration'] = $behaviors->count() > 0 
-            ? round($totalDuration / $behaviors->count(), 2) 
+        $preferences['average_session_duration'] = $behaviors->count() > 0
+            ? round($totalDuration / $behaviors->count(), 2)
             : 0;
 
         $devices = $behaviors->pluck('device_type')->filter()->countBy();
@@ -113,18 +113,18 @@ class AnalyticsController extends Controller
     }
 
     /**
-     * 导出数据用于AI训练
+     * 导出数据用于AI训练.
      */
     public function exportForAI(Request $request): JsonResponse
     {
-        $startDate = $request->get('start_date') 
-            ? Carbon::parse($request->get('start_date')) 
+        $startDate = $request->get('start_date')
+            ? Carbon::parse($request->get('start_date'))
             : Carbon::now()->subDays(30);
-        
-        $endDate = $request->get('end_date') 
-            ? Carbon::parse($request->get('end_date')) 
+
+        $endDate = $request->get('end_date')
+            ? Carbon::parse($request->get('end_date'))
             : Carbon::now();
-        
+
         $limit = (int) $request->get('limit', 10000);
 
         $behaviors = UserBehavior::with(['product.brand'])
@@ -135,7 +135,7 @@ class AnalyticsController extends Controller
             ->limit($limit)
             ->get();
 
-        $data = $behaviors->map(function($behavior) {
+        $data = $behaviors->map(function ($behavior) {
             return [
                 'session_id' => $behavior->session_id,
                 'user_id' => $behavior->user_id,
@@ -172,13 +172,13 @@ class AnalyticsController extends Controller
     }
 
     /**
-     * 获取产品成分分析
+     * 获取产品成分分析.
      */
     public function getProductIngredientAnalysis(Request $request): JsonResponse
     {
         $productId = (int) $request->get('product_id');
-        
-        if (!$productId) {
+
+        if (! $productId) {
             return response()->json([
                 'success' => false,
                 'message' => 'Product ID is required',
@@ -190,14 +190,14 @@ class AnalyticsController extends Controller
             ->get();
 
         $ingredientStats = [];
-        
+
         foreach ($behaviors as $behavior) {
-            $ingredients = is_array($behavior->product_ingredients) 
-                ? $behavior->product_ingredients 
+            $ingredients = is_array($behavior->product_ingredients)
+                ? $behavior->product_ingredients
                 : json_decode($behavior->product_ingredients, true) ?? [];
-            
+
             foreach ($ingredients as $ingredient) {
-                if (!isset($ingredientStats[$ingredient])) {
+                if (! isset($ingredientStats[$ingredient])) {
                     $ingredientStats[$ingredient] = [
                         'name' => $ingredient,
                         'view_count' => 0,
@@ -206,7 +206,7 @@ class AnalyticsController extends Controller
                 }
                 $ingredientStats[$ingredient]['view_count']++;
                 $userId = $behavior->user_id ?? $behavior->session_id;
-                if (!in_array($userId, $ingredientStats[$ingredient]['users'])) {
+                if (! in_array($userId, $ingredientStats[$ingredient]['users'])) {
                     $ingredientStats[$ingredient]['users'][] = $userId;
                 }
             }

@@ -1,11 +1,12 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Enums;
 
 /**
- * Product Type Enum
- * 
+ * Product Type Enum.
+ *
  * Defines the different types of posts/products in the system
  */
 enum ProductType: string
@@ -15,13 +16,11 @@ enum ProductType: string
     case POST = 'post';
 
     /**
-     * Get human-readable label
-     * 
-     * @return string
+     * Get human-readable label.
      */
     public function label(): string
     {
-        return match($this) {
+        return match ($this) {
             self::PRODUCT => 'Sản phẩm',
             self::TAXONOMY => 'Danh mục',
             self::POST => 'Bài viết',
@@ -29,9 +28,7 @@ enum ProductType: string
     }
 
     /**
-     * Get all types as array for select dropdown
-     * 
-     * @return array
+     * Get all types as array for select dropdown.
      */
     public static function toArray(): array
     {

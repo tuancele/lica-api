@@ -1,16 +1,16 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Recommendation;
 
-use App\Modules\Recommendation\Models\UserBehavior;
 use App\Modules\Product\Models\Product;
-use App\Modules\Product\Models\Variant;
+use App\Modules\Recommendation\Models\UserBehavior;
 use App\Services\Analytics\UserAnalyticsService;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Session;
 
 class RecommendationService
 {
@@ -22,28 +22,28 @@ class RecommendationService
     }
 
     /**
-     * 跟踪用户行为
+     * 跟踪用户行为.
      */
     public function trackBehavior(int $productId, string $behaviorType, array $additionalData = [])
     {
         try {
             $sessionId = Session::getId();
             $userId = Auth::id();
-            
+
             if ($behaviorType === UserBehavior::TYPE_VIEW) {
                 $recentView = UserBehavior::where('session_id', $sessionId)
                     ->where('product_id', $productId)
                     ->where('behavior_type', UserBehavior::TYPE_VIEW)
                     ->where('created_at', '>=', now()->subMinutes(5))
                     ->exists();
-                
+
                 if ($recentView) {
                     return;
                 }
             }
 
             $product = Product::with(['brand', 'rates'])->find($productId);
-            
+
             $categories = [];
             if ($product && $product->cat_id) {
                 $catIds = json_decode($product->cat_id, true);
@@ -55,7 +55,7 @@ class RecommendationService
             $ingredients = [];
             if ($product && $product->ingredient) {
                 preg_match_all('/<a[^>]*class=["\']item_ingredient["\'][^>]*>([^<]+)<\/a>/i', $product->ingredient, $matches);
-                if (!empty($matches[1])) {
+                if (! empty($matches[1])) {
                     $ingredients = array_map('trim', $matches[1]);
                 } else {
                     $text = strip_tags($product->ingredient);
@@ -103,7 +103,7 @@ class RecommendationService
             $this->clearRecommendationCache($sessionId, $userId);
             Cache::forget("session_stats:{$sessionId}");
         } catch (\Exception $e) {
-            \Log::error('Failed to track user behavior: ' . $e->getMessage());
+            \Log::error('Failed to track user behavior: '.$e->getMessage());
         }
     }
 
@@ -114,56 +114,56 @@ class RecommendationService
     {
         $sessionId = Session::getId();
         $userId = Auth::id();
-        
-        $cacheKey = "recommendations:{$sessionId}:" . ($userId ?? 'guest') . ":" . md5(implode(',', $excludeProductIds));
-        
+
+        $cacheKey = "recommendations:{$sessionId}:".($userId ?? 'guest').':'.md5(implode(',', $excludeProductIds));
+
         // 获取所有推荐产品（带缓存）
         $allRecommendations = Cache::remember($cacheKey, 1800, function () use ($excludeProductIds, $sessionId, $userId) {
             $recommendations = collect();
             $totalLimit = 100; // 获取足够多的产品以支持分页
-            
+
             $collaborativeProducts = $this->getCollaborativeFilteringProducts($totalLimit, $excludeProductIds, $sessionId, $userId);
             $recommendations = $recommendations->merge($collaborativeProducts);
-            
+
             if ($recommendations->count() < $totalLimit) {
                 $contentBasedProducts = $this->getContentBasedProducts($totalLimit - $recommendations->count(), $excludeProductIds, $sessionId, $userId);
                 $recommendations = $recommendations->merge($contentBasedProducts);
             }
-            
+
             if ($recommendations->count() < $totalLimit) {
                 $popularProducts = $this->getPopularProducts($totalLimit - $recommendations->count(), $excludeProductIds);
                 $recommendations = $recommendations->merge($popularProducts);
             }
-            
+
             if ($recommendations->count() < $totalLimit) {
                 $newProducts = $this->getNewProducts($totalLimit - $recommendations->count(), $excludeProductIds);
                 $recommendations = $recommendations->merge($newProducts);
             }
-            
+
             return $recommendations->unique('id');
         });
-        
+
         // 应用offset和limit
         return $allRecommendations->slice($offset)->take($limit);
     }
 
     /**
-     * 协同过滤推荐
+     * 协同过滤推荐.
      */
     private function getCollaborativeFilteringProducts(int $limit, array $excludeProductIds, string $sessionId, ?int $userId)
     {
-        $userBehaviors = UserBehavior::where(function($query) use ($sessionId, $userId) {
+        $userBehaviors = UserBehavior::where(function ($query) use ($sessionId, $userId) {
             if ($userId) {
                 $query->where('user_id', $userId);
             } else {
                 $query->where('session_id', $sessionId);
             }
         })
-        ->where('behavior_type', UserBehavior::TYPE_VIEW)
-        ->with('product')
-        ->orderBy('created_at', 'desc')
-        ->limit(50)
-        ->get();
+            ->where('behavior_type', UserBehavior::TYPE_VIEW)
+            ->with('product')
+            ->orderBy('created_at', 'desc')
+            ->limit(50)
+            ->get();
 
         if ($userBehaviors->isEmpty()) {
             return collect();
@@ -173,7 +173,7 @@ class RecommendationService
         $userPreferences = $this->analyzeUserPreferences($userBehaviors);
 
         $similarUsers = UserBehavior::whereIn('product_id', $userViewedProducts)
-            ->where(function($query) use ($sessionId, $userId) {
+            ->where(function ($query) use ($sessionId, $userId) {
                 if ($userId) {
                     $query->where('user_id', '!=', $userId);
                 } else {
@@ -182,14 +182,14 @@ class RecommendationService
             })
             ->select('session_id', 'user_id', 'product_id', 'product_brand_id', 'product_categories')
             ->get()
-            ->groupBy(function($item) {
+            ->groupBy(function ($item) {
                 return $item->user_id ? "user_{$item->user_id}" : "session_{$item->session_id}";
             })
-            ->map(function($group) use ($userViewedProducts) {
+            ->map(function ($group) use ($userViewedProducts) {
                 $viewedProducts = $group->pluck('product_id')->unique()->toArray();
                 $commonProducts = count(array_intersect($viewedProducts, $userViewedProducts));
                 $similarity = $commonProducts / max(count($userViewedProducts), count($viewedProducts));
-                
+
                 return [
                     'user_id' => $group->first()->user_id,
                     'session_id' => $group->first()->session_id,
@@ -199,7 +199,7 @@ class RecommendationService
                     'categories' => $group->pluck('product_categories')->flatten()->unique()->toArray(),
                 ];
             })
-            ->filter(function($user) {
+            ->filter(function ($user) {
                 return $user['similarity'] >= 0.3;
             })
             ->sortByDesc('similarity')
@@ -212,7 +212,7 @@ class RecommendationService
         $similarUserIds = $similarUsers->pluck('user_id')->filter();
         $similarSessionIds = $similarUsers->pluck('session_id')->filter();
 
-        $recommendedProductIds = UserBehavior::where(function($query) use ($similarUserIds, $similarSessionIds) {
+        $recommendedProductIds = UserBehavior::where(function ($query) use ($similarUserIds, $similarSessionIds) {
             if ($similarUserIds->isNotEmpty()) {
                 $query->whereIn('user_id', $similarUserIds);
             }
@@ -220,37 +220,37 @@ class RecommendationService
                 $query->orWhereIn('session_id', $similarSessionIds);
             }
         })
-        ->whereNotIn('product_id', $userViewedProducts)
-        ->whereNotIn('product_id', $excludeProductIds)
-        ->where('behavior_type', UserBehavior::TYPE_VIEW)
-        ->select('product_id', 'product_brand_id', 'product_categories', DB::raw('COUNT(*) as view_count'))
-        ->groupBy('product_id', 'product_brand_id', 'product_categories')
-        ->orderBy('view_count', 'desc')
-        ->limit($limit * 2)
-        ->get();
+            ->whereNotIn('product_id', $userViewedProducts)
+            ->whereNotIn('product_id', $excludeProductIds)
+            ->where('behavior_type', UserBehavior::TYPE_VIEW)
+            ->select('product_id', 'product_brand_id', 'product_categories', DB::raw('COUNT(*) as view_count'))
+            ->groupBy('product_id', 'product_brand_id', 'product_categories')
+            ->orderBy('view_count', 'desc')
+            ->limit($limit * 2)
+            ->get();
 
-        $scoredProducts = $recommendedProductIds->map(function($item) use ($userPreferences) {
+        $scoredProducts = $recommendedProductIds->map(function ($item) use ($userPreferences) {
             $score = $item->view_count;
-            
+
             if ($item->product_brand_id && in_array($item->product_brand_id, $userPreferences['brands'])) {
                 $score *= 1.5;
             }
-            
+
             $categories = is_array($item->product_categories) ? $item->product_categories : json_decode($item->product_categories, true) ?? [];
             $commonCategories = count(array_intersect($categories, $userPreferences['categories']));
             if ($commonCategories > 0) {
                 $score *= (1 + $commonCategories * 0.2);
             }
-            
+
             return [
                 'product_id' => $item->product_id,
                 'score' => $score,
             ];
         })
-        ->sortByDesc('score')
-        ->take($limit)
-        ->pluck('product_id')
-        ->toArray();
+            ->sortByDesc('score')
+            ->take($limit)
+            ->pluck('product_id')
+            ->toArray();
 
         if (empty($scoredProducts)) {
             return collect();
@@ -260,27 +260,27 @@ class RecommendationService
     }
 
     /**
-     * 分析用户偏好
+     * 分析用户偏好.
      */
     private function analyzeUserPreferences($behaviors): array
     {
         $brands = [];
         $categories = [];
         $ingredients = [];
-        
+
         foreach ($behaviors as $behavior) {
             if ($behavior->product_brand_id) {
                 $brands[] = $behavior->product_brand_id;
             }
-            
+
             if ($behavior->product_categories) {
-                $cats = is_array($behavior->product_categories) 
-                    ? $behavior->product_categories 
+                $cats = is_array($behavior->product_categories)
+                    ? $behavior->product_categories
                     : json_decode($behavior->product_categories, true) ?? [];
                 $categories = array_merge($categories, $cats);
             }
         }
-        
+
         return [
             'brands' => array_unique($brands),
             'categories' => array_unique($categories),
@@ -289,23 +289,23 @@ class RecommendationService
     }
 
     /**
-     * 基于内容的推荐
+     * 基于内容的推荐.
      */
     private function getContentBasedProducts(int $limit, array $excludeProductIds, string $sessionId, ?int $userId)
     {
-        $recentProducts = UserBehavior::where(function($query) use ($sessionId, $userId) {
+        $recentProducts = UserBehavior::where(function ($query) use ($sessionId, $userId) {
             if ($userId) {
                 $query->where('user_id', $userId);
             } else {
                 $query->where('session_id', $sessionId);
             }
         })
-        ->where('behavior_type', UserBehavior::TYPE_VIEW)
-        ->orderBy('created_at', 'desc')
-        ->limit(5)
-        ->pluck('product_id')
-        ->unique()
-        ->toArray();
+            ->where('behavior_type', UserBehavior::TYPE_VIEW)
+            ->orderBy('created_at', 'desc')
+            ->limit(5)
+            ->pluck('product_id')
+            ->unique()
+            ->toArray();
 
         if (empty($recentProducts)) {
             return collect();
@@ -345,13 +345,13 @@ class RecommendationService
             ->whereNotIn('posts.id', $excludeProductIds)
             ->groupBy('posts.id');
 
-        $query->where(function($q) use ($categoryIds, $brandIds) {
-            if (!empty($categoryIds)) {
+        $query->where(function ($q) use ($categoryIds, $brandIds) {
+            if (! empty($categoryIds)) {
                 foreach ($categoryIds as $catId) {
-                    $q->orWhere('posts.cat_id', 'like', '%"' . $catId . '"%');
+                    $q->orWhere('posts.cat_id', 'like', '%"'.$catId.'"%');
                 }
             }
-            if (!empty($brandIds)) {
+            if (! empty($brandIds)) {
                 $q->orWhereIn('posts.brand_id', $brandIds);
             }
         });
@@ -410,45 +410,45 @@ class RecommendationService
             ->where('posts.type', 'product')
             ->groupBy('posts.id')
             ->get()
-            ->sortBy(function($product) use ($productIds) {
+            ->sortBy(function ($product) use ($productIds) {
                 return array_search($product->id, $productIds);
             })
             ->values();
     }
 
     /**
-     * 清除推荐缓存
+     * 清除推荐缓存.
      */
     private function clearRecommendationCache(string $sessionId, ?int $userId)
     {
         try {
-            Cache::forget("recommendations:{$sessionId}:" . ($userId ?? 'guest') . ":*");
+            Cache::forget("recommendations:{$sessionId}:".($userId ?? 'guest').':*');
         } catch (\Exception $e) {
         }
     }
 
     /**
-     * 获取用户浏览历史
+     * 获取用户浏览历史.
      */
     public function getUserViewHistory(int $limit = 20)
     {
         $sessionId = Session::getId();
         $userId = Auth::id();
 
-        return UserBehavior::where(function($query) use ($sessionId, $userId) {
+        return UserBehavior::where(function ($query) use ($sessionId, $userId) {
             if ($userId) {
                 $query->where('user_id', $userId);
             } else {
                 $query->where('session_id', $sessionId);
             }
         })
-        ->where('behavior_type', UserBehavior::TYPE_VIEW)
-        ->with('product')
-        ->orderBy('created_at', 'desc')
-        ->limit($limit)
-        ->get()
-        ->pluck('product')
-        ->filter()
-        ->unique('id');
+            ->where('behavior_type', UserBehavior::TYPE_VIEW)
+            ->with('product')
+            ->orderBy('created_at', 'desc')
+            ->limit($limit)
+            ->get()
+            ->pluck('product')
+            ->filter()
+            ->unique('id');
     }
 }

@@ -1,23 +1,23 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Warehouse;
 
-use App\Models\StockReceipt;
 use App\Models\InventoryStock;
+use App\Models\StockReceipt;
+use App\Modules\Deal\Models\SaleDeal;
+use App\Modules\FlashSale\Models\ProductSale;
 use App\Modules\Order\Models\Order;
 use App\Modules\Order\Models\OrderDetail;
-use App\Services\Warehouse\StockReceiptService;
 use App\Services\Inventory\Contracts\InventoryServiceInterface;
-use App\Modules\FlashSale\Models\ProductSale;
-use App\Modules\Deal\Models\SaleDeal;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
 
 /**
  * Order Stock Receipt Service
- * Handles automatic creation and management of stock receipts from orders
+ * Handles automatic creation and management of stock receipts from orders.
  */
 class OrderStockReceiptService
 {
@@ -27,11 +27,9 @@ class OrderStockReceiptService
     ) {}
 
     /**
-     * Create export receipt from order
-     * 
-     * @param Order $order
-     * @param string $status Receipt status (draft, completed)
-     * @return StockReceipt|null
+     * Create export receipt from order.
+     *
+     * @param  string  $status  Receipt status (draft, completed)
      */
     public function createExportReceiptFromOrder(Order $order, string $status = 'completed'): ?StockReceipt
     {
@@ -47,6 +45,7 @@ class OrderStockReceiptService
                 'receipt_id' => $existingReceipt->id,
                 'receipt_code' => $existingReceipt->receipt_code,
             ]);
+
             return $existingReceipt;
         }
 
@@ -55,26 +54,27 @@ class OrderStockReceiptService
 
             // Get order details
             $orderDetails = OrderDetail::where('order_id', $order->id)->get();
-            
+
             if ($orderDetails->isEmpty()) {
                 Log::warning('Cannot create export receipt: Order has no items', [
                     'order_id' => $order->id,
                     'order_code' => $order->code,
                 ]);
                 DB::rollBack();
+
                 return null;
             }
 
             // Build full address from order
             $fullAddress = $order->address ?? '';
             if ($order->ward) {
-                $fullAddress .= ($fullAddress ? ', ' : '') . $order->ward->name;
+                $fullAddress .= ($fullAddress ? ', ' : '').$order->ward->name;
             }
             if ($order->district) {
-                $fullAddress .= ($fullAddress ? ', ' : '') . $order->district->name;
+                $fullAddress .= ($fullAddress ? ', ' : '').$order->district->name;
             }
             if ($order->province) {
-                $fullAddress .= ($fullAddress ? ', ' : '') . $order->province->name;
+                $fullAddress .= ($fullAddress ? ', ' : '').$order->province->name;
             }
 
             // Prepare receipt data
@@ -83,7 +83,7 @@ class OrderStockReceiptService
             $receiptData = [
                 'type' => 'export',
                 'status' => StockReceipt::STATUS_DRAFT, // Always create as draft first
-                'subject' => 'Đơn hàng ' . $order->code, // Use order code instead of id
+                'subject' => 'Đơn hàng '.$order->code, // Use order code instead of id
                 'content' => $fullAddress, // Full delivery address
                 'customer_name' => $order->name,
                 'customer_phone' => $order->phone ?? null,
@@ -92,10 +92,10 @@ class OrderStockReceiptService
                 'from_warehouse_id' => 1, // Default warehouse
                 'reference_type' => 'order',
                 'reference_id' => $order->id,
-                'reference_code' => (string)$order->code,
+                'reference_code' => (string) $order->code,
                 'items' => [],
             ];
-            
+
             Log::info('Creating export receipt from order', [
                 'order_id' => $order->id,
                 'order_code' => $order->code,
@@ -108,7 +108,7 @@ class OrderStockReceiptService
             // Prepare items from order details
             $totalValue = 0;
             foreach ($orderDetails as $detail) {
-                if (!$detail->variant_id) {
+                if (! $detail->variant_id) {
                     Log::warning('Order detail missing variant_id', [
                         'order_id' => $order->id,
                         'detail_id' => $detail->id,
@@ -132,6 +132,7 @@ class OrderStockReceiptService
                     'order_id' => $order->id,
                 ]);
                 DB::rollBack();
+
                 return null;
             }
 
@@ -140,9 +141,9 @@ class OrderStockReceiptService
                 'receipt_data' => $receiptData,
                 'items_count' => count($receiptData['items']),
             ]);
-            
+
             $receipt = $this->stockReceiptService->createReceipt($receiptData);
-            
+
             Log::info('Receipt created, now completing if needed', [
                 'receipt_id' => $receipt->id,
                 'receipt_code' => $receipt->receipt_code,
@@ -162,10 +163,10 @@ class OrderStockReceiptService
                         'order_id' => $order->id,
                         'order_code' => $order->code,
                     ]);
-                    
+
                     // Deduct stock from correct source (Flash Sale/Deal/Available) based on OrderDetail
                     $this->deductStockFromOrderDetails($orderDetails);
-                    
+
                     // Complete receipt WITHOUT updating warehouse stock again
                     // Stock is already deducted above
                     $receipt = $this->stockReceiptService->completeReceipt($receipt->id, Auth::id() ?? 1, false);
@@ -183,7 +184,6 @@ class OrderStockReceiptService
             ]);
 
             return $receipt;
-
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to create export receipt from order', [
@@ -192,17 +192,16 @@ class OrderStockReceiptService
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return null;
         }
     }
 
     /**
      * Cancel or delete export receipt when order is cancelled
-     * Also restore stock from correct source (Flash Sale/Deal/Available)
-     * 
-     * @param Order $order
-     * @param bool $delete If true, delete the receipt; if false, mark as cancelled
-     * @return bool
+     * Also restore stock from correct source (Flash Sale/Deal/Available).
+     *
+     * @param  bool  $delete  If true, delete the receipt; if false, mark as cancelled
      */
     public function cancelExportReceiptFromOrder(Order $order, bool $delete = false): bool
     {
@@ -211,11 +210,12 @@ class OrderStockReceiptService
                 ->where('reference_id', $order->id)
                 ->first();
 
-            if (!$receipt) {
+            if (! $receipt) {
                 Log::info('No export receipt found for cancelled order', [
                     'order_id' => $order->id,
                     'order_code' => $order->code,
                 ]);
+
                 return true; // No receipt to cancel, consider it success
             }
 
@@ -223,7 +223,7 @@ class OrderStockReceiptService
 
             // Get order details to restore stock
             $orderDetails = OrderDetail::where('order_id', $order->id)->get();
-            
+
             // Restore stock from correct source (Flash Sale/Deal/Available) based on OrderDetail
             if ($orderDetails->isNotEmpty()) {
                 $this->restoreStockFromOrderDetails($orderDetails);
@@ -233,7 +233,7 @@ class OrderStockReceiptService
                 // Delete the receipt after restoring stock
                 $this->stockReceiptService->voidReceipt($receipt->id, Auth::id() ?? 1, false);
                 $receipt->delete();
-                
+
                 Log::info('Export receipt deleted for cancelled order (stock restored)', [
                     'order_id' => $order->id,
                     'receipt_id' => $receipt->id,
@@ -242,7 +242,7 @@ class OrderStockReceiptService
             } else {
                 // Mark as cancelled after restoring stock
                 $this->stockReceiptService->voidReceipt($receipt->id, Auth::id() ?? 1, false);
-                
+
                 Log::info('Export receipt cancelled for cancelled order (stock restored)', [
                     'order_id' => $order->id,
                     'receipt_id' => $receipt->id,
@@ -251,8 +251,8 @@ class OrderStockReceiptService
             }
 
             DB::commit();
-            return true;
 
+            return true;
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to cancel/delete export receipt for order', [
@@ -261,17 +261,16 @@ class OrderStockReceiptService
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return false;
         }
     }
 
     /**
-     * Update export receipt status based on order status
-     * 
-     * @param Order $order
-     * @param string $oldStatus Previous order status
-     * @param string $newStatus New order status
-     * @return bool
+     * Update export receipt status based on order status.
+     *
+     * @param  string  $oldStatus  Previous order status
+     * @param  string  $newStatus  New order status
      */
     public function updateExportReceiptFromOrderStatus(Order $order, string $oldStatus, string $newStatus): bool
     {
@@ -283,17 +282,18 @@ class OrderStockReceiptService
             ->where('reference_id', $order->id)
             ->first();
 
-        if (!$receipt) {
+        if (! $receipt) {
             // If order status changed to '0' and no receipt exists, create one
             if ($newStatus === '0' || $newStatus === 0) {
                 $this->createExportReceiptFromOrder($order, StockReceipt::STATUS_COMPLETED);
             }
+
             return true;
         }
 
         try {
             // If order is cancelled (status 2 or 4), cancel the receipt (mark as cancelled, not delete)
-            if (in_array((int)$newStatus, [2, 4], true)) {
+            if (in_array((int) $newStatus, [2, 4], true)) {
                 // Mark as cancelled (will reverse stock via voidReceipt)
                 return $this->cancelExportReceiptFromOrder($order, false); // Don't delete, just mark as cancelled
             }
@@ -302,7 +302,7 @@ class OrderStockReceiptService
             // Note: Do NOT update stock for receipts from orders
             if (($newStatus === '0' || $newStatus === 0) && $receipt->status !== StockReceipt::STATUS_COMPLETED) {
                 $this->stockReceiptService->completeReceipt($receipt->id, Auth::id() ?? 1, false);
-                
+
                 Log::info('Export receipt completed for order status change (without stock update)', [
                     'order_id' => $order->id,
                     'receipt_id' => $receipt->id,
@@ -312,7 +312,6 @@ class OrderStockReceiptService
             }
 
             return true;
-
         } catch (\Exception $e) {
             Log::error('Failed to update export receipt from order status', [
                 'order_id' => $order->id,
@@ -320,20 +319,20 @@ class OrderStockReceiptService
                 'new_status' => $newStatus,
                 'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
 
     /**
-     * Deduct stock from correct source (Flash Sale/Deal/Available) based on OrderDetail
-     * 
-     * @param \Illuminate\Database\Eloquent\Collection $orderDetails
-     * @return void
+     * Deduct stock from correct source (Flash Sale/Deal/Available) based on OrderDetail.
+     *
+     * @param  \Illuminate\Database\Eloquent\Collection  $orderDetails
      */
     private function deductStockFromOrderDetails($orderDetails): void
     {
         foreach ($orderDetails as $detail) {
-            if (!$detail->variant_id || $detail->qty <= 0) {
+            if (! $detail->variant_id || $detail->qty <= 0) {
                 continue;
             }
 
@@ -353,14 +352,14 @@ class OrderStockReceiptService
                         // Note: This might already be done in checkout, but we ensure it here
                         $saleDeal->increment('buy', $qty);
                         $stockSource = 'deal';
-                        
+
                         Log::info('[OrderStockReceiptService] Stock deducted from Deal (Priority 1)', [
                             'order_detail_id' => $detail->id,
                             'variant_id' => $variantId,
                             'qty' => $qty,
                             'dealsale_id' => $detail->dealsale_id,
                             'deal_id' => $detail->deal_id,
-                            'has_productsale_id' => !empty($detail->productsale_id),
+                            'has_productsale_id' => ! empty($detail->productsale_id),
                             'result' => $result,
                         ]);
                         continue; // Skip to next item - Deal has priority
@@ -377,7 +376,7 @@ class OrderStockReceiptService
                         // This ensures stock deduction and buy tracking happen together
                         $productSale->increment('buy', $qty);
                         $stockSource = 'flash_sale';
-                        
+
                         Log::info('[OrderStockReceiptService] Stock deducted from Flash Sale (Priority 2)', [
                             'order_detail_id' => $detail->id,
                             'variant_id' => $variantId,
@@ -394,13 +393,12 @@ class OrderStockReceiptService
                 // Priority 3: Deduct from available stock (physical_stock only)
                 $result = $this->inventoryService->deductStockForOrderFulfillment($variantId, $qty, 'available', 'order_fulfillment_available');
                 $stockSource = 'available';
-                
+
                 Log::info('[OrderStockReceiptService] Stock deducted from Available', [
                     'order_detail_id' => $detail->id,
                     'variant_id' => $variantId,
                     'qty' => $qty,
                 ]);
-
             } catch (\Exception $e) {
                 Log::error('[OrderStockReceiptService] Failed to deduct stock for order detail', [
                     'order_detail_id' => $detail->id,
@@ -422,15 +420,14 @@ class OrderStockReceiptService
 
     /**
      * Restore stock to correct source (Flash Sale/Deal/Available) based on OrderDetail
-     * This is called when order is cancelled
-     * 
-     * @param \Illuminate\Database\Eloquent\Collection $orderDetails
-     * @return void
+     * This is called when order is cancelled.
+     *
+     * @param  \Illuminate\Database\Eloquent\Collection  $orderDetails
      */
     private function restoreStockFromOrderDetails($orderDetails): void
     {
         foreach ($orderDetails as $detail) {
-            if (!$detail->variant_id || $detail->qty <= 0) {
+            if (! $detail->variant_id || $detail->qty <= 0) {
                 continue;
             }
 
@@ -460,14 +457,14 @@ class OrderStockReceiptService
                         $saleDeal->decrement('buy', $qty);
                         $saleDeal->increment('qty', $qty);
                         $stockSource = 'deal';
-                        
+
                         Log::info('[OrderStockReceiptService] Stock restored to Deal (Priority 1)', [
                             'order_detail_id' => $detail->id,
                             'variant_id' => $variantId,
                             'qty' => $qty,
                             'dealsale_id' => $detail->dealsale_id,
                             'deal_id' => $detail->deal_id,
-                            'has_productsale_id' => !empty($detail->productsale_id),
+                            'has_productsale_id' => ! empty($detail->productsale_id),
                         ]);
                         continue; // Skip to next item - Deal has priority
                     }
@@ -492,7 +489,7 @@ class OrderStockReceiptService
                         // Decrement ProductSale.buy
                         $productSale->decrement('buy', $qty);
                         $stockSource = 'flash_sale';
-                        
+
                         Log::info('[OrderStockReceiptService] Stock restored to Flash Sale (Priority 2)', [
                             'order_detail_id' => $detail->id,
                             'variant_id' => $variantId,
@@ -506,13 +503,12 @@ class OrderStockReceiptService
                 // Priority 3: Restore to available stock (physical_stock only)
                 $this->inventoryService->importStock($variantId, $qty, 'order_cancellation_available');
                 $stockSource = 'available';
-                
+
                 Log::info('[OrderStockReceiptService] Stock restored to Available', [
                     'order_detail_id' => $detail->id,
                     'variant_id' => $variantId,
                     'qty' => $qty,
                 ]);
-
             } catch (\Exception $e) {
                 Log::error('[OrderStockReceiptService] Failed to restore stock for order detail', [
                     'order_detail_id' => $detail->id,
@@ -532,4 +528,3 @@ class OrderStockReceiptService
         }
     }
 }
-

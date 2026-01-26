@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Jobs;
 
 use App\Modules\Dictionary\Models\IngredientBenefit;
@@ -29,8 +30,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
         private int $userId,
         private int $offset,
         private int $batchSize = 100
-    ) {
-    }
+    ) {}
 
     private function loadMappingMaps(): void
     {
@@ -85,6 +85,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
         // Normalize for better matching: lowercase, trim, remove extra spaces
         $normalized = strtolower(trim($value));
         $normalized = preg_replace('/\s+/', ' ', $normalized);
+
         return $normalized;
     }
 
@@ -102,7 +103,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
 
         // Update state immediately when job starts
         $state = Cache::get($key);
-        if (!is_array($state)) {
+        if (! is_array($state)) {
             $state = [];
         }
 
@@ -114,10 +115,10 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
 
         // Load mapping maps into memory for performance
         $this->loadMappingMaps();
-        
+
         // Update state after loading maps
         $state = Cache::get($key);
-        if (!is_array($state)) {
+        if (! is_array($state)) {
             $state = [];
         }
         $state['status'] = 'running';
@@ -125,8 +126,8 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
         $this->appendLog($key, '[INFO] Mapping data loaded. Fetching ingredient list...');
         $this->putState($key, $state);
 
-        $listUrl = 'https://www.paulaschoice.com/ingredient-dictionary?start=' . $this->offset . '&sz=2000&ajax=true';
-        
+        $listUrl = 'https://www.paulaschoice.com/ingredient-dictionary?start='.$this->offset.'&sz=2000&ajax=true';
+
         Log::info('DictionaryIngredientCrawlJob fetching ingredient list', [
             'crawl_id' => $this->crawlId,
             'url' => $listUrl,
@@ -135,31 +136,31 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
         $listStartTime = microtime(true);
         $payload = $this->curlJson($listUrl);
         $listFetchTime = round((microtime(true) - $listStartTime) * 1000, 2);
-        
+
         $ingredients = $payload['ingredients'] ?? [];
-        if (!is_array($ingredients)) {
+        if (! is_array($ingredients)) {
             $ingredients = [];
         }
 
         $total = count($ingredients);
         $state = Cache::get($key);
-        if (!is_array($state)) {
+        if (! is_array($state)) {
             $state = [];
         }
-        
+
         // Track successful slugs to skip on retry
         $successfulSlugs = $state['successful_slugs'] ?? [];
-        if (!is_array($successfulSlugs)) {
+        if (! is_array($successfulSlugs)) {
             $successfulSlugs = [];
         }
-        
+
         $state['total'] = $total;
         $state['processed'] = $state['processed'] ?? 0;
         $state['done'] = false;
         $state['error'] = null;
         $state['successful_slugs'] = $successfulSlugs;
         $state['updated_at'] = time();
-        $this->appendLog($key, '[INFO] Ingredient list fetched. Total: ' . $total . ' items. Already processed: ' . count($successfulSlugs) . '. Starting processing...');
+        $this->appendLog($key, '[INFO] Ingredient list fetched. Total: '.$total.' items. Already processed: '.count($successfulSlugs).'. Starting processing...');
         $this->putState($key, $state);
 
         Log::info('DictionaryIngredientCrawlJob list fetched', [
@@ -196,7 +197,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                 $state['done'] = true;
                 $state['updated_at'] = time();
                 $this->putState($key, $state);
-                
+
                 Log::info('DictionaryIngredientCrawlJob cancelled', [
                     'crawl_id' => $this->crawlId,
                     'user_id' => $this->userId,
@@ -204,9 +205,10 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                     'processed' => $i,
                     'total' => $total,
                 ]);
+
                 return;
             }
-            
+
             $it = $ingredients[$i] ?? [];
             $itemStartTime = microtime(true);
 
@@ -218,7 +220,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
 
                 if ($slug === '' || $name === '') {
                     $stats['skipped']++;
-                    $this->appendLog($key, ($i + 1) . '/' . $total . ' - (skip empty)');
+                    $this->appendLog($key, ($i + 1).'/'.$total.' - (skip empty)');
                     Log::warning('DictionaryIngredientCrawlJob skipped empty ingredient', [
                         'crawl_id' => $this->crawlId,
                         'index' => $i + 1,
@@ -227,13 +229,13 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                     ]);
                     continue;
                 }
-                
+
                 // Check if this slug was already successfully processed
                 $state = Cache::get($key);
                 $successfulSlugs = $state['successful_slugs'] ?? [];
                 if (is_array($successfulSlugs) && in_array($slug, $successfulSlugs, true)) {
                     $stats['skipped']++;
-                    $this->appendLog($key, ($i + 1) . '/' . $total . ' - ' . $name . ' - (already processed, skipped)');
+                    $this->appendLog($key, ($i + 1).'/'.$total.' - '.$name.' - (already processed, skipped)');
                     Log::debug('DictionaryIngredientCrawlJob skipped already processed', [
                         'crawl_id' => $this->crawlId,
                         'index' => $i + 1,
@@ -277,24 +279,24 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
 
                 // Fetch detail, map and save immediately after accessing
                 if ($id > 0 && $url !== '') {
-                    $detailUrl = 'https://www.paulaschoice.com' . $url . '&ajax=true';
+                    $detailUrl = 'https://www.paulaschoice.com'.$url.'&ajax=true';
                     try {
                         $detailStartTime = microtime(true);
                         // This method already does: fetch -> map -> save to DB
                         $this->updateFromRemote($detailUrl, $id);
                         $detailTime = round((microtime(true) - $detailStartTime) * 1000, 2);
                         $stats['detail_fetched']++;
-                        
+
                         // Mark this slug as successfully processed
                         $state = Cache::get($key);
-                        if (!is_array($state)) {
+                        if (! is_array($state)) {
                             $state = [];
                         }
                         $successfulSlugs = $state['successful_slugs'] ?? [];
-                        if (!is_array($successfulSlugs)) {
+                        if (! is_array($successfulSlugs)) {
                             $successfulSlugs = [];
                         }
-                        if (!in_array($slug, $successfulSlugs, true)) {
+                        if (! in_array($slug, $successfulSlugs, true)) {
                             $successfulSlugs[] = $slug;
                             // Keep only last 5000 slugs to avoid memory issues
                             if (count($successfulSlugs) > 5000) {
@@ -304,7 +306,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                             $state['updated_at'] = time();
                             $this->putState($key, $state);
                         }
-                        
+
                         Log::debug('DictionaryIngredientCrawlJob detail fetched and saved', [
                             'crawl_id' => $this->crawlId,
                             'ingredient_id' => $id,
@@ -328,14 +330,14 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                     // Even if no detail URL, mark as successful if basic insert/update succeeded
                     if ($id > 0) {
                         $state = Cache::get($key);
-                        if (!is_array($state)) {
+                        if (! is_array($state)) {
                             $state = [];
                         }
                         $successfulSlugs = $state['successful_slugs'] ?? [];
-                        if (!is_array($successfulSlugs)) {
+                        if (! is_array($successfulSlugs)) {
                             $successfulSlugs = [];
                         }
-                        if (!in_array($slug, $successfulSlugs, true)) {
+                        if (! in_array($slug, $successfulSlugs, true)) {
                             $successfulSlugs[] = $slug;
                             if (count($successfulSlugs) > 5000) {
                                 $successfulSlugs = array_slice($successfulSlugs, -5000);
@@ -348,8 +350,8 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                 }
 
                 $itemTime = round((microtime(true) - $itemStartTime) * 1000, 2);
-                $this->appendLog($key, ($i + 1) . '/' . $total . ' - ' . $name . ' - ' . $status);
-                
+                $this->appendLog($key, ($i + 1).'/'.$total.' - '.$name.' - '.$status);
+
                 Log::debug('DictionaryIngredientCrawlJob ingredient processed', [
                     'crawl_id' => $this->crawlId,
                     'index' => $i + 1,
@@ -360,7 +362,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                 ]);
             } catch (Exception $e) {
                 $stats['failed']++;
-                $this->appendLog($key, ($i + 1) . '/' . $total . ' - error: ' . $e->getMessage());
+                $this->appendLog($key, ($i + 1).'/'.$total.' - error: '.$e->getMessage());
                 $this->setError($key, $e->getMessage());
                 Log::error('DictionaryIngredientCrawlJob ingredient processing failed', [
                     'crawl_id' => $this->crawlId,
@@ -382,7 +384,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                     $state['done'] = true;
                     $state['updated_at'] = time();
                     $this->putState($key, $state);
-                    
+
                     Log::info('DictionaryIngredientCrawlJob cancelled', [
                         'crawl_id' => $this->crawlId,
                         'user_id' => $this->userId,
@@ -390,17 +392,18 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                         'processed' => $i + 1,
                         'total' => $total,
                     ]);
+
                     return;
                 }
-                
+
                 $state = Cache::get($key);
-                if (!is_array($state)) {
+                if (! is_array($state)) {
                     $state = [];
                 }
                 $state['processed'] = $i + 1;
                 $state['updated_at'] = time();
                 $this->putState($key, $state);
-                
+
                 Log::info('DictionaryIngredientCrawlJob batch progress', [
                     'crawl_id' => $this->crawlId,
                     'processed' => $i + 1,
@@ -412,7 +415,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
 
         $totalTime = round((microtime(true) - $startTime), 2);
         $state = Cache::get($key);
-        if (!is_array($state)) {
+        if (! is_array($state)) {
             $state = [];
         }
         $state['processed'] = $total;
@@ -436,13 +439,13 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
 
     private function stateKey(string $crawlId): string
     {
-        return 'dictionary_ingredient_crawl_job:' . $crawlId;
+        return 'dictionary_ingredient_crawl_job:'.$crawlId;
     }
 
     private function putState(string $key, array $state): void
     {
         $state['logs'] = $state['logs'] ?? [];
-        if (!is_array($state['logs'])) {
+        if (! is_array($state['logs'])) {
             $state['logs'] = [];
         }
         Cache::put($key, $state, now()->addHours(6));
@@ -451,11 +454,11 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
     private function appendLog(string $key, string $line): void
     {
         $state = Cache::get($key);
-        if (!is_array($state)) {
+        if (! is_array($state)) {
             $state = [];
         }
         $logs = $state['logs'] ?? [];
-        if (!is_array($logs)) {
+        if (! is_array($logs)) {
             $logs = [];
         }
         $logs[] = $line;
@@ -470,7 +473,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
     private function setError(string $key, string $message): void
     {
         $state = Cache::get($key);
-        if (!is_array($state)) {
+        if (! is_array($state)) {
             $state = [];
         }
         $state['error'] = $message;
@@ -516,6 +519,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                     'wait_time' => $waitTime,
                 ]);
                 sleep($waitTime);
+
                 return $this->curlJson($url, $retryCount + 1, $maxRetries);
             }
 
@@ -527,11 +531,12 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                 'fetch_time_ms' => $fetchTime,
                 'retry_count' => $retryCount,
             ]);
+
             return [];
         }
 
         $decoded = json_decode((string) $content, true);
-        if (!is_array($decoded)) {
+        if (! is_array($decoded)) {
             Log::warning('DictionaryIngredientCrawlJob invalid JSON response', [
                 'crawl_id' => $this->crawlId,
                 'url' => $url,
@@ -539,6 +544,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                 'content_length' => $contentLength,
                 'content_preview' => substr($content ?? '', 0, 200),
             ]);
+
             return [];
         }
 
@@ -567,19 +573,22 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                     $parts[] = (string) $v;
                 }
             }
+
             return trim(implode(' ', $parts));
         }
         if (is_scalar($value)) {
             return trim((string) $value);
         }
+
         return '';
     }
 
     private function buildDescription(mixed $sections): string
     {
-        if (!is_array($sections)) {
+        if (! is_array($sections)) {
             $t = $this->normalizeString($sections);
-            return $t !== '' ? '<p>' . $t . '</p>' : '';
+
+            return $t !== '' ? '<p>'.$t.'</p>' : '';
         }
         $content = '';
         foreach ($sections as $value) {
@@ -587,42 +596,46 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
             if (is_string($texts)) {
                 $t = $this->normalizeString($texts);
                 if ($t !== '') {
-                    $content .= '<p>' . $t . '</p>';
+                    $content .= '<p>'.$t.'</p>';
                 }
                 continue;
             }
-            if (is_array($texts) && !empty($texts)) {
+            if (is_array($texts) && ! empty($texts)) {
                 $last = end($texts);
                 $t = $this->normalizeString($last);
                 if ($t !== '') {
-                    $content .= '<p>' . $t . '</p>';
+                    $content .= '<p>'.$t.'</p>';
                 }
             }
         }
+
         return $content;
     }
 
     private function buildReferences(mixed $references): string
     {
-        if (!is_array($references)) {
+        if (! is_array($references)) {
             $t = $this->normalizeString($references);
-            return $t !== '' ? '<p>' . $t . '</p>' : '';
+
+            return $t !== '' ? '<p>'.$t.'</p>' : '';
         }
         $content = '';
         foreach ($references as $ref) {
             $t = $this->normalizeString($ref);
             if ($t !== '') {
-                $content .= '<p>' . $t . '</p>';
+                $content .= '<p>'.$t.'</p>';
             }
         }
+
         return $content;
     }
 
     private function buildGlance(mixed $points): string
     {
-        if (!is_array($points)) {
+        if (! is_array($points)) {
             $t = $this->normalizeString($points);
-            return $t !== '' ? '<ul><li>' . $t . '</li></ul>' : '';
+
+            return $t !== '' ? '<ul><li>'.$t.'</li></ul>' : '';
         }
         $items = [];
         foreach ($points as $p) {
@@ -634,7 +647,8 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
         if (empty($items)) {
             return '';
         }
-        return '<ul><li>' . implode('</li><li>', $items) . '</li></ul>';
+
+        return '<ul><li>'.implode('</li><li>', $items).'</li></ul>';
     }
 
     private function mapRate(mixed $rate): string
@@ -672,7 +686,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
         $notFound = [];
         foreach ($categories as $value) {
             $name = $value['name'] ?? '';
-            if (!is_string($name) || $name === '') {
+            if (! is_string($name) || $name === '') {
                 continue;
             }
 
@@ -700,12 +714,12 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                 }
             }
 
-            if (!$found) {
+            if (! $found) {
                 $notFound[] = $name;
             }
         }
 
-        if (!empty($notFound) && count($ids) === 0 && count($categories) > 0) {
+        if (! empty($notFound) && count($ids) === 0 && count($categories) > 0) {
             Log::debug('DictionaryIngredientCrawlJob mapCategories not found', [
                 'crawl_id' => $this->crawlId,
                 'category_names' => $notFound,
@@ -722,7 +736,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
         $notFound = [];
         foreach ($benefits as $value) {
             $name = $value['name'] ?? '';
-            if (!is_string($name) || $name === '') {
+            if (! is_string($name) || $name === '') {
                 continue;
             }
 
@@ -750,12 +764,12 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
                 }
             }
 
-            if (!$found) {
+            if (! $found) {
                 $notFound[] = $name;
             }
         }
 
-        if (!empty($notFound) && count($ids) === 0 && count($benefits) > 0) {
+        if (! empty($notFound) && count($ids) === 0 && count($benefits) > 0) {
             Log::debug('DictionaryIngredientCrawlJob mapBenefits not found', [
                 'crawl_id' => $this->crawlId,
                 'benefit_names' => $notFound,
@@ -769,15 +783,16 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
     private function updateFromRemote(string $link, int $id): void
     {
         $startTime = microtime(true);
-        
+
         $rooms = $this->curlJson($link);
-        
+
         if (empty($rooms)) {
             Log::warning('DictionaryIngredientCrawlJob updateFromRemote empty response', [
                 'crawl_id' => $this->crawlId,
                 'ingredient_id' => $id,
                 'url' => $link,
             ]);
+
             return;
         }
 
@@ -796,8 +811,8 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
         $rateId = $this->mapRate($rawRating);
 
         // Log mapping details for first few items or when mapping fails
-        $shouldLogMapping = ($id % 50 === 0) || (count($catIds) === 0 && !empty($rawCategories)) || (count($benefitIds) === 0 && !empty($rawBenefits)) || ($rateId === '0' && !empty($rawRating));
-        
+        $shouldLogMapping = ($id % 50 === 0) || (count($catIds) === 0 && ! empty($rawCategories)) || (count($benefitIds) === 0 && ! empty($rawBenefits)) || ($rateId === '0' && ! empty($rawRating));
+
         if ($shouldLogMapping) {
             Log::info('DictionaryIngredientCrawlJob updateFromRemote mapping details', [
                 'crawl_id' => $this->crawlId,
@@ -830,7 +845,7 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
         IngredientPaulas::where('id', $id)->update($updateData);
 
         $processTime = round((microtime(true) - $startTime) * 1000, 2);
-        
+
         Log::debug('DictionaryIngredientCrawlJob updateFromRemote completed', [
             'crawl_id' => $this->crawlId,
             'ingredient_id' => $id,
@@ -838,11 +853,10 @@ class DictionaryIngredientCrawlJob implements ShouldQueue
             'rate_id' => $rateId,
             'categories_count' => count($catIds),
             'benefits_count' => count($benefitIds),
-            'has_content' => !empty($description),
-            'has_reference' => !empty($reference),
-            'has_glance' => !empty($glance),
+            'has_content' => ! empty($description),
+            'has_reference' => ! empty($reference),
+            'has_glance' => ! empty($glance),
             'process_time_ms' => $processTime,
         ]);
     }
 }
-

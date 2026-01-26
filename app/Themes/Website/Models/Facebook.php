@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Themes\Website\Models;
 
 use FacebookAds\Api;
@@ -17,15 +18,12 @@ use Illuminate\Support\Facades\Log;
 class Facebook
 {
     /**
-     * Send event to Facebook CAPI
-     * 
-     * @param array $data
-     * @return void
+     * Send event to Facebook CAPI.
      */
     public static function track(array $data)
     {
         // Check if tracking is enabled
-        if (!getConfig('facebook_status')) {
+        if (! getConfig('facebook_status')) {
             return;
         }
 
@@ -43,11 +41,11 @@ class Facebook
             // $api->setLogger(new CurlLogger());
 
             // Prepare User Data
-            $userData = new UserData();
-            
+            $userData = new UserData;
+
             // Client User Agent and IP
             $userData->setClientIpAddress($_SERVER['REMOTE_ADDR'] ?? null)
-                     ->setClientUserAgent($_SERVER['HTTP_USER_AGENT'] ?? null);
+                ->setClientUserAgent($_SERVER['HTTP_USER_AGENT'] ?? null);
 
             // Cookies (FBC & FBP)
             if (isset($_COOKIE['_fbc'])) {
@@ -60,38 +58,38 @@ class Facebook
             // User Info (Email/Phone)
             $member = auth()->guard('member')->user();
             if ($member) {
-                if (!empty($member->email)) {
+                if (! empty($member->email)) {
                     $userData->setEmails([strtolower(trim($member->email))]);
                 }
-                if (!empty($member->phone)) {
+                if (! empty($member->phone)) {
                     $userData->setPhones([preg_replace('/[^0-9]/', '', $member->phone)]);
                 }
             } else {
-                if (!empty($data['email'])) {
+                if (! empty($data['email'])) {
                     $userData->setEmails([strtolower(trim($data['email']))]);
                 }
-                if (!empty($data['phone'])) {
+                if (! empty($data['phone'])) {
                     $userData->setPhones([preg_replace('/[^0-9]/', '', $data['phone'])]);
                 }
             }
 
             // Content
-            $content = (new Content())
+            $content = (new Content)
                 ->setProductId($data['product_id'] ?? null)
                 ->setQuantity(1)
                 ->setDeliveryCategory(DeliveryCategory::HOME_DELIVERY);
 
             // Custom Data
-            $customData = (new CustomData())
+            $customData = (new CustomData)
                 ->setContents([$content])
                 ->setCurrency('VND');
 
             if (isset($data['price'])) {
-                $customData->setValue((float)$data['price']);
+                $customData->setValue((float) $data['price']);
             }
 
             // Event
-            $event = (new Event())
+            $event = (new Event)
                 ->setEventName($data['event'] ?? 'ViewContent')
                 ->setEventTime(time())
                 ->setEventSourceUrl($data['url'] ?? url()->current())
@@ -102,9 +100,8 @@ class Facebook
             // Execute Request
             $request = (new EventRequest($pixelId))->setEvents([$event]);
             $request->execute();
-
         } catch (\Exception $e) {
-            Log::error('Facebook CAPI Error: ' . $e->getMessage());
+            Log::error('Facebook CAPI Error: '.$e->getMessage());
         }
     }
 }

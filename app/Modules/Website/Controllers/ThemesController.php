@@ -1,83 +1,98 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Website\Controllers;
 
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use App\Modules\Website\Models\Website;
-use App\Modules\Post\Models\Post;
 use App\Modules\Menu\Models\GroupMenu;
-use Validator;
-use Illuminate\Support\Facades\Auth;
-use Session;
+use App\Modules\Website\Models\Website;
 use App\Traits\Admin;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 
 class ThemesController extends Controller
 {
     use Admin;
-    public function header(){
-        active('themes','header');
-        $data['header'] = Website::where('code','header')->first();
+
+    public function header()
+    {
+        active('themes', 'header');
+        $data['header'] = Website::where('code', 'header')->first();
         $data['groups'] = GroupMenu::all();
-        return view('Website::header',$data);
+
+        return view('Website::header', $data);
     }
-    public function postHeader(Request $request){
-        $block_0 = array(
+
+    public function postHeader(Request $request)
+    {
+        $block_0 = [
             'title' => $request->title,
             'logo' => $request->logo,
             'alt' => $request->alt,
-            'menu' => $request->menu
-        );
-        Website::where('id',$request->id)->update(array(
-            'block_0' =>  json_encode($block_0),
-            'user_id'=> Auth::id(),
-        ));
+            'menu' => $request->menu,
+        ];
+        Website::where('id', $request->id)->update([
+            'block_0' => json_encode($block_0),
+            'user_id' => Auth::id(),
+        ]);
         Cache::forget('home_page_detail_v1');
+
         return response()->json([
             'status' => 'success',
             'alert' => 'Cập nhật thành công!',
-            'url' => ''
+            'url' => '',
         ]);
     }
+
     // Footer
-    public function footer(){
-        active('themes','footer');
-        $data['footer'] = Website::where('code','footer')->first();
+    public function footer()
+    {
+        active('themes', 'footer');
+        $data['footer'] = Website::where('code', 'footer')->first();
         $data['groups'] = GroupMenu::all();
-        return view('Website::footer',$data);
+
+        return view('Website::footer', $data);
     }
-    public function postFooter(Request $request){
-        $block_4= json_encode(array(
+
+    public function postFooter(Request $request)
+    {
+        $block_4 = json_encode([
             'logo' => $request->logo,
             'alt' => $request->alt,
             'facebook' => $request->facebook,
             'instagram' => $request->instagram,
             'tiktok' => $request->tiktok,
-            'link' => $request->link
-        ));
-        Website::where('id',$request->id)->update(array(
-            'block_0' =>  $request->block_0,
-            'block_1' =>  $request->block_1,
-            'block_2' =>  $request->block_2,
-            'block_3' =>  $request->block_3,
-            'block_4' =>  $block_4,
-            'user_id'=> Auth::id(),
-        ));
+            'link' => $request->link,
+        ]);
+        Website::where('id', $request->id)->update([
+            'block_0' => $request->block_0,
+            'block_1' => $request->block_1,
+            'block_2' => $request->block_2,
+            'block_3' => $request->block_3,
+            'block_4' => $block_4,
+            'user_id' => Auth::id(),
+        ]);
         Cache::forget('home_page_detail_v1');
+
         return response()->json([
             'status' => 'success',
             'alert' => 'Cập nhật thành công!',
-            'url' => ''
+            'url' => '',
         ]);
     }
-    public function home(){
-        active('themes','home');
-        $data['home'] = Website::where('code','home')->first();
-        return view('Website::home',$data);
+
+    public function home()
+    {
+        active('themes', 'home');
+        $data['home'] = Website::where('code', 'home')->first();
+
+        return view('Website::home', $data);
     }
-    public function postHome(Request $request){
+
+    public function postHome(Request $request)
+    {
         Cache::forget('home_page_detail_v1');
         Cache::forget('home_sliders_v1');
         Cache::forget('home_sliderms_v1');
@@ -88,30 +103,30 @@ class ThemesController extends Controller
         Cache::forget('home_taxonomies_with_tabs_v1');
         Cache::forget('home_top_deals_v1');
 
-        $block_0 = array(
+        $block_0 = [
             'image' => $request->image_0,
             'video' => $request->video_0,
             'title' => $request->title_01,
             'title1' => $request->title_02,
             'content' => $request->content_0,
             'status' => $request->status_0,
-        );
-        $block_1 = array(
+        ];
+        $block_1 = [
             'category' => $request->category_1,
             'number' => $request->number_1,
             'status' => $request->status_1,
-        );
-        $block_2 = array(
+        ];
+        $block_2 = [
             'title' => $request->title_2,
             'number' => $request->number_2,
             'status' => $request->status_2,
-        );
-        $block_3 = array(
+        ];
+        $block_3 = [
             'title' => $request->title_3,
             'number' => $request->number_3,
             'status' => $request->status_3,
-        );
-        $block_5 = array(
+        ];
+        $block_5 = [
             'title' => $request->title_5,
             'image' => $request->image_5,
             'title1' => $request->title_51,
@@ -121,44 +136,45 @@ class ThemesController extends Controller
             'title5' => $request->title_55,
             'title6' => $request->title_56,
             'status' => $request->status_5,
-        );
-        $block_6 = array(
+        ];
+        $block_6 = [
             'title' => $request->title_6,
             'number' => $request->number_6,
             'status' => $request->status_6,
-        );
-        $block_7 = array(
+        ];
+        $block_7 = [
             'title' => $request->title_7,
             'number' => $request->number_7,
             'status' => $request->status_7,
-        );
-        $block_8 = array(
+        ];
+        $block_8 = [
             'title' => $request->title_8,
             'category' => $request->category_8,
             'number' => $request->number_8,
             'status' => $request->status_8,
-        );
-        $block_9 = array(
+        ];
+        $block_9 = [
             'title' => $request->title_9,
             'number' => $request->number_9,
             'status' => $request->status_9,
-        );
-        Website::where('id',$request->id)->update(array(
-            'block_0' =>  json_encode($block_0),
-            'block_1' =>  json_encode($block_1),
-            'block_2' =>  json_encode($block_2),
-            'block_3' =>  json_encode($block_3),
-            'block_5' =>  json_encode($block_5),
-            'block_6' =>  json_encode($block_6),
-            'block_7' =>  json_encode($block_7),
-            'block_8' =>  json_encode($block_8),
-            'block_9' =>  json_encode($block_9),
-            'user_id'=> Auth::id(),
-        ));
+        ];
+        Website::where('id', $request->id)->update([
+            'block_0' => json_encode($block_0),
+            'block_1' => json_encode($block_1),
+            'block_2' => json_encode($block_2),
+            'block_3' => json_encode($block_3),
+            'block_5' => json_encode($block_5),
+            'block_6' => json_encode($block_6),
+            'block_7' => json_encode($block_7),
+            'block_8' => json_encode($block_8),
+            'block_9' => json_encode($block_9),
+            'user_id' => Auth::id(),
+        ]);
+
         return response()->json([
             'status' => 'success',
             'alert' => 'Cập nhật thành công!',
-            'url' => ''
+            'url' => '',
         ]);
     }
 }

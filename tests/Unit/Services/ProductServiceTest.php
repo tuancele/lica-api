@@ -1,22 +1,21 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Unit\Services;
 
-use Tests\TestCase;
-use App\Services\Product\ProductService;
-use App\Services\Product\ProductServiceInterface;
-use App\Repositories\Product\ProductRepositoryInterface;
-use App\Services\Image\ImageServiceInterface;
-use App\Modules\Product\Models\Product;
-use App\Modules\Product\Models\Variant;
 use App\Enums\ProductStatus;
 use App\Enums\ProductType;
-use App\Exceptions\ProductNotFoundException;
 use App\Exceptions\ProductCreationException;
-use App\Exceptions\ProductDeletionException;
+use App\Exceptions\ProductNotFoundException;
+use App\Modules\Product\Models\Product;
+use App\Repositories\Product\ProductRepositoryInterface;
+use App\Services\Image\ImageServiceInterface;
+use App\Services\Product\ProductService;
+use App\Services\Product\ProductServiceInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
+use Tests\TestCase;
 
 class ProductServiceTest extends TestCase
 {
@@ -29,10 +28,10 @@ class ProductServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->repositoryMock = Mockery::mock(ProductRepositoryInterface::class);
         $this->imageServiceMock = Mockery::mock(ImageServiceInterface::class);
-        
+
         $this->service = new ProductService(
             $this->repositoryMock,
             $this->imageServiceMock

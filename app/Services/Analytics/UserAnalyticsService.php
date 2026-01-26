@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Analytics;
 
 use Illuminate\Support\Facades\Cache;
@@ -9,16 +10,16 @@ use Illuminate\Support\Facades\Log;
 class UserAnalyticsService
 {
     /**
-     * 获取用户IP地址的详细信息
+     * 获取用户IP地址的详细信息.
      */
     public function getIpInfo(string $ip): array
     {
         $cacheKey = "ip_info:{$ip}";
-        
+
         return Cache::remember($cacheKey, 86400, function () use ($ip) {
             try {
                 $response = @file_get_contents("http://ip-api.com/json/{$ip}?lang=vi");
-                
+
                 if ($response) {
                     $data = json_decode($response, true);
                     if ($data && ($data['status'] ?? '') === 'success') {
@@ -34,19 +35,19 @@ class UserAnalyticsService
                     }
                 }
             } catch (\Exception $e) {
-                Log::warning("Failed to get IP info: " . $e->getMessage());
+                Log::warning('Failed to get IP info: '.$e->getMessage());
             }
-            
+
             return [];
         });
     }
 
     /**
-     * 解析User Agent获取设备信息
+     * 解析User Agent获取设备信息.
      */
     public function parseUserAgent(?string $userAgent): array
     {
-        if (!$userAgent) {
+        if (! $userAgent) {
             return [
                 'device_type' => 'unknown',
                 'browser' => 'unknown',
@@ -98,12 +99,12 @@ class UserAnalyticsService
     }
 
     /**
-     * 获取会话统计信息
+     * 获取会话统计信息.
      */
     public function getSessionStats(string $sessionId): array
     {
         $cacheKey = "session_stats:{$sessionId}";
-        
+
         return Cache::remember($cacheKey, 3600, function () use ($sessionId) {
             $behaviors = \App\Modules\Recommendation\Models\UserBehavior::where('session_id', $sessionId)
                 ->orderBy('created_at', 'asc')

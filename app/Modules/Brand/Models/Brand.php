@@ -1,14 +1,15 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Brand\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
 class Brand extends Model
 {
-    protected $table = "brands";
-    
+    protected $table = 'brands';
+
     protected $fillable = [
         'name',
         'slug',
@@ -23,18 +24,20 @@ class Brand extends Model
         'sort',
         'user_id',
     ];
-    
+
     protected $casts = [
         'gallery' => 'array',
         'status' => 'integer',
         'sort' => 'integer',
     ];
-    
-    public function user(){
-    	return $this->belongsTo('App\User','user_id','id');
+
+    public function user()
+    {
+        return $this->belongsTo('App\User', 'user_id', 'id');
     }
-    
-    public function product(){
-    	return $this->hasMany('App\Modules\Post\Models\Post','brand_id','id')->select('id');
+
+    public function product()
+    {
+        return $this->hasMany('App\Modules\Post\Models\Post', 'brand_id', 'id')->select('id');
     }
 }

@@ -1,16 +1,14 @@
 <?php
 
 declare(strict_types=1);
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 
 class CreateUserBehaviorsTable extends Migration
 {
     /**
      * Run the migrations.
-     *
-     * @return void
      */
     public function up()
     {
@@ -49,7 +47,7 @@ class CreateUserBehaviorsTable extends Migration
             $table->integer('session_page_views')->nullable()->default(1);
             $table->timestamp('session_start_time')->nullable();
             $table->timestamps();
-            
+
             // 索引
             $table->index(['session_id', 'product_id', 'behavior_type']);
             $table->index(['user_id', 'product_id', 'behavior_type']);
@@ -63,8 +61,6 @@ class CreateUserBehaviorsTable extends Migration
 
     /**
      * Reverse the migrations.
-     *
-     * @return void
      */
     public function down()
     {

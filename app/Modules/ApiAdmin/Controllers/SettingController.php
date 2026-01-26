@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
@@ -16,6 +17,7 @@ class SettingController extends Controller
     {
         try {
             $settings = Setting::orderBy('key', 'asc')->get()->keyBy('key');
+
             return response()->json([
                 'success' => true,
                 'data' => $settings->map(function ($setting) {
@@ -27,7 +29,8 @@ class SettingController extends Controller
                 })->values(),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get settings failed: ' . $e->getMessage());
+            Log::error('Get settings failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get settings'], 500);
         }
     }
@@ -36,7 +39,10 @@ class SettingController extends Controller
     {
         try {
             $setting = Setting::where('key', $key)->first();
-            if (!$setting) return response()->json(['success' => false, 'message' => 'Setting not found'], 404);
+            if (! $setting) {
+                return response()->json(['success' => false, 'message' => 'Setting not found'], 404);
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -46,7 +52,8 @@ class SettingController extends Controller
                 ],
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get setting failed: ' . $e->getMessage());
+            Log::error('Get setting failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get setting'], 500);
         }
     }
@@ -62,20 +69,21 @@ class SettingController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             foreach ($request->settings as $settingData) {
                 Setting::updateOrCreate(
                     ['key' => $settingData['key']],
                     ['value' => $settingData['value'] ?? '']
                 );
             }
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Settings updated successfully',
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Update settings failed: ' . $e->getMessage());
+            Log::error('Update settings failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to update settings'], 500);
         }
     }
@@ -89,20 +97,20 @@ class SettingController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             Setting::updateOrCreate(
                 ['key' => $key],
                 ['value' => $request->value ?? '']
             );
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Setting updated successfully',
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Update setting failed: ' . $e->getMessage());
+            Log::error('Update setting failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to update setting'], 500);
         }
     }
 }
-

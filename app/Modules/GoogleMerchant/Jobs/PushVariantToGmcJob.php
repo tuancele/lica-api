@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\GoogleMerchant\Jobs;
 
 use App\Modules\GoogleMerchant\Services\GoogleMerchantService;
@@ -24,8 +25,9 @@ class PushVariantToGmcJob implements ShouldQueue
     {
         try {
             $variant = Variant::with('product')->find($this->variantId);
-            if (!$variant || !$variant->product) {
+            if (! $variant || ! $variant->product) {
                 Log::warning('[GoogleMerchant][Job] Variant not found', ['variant_id' => $this->variantId]);
+
                 return;
             }
 
@@ -39,6 +41,3 @@ class PushVariantToGmcJob implements ShouldQueue
         }
     }
 }
-
-
-

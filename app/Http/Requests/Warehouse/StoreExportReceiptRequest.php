@@ -1,14 +1,15 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Requests\Warehouse;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
 /**
- * Form Request for storing a new export receipt
- * 
+ * Form Request for storing a new export receipt.
+ *
  * This class handles validation and authorization
  * for export receipt creation requests.
  */
@@ -16,8 +17,6 @@ class StoreExportReceiptRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
-     * 
-     * @return bool
      */
     public function authorize(): bool
     {
@@ -26,7 +25,7 @@ class StoreExportReceiptRequest extends FormRequest
 
     /**
      * Get the validation rules that apply to the request.
-     * 
+     *
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array|string>
      */
     public function rules(): array
@@ -36,50 +35,47 @@ class StoreExportReceiptRequest extends FormRequest
                 'required',
                 'string',
                 'max:100',
-                'unique:warehouse,code'
+                'unique:warehouse,code',
             ],
             'subject' => [
                 'required',
                 'string',
-                'max:255'
+                'max:255',
             ],
             'content' => [
                 'nullable',
-                'string'
+                'string',
             ],
             'vat_invoice' => [
                 'nullable',
                 'string',
-                'max:100'
+                'max:100',
             ],
             'items' => [
                 'required',
                 'array',
-                'min:1'
+                'min:1',
             ],
             'items.*.variant_id' => [
                 'required',
                 'integer',
-                'exists:variants,id'
+                'exists:variants,id',
             ],
             'items.*.price' => [
                 'required',
                 'numeric',
-                'min:0'
+                'min:0',
             ],
             'items.*.quantity' => [
                 'required',
                 'integer',
-                'min:1'
-            ]
+                'min:1',
+            ],
         ];
     }
 
     /**
      * Configure the validator instance.
-     * 
-     * @param  \Illuminate\Validation\Validator  $validator
-     * @return void
      */
     public function withValidator(Validator $validator): void
     {
@@ -91,8 +87,6 @@ class StoreExportReceiptRequest extends FormRequest
 
     /**
      * Get custom messages for validator errors.
-     * 
-     * @return array
      */
     public function messages(): array
     {

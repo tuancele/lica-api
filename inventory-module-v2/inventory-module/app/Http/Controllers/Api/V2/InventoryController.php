@@ -3,17 +3,16 @@
 namespace App\Http\Controllers\Api\V2;
 
 use App\Http\Controllers\Controller;
-use App\Services\Inventory\Contracts\InventoryServiceInterface;
-use App\Services\Inventory\DTOs\ImportStockDTO;
-use App\Services\Inventory\DTOs\ExportStockDTO;
-use App\Services\Inventory\DTOs\ReserveStockDTO;
-use App\Services\Inventory\DTOs\AdjustStockDTO;
-use App\Services\Inventory\DTOs\TransferStockDTO;
-use App\Models\StockReceipt;
 use App\Models\InventoryStock;
+use App\Models\StockReceipt;
 use App\Models\WarehouseV2;
-use Illuminate\Http\Request;
+use App\Services\Inventory\Contracts\InventoryServiceInterface;
+use App\Services\Inventory\DTOs\AdjustStockDTO;
+use App\Services\Inventory\DTOs\ExportStockDTO;
+use App\Services\Inventory\DTOs\ImportStockDTO;
+use App\Services\Inventory\DTOs\TransferStockDTO;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class InventoryController extends Controller
 {
@@ -23,19 +22,26 @@ class InventoryController extends Controller
     public function stocks(Request $request): JsonResponse
     {
         $query = InventoryStock::with(['variant.product', 'warehouse']);
-        
-        if ($request->warehouse_id) $query->forWarehouse($request->warehouse_id);
+
+        if ($request->warehouse_id) {
+            $query->forWarehouse($request->warehouse_id);
+        }
         if ($request->keyword) {
-            $query->whereHas('variant', fn($q) => 
-                $q->where('sku', 'like', "%{$request->keyword}%")
-                  ->orWhereHas('product', fn($q2) => $q2->where('name', 'like', "%{$request->keyword}%"))
+            $query->whereHas(
+                'variant',
+                fn ($q) => $q->where('sku', 'like', "%{$request->keyword}%")
+                    ->orWhereHas('product', fn ($q2) => $q2->where('name', 'like', "%{$request->keyword}%"))
             );
         }
-        if ($request->low_stock_only) $query->lowStock();
-        if ($request->out_of_stock_only) $query->outOfStock();
-        
+        if ($request->low_stock_only) {
+            $query->lowStock();
+        }
+        if ($request->out_of_stock_only) {
+            $query->outOfStock();
+        }
+
         $stocks = $query->paginate($request->per_page ?? 20);
-        
+
         return response()->json([
             'success' => true,
             'data' => $stocks->items(),
@@ -44,13 +50,14 @@ class InventoryController extends Controller
                 'last_page' => $stocks->lastPage(),
                 'per_page' => $stocks->perPage(),
                 'total' => $stocks->total(),
-            ]
+            ],
         ]);
     }
 
     public function stockShow(int $variantId, Request $request): JsonResponse
     {
         $stock = $this->inventory->getStock($variantId, $request->warehouse_id);
+
         return response()->json(['success' => true, 'data' => $stock->toArray()]);
     }
 
@@ -61,10 +68,10 @@ class InventoryController extends Controller
             'items.*.variant_id' => 'required|integer',
             'items.*.quantity' => 'required|integer|min:1',
         ]);
-        
+
         $results = $this->inventory->checkAvailabilityBatch($request->items, $request->warehouse_id);
         $allAvailable = collect($results)->every('is_available');
-        
+
         return response()->json([
             'success' => true,
             'data' => $results,
@@ -75,6 +82,7 @@ class InventoryController extends Controller
     public function lowStock(Request $request): JsonResponse
     {
         $items = $this->inventory->getLowStockItems($request->warehouse_id);
+
         return response()->json(['success' => true, 'data' => $items]);
     }
 
@@ -82,18 +90,22 @@ class InventoryController extends Controller
     public function receipts(Request $request): JsonResponse
     {
         $query = StockReceipt::with(['creator', 'fromWarehouse', 'toWarehouse']);
-        
-        if ($request->type) $query->ofType($request->type);
-        if ($request->status) $query->ofStatus($request->status);
+
+        if ($request->type) {
+            $query->ofType($request->type);
+        }
+        if ($request->status) {
+            $query->ofStatus($request->status);
+        }
         if ($request->keyword) {
-            $query->where(fn($q) => 
-                $q->where('receipt_code', 'like', "%{$request->keyword}%")
-                  ->orWhere('subject', 'like', "%{$request->keyword}%")
+            $query->where(
+                fn ($q) => $q->where('receipt_code', 'like', "%{$request->keyword}%")
+                    ->orWhere('subject', 'like', "%{$request->keyword}%")
             );
         }
-        
+
         $receipts = $query->orderBy('created_at', 'desc')->paginate($request->per_page ?? 20);
-        
+
         return response()->json([
             'success' => true,
             'data' => $receipts->items(),
@@ -101,7 +113,7 @@ class InventoryController extends Controller
                 'current_page' => $receipts->currentPage(),
                 'last_page' => $receipts->lastPage(),
                 'total' => $receipts->total(),
-            ]
+            ],
         ]);
     }
 
@@ -109,6 +121,7 @@ class InventoryController extends Controller
     {
         $receipt = StockReceipt::with(['items.variant.product', 'creator', 'fromWarehouse', 'toWarehouse'])
             ->findOrFail($id);
+
         return response()->json(['success' => true, 'data' => $receipt]);
     }
 
@@ -121,13 +134,13 @@ class InventoryController extends Controller
             'items.*.variant_id' => 'required|integer|exists:variants,id',
             'items.*.quantity' => 'required|integer|min:1',
         ]);
-        
+
         try {
             $receipt = $this->inventory->import(ImportStockDTO::fromArray(array_merge(
                 $request->all(),
                 ['created_by' => auth()->id()]
             )));
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Nhập kho thành công',
@@ -147,13 +160,13 @@ class InventoryController extends Controller
             'items.*.variant_id' => 'required|integer|exists:variants,id',
             'items.*.quantity' => 'required|integer|min:1',
         ]);
-        
+
         try {
             $receipt = $this->inventory->export(ExportStockDTO::fromArray(array_merge(
                 $request->all(),
                 ['created_by' => auth()->id()]
             )));
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Xuất kho thành công',
@@ -171,13 +184,13 @@ class InventoryController extends Controller
             'to_warehouse_id' => 'required|integer|exists:warehouses_v2,id|different:from_warehouse_id',
             'items' => 'required|array|min:1',
         ]);
-        
+
         try {
             $receipt = $this->inventory->transfer(TransferStockDTO::fromArray(array_merge(
                 $request->all(),
                 ['created_by' => auth()->id()]
             )));
-            
+
             return response()->json(['success' => true, 'data' => $receipt], 201);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
@@ -191,13 +204,13 @@ class InventoryController extends Controller
             'items.*.variant_id' => 'required|integer|exists:variants,id',
             'items.*.new_quantity' => 'required|integer|min:0',
         ]);
-        
+
         try {
             $receipt = $this->inventory->adjust(AdjustStockDTO::fromArray(array_merge(
                 $request->all(),
                 ['created_by' => auth()->id()]
             )));
-            
+
             return response()->json(['success' => true, 'data' => $receipt], 201);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
@@ -207,15 +220,16 @@ class InventoryController extends Controller
     public function receiptDestroy(int $id): JsonResponse
     {
         $receipt = StockReceipt::findOrFail($id);
-        
-        if (!in_array($receipt->status, ['draft', 'pending'])) {
+
+        if (! in_array($receipt->status, ['draft', 'pending'])) {
             return response()->json([
-                'success' => false, 
-                'message' => 'Chỉ có thể xóa phiếu ở trạng thái nháp hoặc chờ duyệt'
+                'success' => false,
+                'message' => 'Chỉ có thể xóa phiếu ở trạng thái nháp hoặc chờ duyệt',
             ], 422);
         }
-        
+
         $receipt->delete();
+
         return response()->json(['success' => true, 'message' => 'Đã xóa phiếu']);
     }
 
@@ -223,6 +237,7 @@ class InventoryController extends Controller
     public function warehouses(): JsonResponse
     {
         $warehouses = WarehouseV2::active()->get();
+
         return response()->json(['success' => true, 'data' => $warehouses]);
     }
 
@@ -230,12 +245,12 @@ class InventoryController extends Controller
     public function movements(Request $request): JsonResponse
     {
         $request->validate(['variant_id' => 'required|integer']);
-        
+
         $movements = $this->inventory->getMovementHistory($request->variant_id, [
             'warehouse_id' => $request->warehouse_id,
             'limit' => $request->limit ?? 50,
         ]);
-        
+
         return response()->json(['success' => true, 'data' => $movements]);
     }
 
@@ -243,6 +258,7 @@ class InventoryController extends Controller
     public function valuation(Request $request): JsonResponse
     {
         $data = $this->inventory->getInventoryValuation($request->warehouse_id);
+
         return response()->json(['success' => true, 'data' => $data]);
     }
 }

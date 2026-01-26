@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
@@ -23,8 +24,7 @@ class IngredientController extends Controller
 {
     public function __construct(
         private IngredientAdminService $service
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -54,6 +54,7 @@ class IngredientController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('List ingredients failed', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => '获取成分列表失败',
@@ -72,6 +73,7 @@ class IngredientController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Show ingredient failed', ['error' => $e->getMessage(), 'id' => $id]);
+
             return response()->json([
                 'success' => false,
                 'message' => '成分不存在',
@@ -83,6 +85,7 @@ class IngredientController extends Controller
     {
         try {
             $item = $this->service->create($request->validated());
+
             return response()->json([
                 'success' => true,
                 'message' => '创建成分成功',
@@ -93,6 +96,7 @@ class IngredientController extends Controller
                 'error' => $e->getMessage(),
                 'payload' => $request->validated(),
             ]);
+
             return response()->json([
                 'success' => false,
                 'message' => '创建成分失败',
@@ -104,6 +108,7 @@ class IngredientController extends Controller
     {
         try {
             $item = $this->service->update($id, $request->validated());
+
             return response()->json([
                 'success' => true,
                 'message' => '更新成分成功',
@@ -115,6 +120,7 @@ class IngredientController extends Controller
                 'id' => $id,
                 'payload' => $request->validated(),
             ]);
+
             return response()->json([
                 'success' => false,
                 'message' => '更新成分失败',
@@ -126,12 +132,14 @@ class IngredientController extends Controller
     {
         try {
             $this->service->delete($id);
+
             return response()->json([
                 'success' => true,
                 'message' => '删除成分成功',
             ]);
         } catch (\Exception $e) {
             Log::error('Delete ingredient failed', ['error' => $e->getMessage(), 'id' => $id]);
+
             return response()->json([
                 'success' => false,
                 'message' => '删除成分失败',
@@ -143,6 +151,7 @@ class IngredientController extends Controller
     {
         try {
             $item = $this->service->updateStatus($id, (int) $request->status);
+
             return response()->json([
                 'success' => true,
                 'message' => '状态更新成功',
@@ -150,6 +159,7 @@ class IngredientController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Update ingredient status failed', ['error' => $e->getMessage(), 'id' => $id]);
+
             return response()->json([
                 'success' => false,
                 'message' => '状态更新失败',
@@ -161,6 +171,7 @@ class IngredientController extends Controller
     {
         try {
             $this->service->bulkAction($request->checklist, (int) $request->action);
+
             return response()->json([
                 'success' => true,
                 'message' => '批量操作成功',
@@ -171,6 +182,7 @@ class IngredientController extends Controller
                 'ids' => $request->checklist,
                 'action' => $request->action,
             ]);
+
             return response()->json([
                 'success' => false,
                 'message' => '批量操作失败',
@@ -182,6 +194,7 @@ class IngredientController extends Controller
     {
         try {
             $data = $this->service->crawlSummary();
+
             return response()->json([
                 'success' => true,
                 'data' => $data,
@@ -189,7 +202,7 @@ class IngredientController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => '获取 crawl summary 失败: ' . $e->getMessage(),
+                'message' => '获取 crawl summary 失败: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -314,6 +327,7 @@ class IngredientController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error("List {$type} failed", ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => '获取列表失败',
@@ -325,6 +339,7 @@ class IngredientController extends Controller
     {
         try {
             $item = $this->service->createDictionary($type, $request->validated());
+
             return response()->json([
                 'success' => true,
                 'message' => '创建成功',
@@ -332,6 +347,7 @@ class IngredientController extends Controller
             ], 201);
         } catch (\Exception $e) {
             Log::error("Create {$type} failed", ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => '创建失败',
@@ -343,6 +359,7 @@ class IngredientController extends Controller
     {
         try {
             $item = $this->service->updateDictionary($type, $id, $request->validated());
+
             return response()->json([
                 'success' => true,
                 'message' => '更新成功',
@@ -350,6 +367,7 @@ class IngredientController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error("Update {$type} failed", ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => '更新失败',
@@ -361,12 +379,14 @@ class IngredientController extends Controller
     {
         try {
             $this->service->deleteDictionary($type, $id);
+
             return response()->json([
                 'success' => true,
                 'message' => '删除成功',
             ]);
         } catch (\Exception $e) {
             Log::error("Delete {$type} failed", ['error' => $e->getMessage(), 'id' => $id]);
+
             return response()->json([
                 'success' => false,
                 'message' => '删除失败',
@@ -378,6 +398,7 @@ class IngredientController extends Controller
     {
         try {
             $item = $this->service->updateDictionaryStatus($type, $id, (int) $request->status);
+
             return response()->json([
                 'success' => true,
                 'message' => '状态更新成功',
@@ -385,6 +406,7 @@ class IngredientController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error("Update {$type} status failed", ['error' => $e->getMessage(), 'id' => $id]);
+
             return response()->json([
                 'success' => false,
                 'message' => '状态更新失败',
@@ -396,6 +418,7 @@ class IngredientController extends Controller
     {
         try {
             $this->service->bulkDictionary($type, $request->checklist, (int) $request->action);
+
             return response()->json([
                 'success' => true,
                 'message' => '批量操作成功',
@@ -406,6 +429,7 @@ class IngredientController extends Controller
                 'ids' => $request->checklist,
                 'action' => $request->action,
             ]);
+
             return response()->json([
                 'success' => false,
                 'message' => '批量操作失败',

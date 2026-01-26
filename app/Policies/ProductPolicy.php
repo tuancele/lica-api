@@ -1,10 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Policies;
 
-use App\User;
 use App\Product;
+use App\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
 class ProductPolicy
@@ -20,7 +21,7 @@ class ProductPolicy
      */
     public function view(User $user, Product $product)
     {
-        return  $user->can('list-product') && $user->id === $product->user_id;
+        return $user->can('list-product') && $user->id === $product->user_id;
     }
 
     /**
@@ -33,6 +34,7 @@ class ProductPolicy
     {
         return $user->hasPermission('create_product');
     }
+
     /**
      * Determine whether the user can import posts.
      *

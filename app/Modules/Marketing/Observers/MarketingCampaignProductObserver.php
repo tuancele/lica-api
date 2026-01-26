@@ -1,23 +1,24 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Marketing\Observers;
 
-use App\Modules\Marketing\Models\MarketingCampaignProduct;
-use App\Modules\GoogleMerchant\Jobs\PushVariantToGmcJob;
 use App\Modules\GoogleMerchant\Jobs\PushProductToGmcJob;
+use App\Modules\GoogleMerchant\Jobs\PushVariantToGmcJob;
+use App\Modules\Marketing\Models\MarketingCampaignProduct;
 use Illuminate\Support\Facades\Log;
 
 /**
- * MarketingCampaignProduct Observer
- * 
+ * MarketingCampaignProduct Observer.
+ *
  * Auto-push product/variant to GMC when added to Marketing Campaign
  */
 class MarketingCampaignProductObserver
 {
     /**
      * Handle the MarketingCampaignProduct "created" event.
-     * Auto-push product/variant to GMC when added to Marketing Campaign
+     * Auto-push product/variant to GMC when added to Marketing Campaign.
      */
     public function created(MarketingCampaignProduct $campaignProduct): void
     {
@@ -26,7 +27,7 @@ class MarketingCampaignProductObserver
 
     /**
      * Handle the MarketingCampaignProduct "updated" event.
-     * Auto-push product/variant to GMC when Marketing Campaign is updated
+     * Auto-push product/variant to GMC when Marketing Campaign is updated.
      */
     public function updated(MarketingCampaignProduct $campaignProduct): void
     {
@@ -34,15 +35,15 @@ class MarketingCampaignProductObserver
     }
 
     /**
-     * Push product/variant to GMC
+     * Push product/variant to GMC.
      */
     private function pushToGmc(MarketingCampaignProduct $campaignProduct, string $event): void
     {
         try {
             // Load relationships
             $campaignProduct->loadMissing(['product', 'campaign']);
-            
-            if (!$campaignProduct->product || !$campaignProduct->campaign) {
+
+            if (! $campaignProduct->product || ! $campaignProduct->campaign) {
                 return;
             }
 
@@ -58,7 +59,7 @@ class MarketingCampaignProductObserver
 
             // Rule 5: Respect VARIABLE product rule - only push variants, not parent
             $hasVariants = (int) ($campaignProduct->product->has_variants ?? 0);
-            
+
             if ($hasVariants === 1) {
                 // VARIABLE product: Push all variants of this product
                 $variants = $campaignProduct->product->variants()->get();
@@ -92,4 +93,3 @@ class MarketingCampaignProductObserver
         }
     }
 }
-

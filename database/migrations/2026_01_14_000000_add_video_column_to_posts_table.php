@@ -9,13 +9,11 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     *
-     * @return void
      */
     public function up()
     {
         Schema::table('posts', function (Blueprint $table) {
-            if (!Schema::hasColumn('posts', 'video')) {
+            if (! Schema::hasColumn('posts', 'video')) {
                 $table->string('video')->nullable()->after('gallery');
             }
         });
@@ -23,8 +21,6 @@ return new class extends Migration
 
     /**
      * Reverse the migrations.
-     *
-     * @return void
      */
     public function down()
     {
@@ -35,4 +31,3 @@ return new class extends Migration
         });
     }
 };
-

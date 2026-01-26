@@ -9,13 +9,11 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     *
-     * @return void
      */
     public function up()
     {
         Schema::table('menus', function (Blueprint $table) {
-            if (!Schema::hasColumn('menus', 'group_id')) {
+            if (! Schema::hasColumn('menus', 'group_id')) {
                 $table->integer('group_id')->default(0)->after('id');
             }
         });
@@ -23,8 +21,6 @@ return new class extends Migration
 
     /**
      * Reverse the migrations.
-     *
-     * @return void
      */
     public function down()
     {

@@ -9,7 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('rates')) {
+        if (! Schema::hasTable('rates')) {
             Schema::create('rates', function (Blueprint $table) {
                 $table->increments('id');
                 $table->integer('product_id')->nullable();
@@ -18,7 +18,7 @@ return new class extends Migration
                 $table->text('comment')->nullable();
                 $table->smallInteger('status')->default(1);
                 $table->timestamps();
-                
+
                 $table->index('product_id');
                 $table->index('user_id');
                 $table->index('status');
@@ -26,7 +26,7 @@ return new class extends Migration
         } else {
             // Add missing columns if table exists
             Schema::table('rates', function (Blueprint $table) {
-                if (!Schema::hasColumn('rates', 'status')) {
+                if (! Schema::hasColumn('rates', 'status')) {
                     $table->smallInteger('status')->default(1)->after('comment');
                 }
             });

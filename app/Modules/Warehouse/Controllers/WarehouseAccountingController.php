@@ -1,19 +1,20 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Warehouse\Controllers;
 
+use App\Helpers\NumberToText;
 use App\Http\Controllers\Controller;
-use App\Services\Warehouse\StockReceiptService;
 use App\Models\StockReceipt;
+use App\Services\Warehouse\StockReceiptService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
-use App\Helpers\NumberToText;
 
 /**
  * Warehouse Accounting Controller
- * Handles warehouse accounting form (A4 format)
+ * Handles warehouse accounting form (A4 format).
  */
 class WarehouseAccountingController extends Controller
 {
@@ -22,23 +23,24 @@ class WarehouseAccountingController extends Controller
     ) {}
 
     /**
-     * List receipts (Index page)
+     * List receipts (Index page).
      */
     public function index(Request $request)
     {
         active('warehouse', 'accounting');
+
         return view('Warehouse::accounting-index', [
             'apiToken' => Auth::user()?->api_token ?? '',
         ]);
     }
 
     /**
-     * Show accounting form (Create/Edit)
+     * Show accounting form (Create/Edit).
      */
     public function create(Request $request)
     {
         active('warehouse', 'accounting');
-        
+
         $data = [
             'receipt' => null,
             'apiToken' => Auth::user()?->api_token ?? '',
@@ -47,7 +49,7 @@ class WarehouseAccountingController extends Controller
         // If editing existing receipt
         if ($request->has('id') && $request->id) {
             try {
-                $data['receipt'] = $this->stockReceiptService->getReceipt((int)$request->id);
+                $data['receipt'] = $this->stockReceiptService->getReceipt((int) $request->id);
             } catch (\Exception $e) {
                 // Receipt not found, continue with new receipt
             }
@@ -59,12 +61,12 @@ class WarehouseAccountingController extends Controller
         } else {
             $data['totalInWords'] = '';
         }
-        
+
         return view('Warehouse::accounting', $data);
     }
 
     /**
-     * Get receipts list (API for DataTable)
+     * Get receipts list (API for DataTable).
      */
     public function list(Request $request)
     {
@@ -81,7 +83,7 @@ class WarehouseAccountingController extends Controller
 
         // Format for DataTable
         return response()->json([
-            'draw' => (int)$request->get('draw', 1),
+            'draw' => (int) $request->get('draw', 1),
             'recordsTotal' => $receipts->total(),
             'recordsFiltered' => $receipts->total(),
             'data' => $receipts->items(),
@@ -89,7 +91,7 @@ class WarehouseAccountingController extends Controller
     }
 
     /**
-     * Void receipt (Hủy phiếu và hoàn kho)
+     * Void receipt (Hủy phiếu và hoàn kho).
      */
     public function void(Request $request, int $id)
     {
@@ -102,9 +104,9 @@ class WarehouseAccountingController extends Controller
                     'message' => 'Không thể hủy phiếu được tạo từ đơn hàng. Phiếu chỉ có thể bị hủy khi đơn hàng bị hủy.',
                 ], 403);
             }
-            
+
             $receipt = $this->stockReceiptService->voidReceipt($id, Auth::id());
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Hủy phiếu thành công',
@@ -113,36 +115,36 @@ class WarehouseAccountingController extends Controller
                     'status' => $receipt->status,
                 ],
             ], 200);
-            
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Hủy phiếu thất bại: ' . $e->getMessage(),
+                'message' => 'Hủy phiếu thất bại: '.$e->getMessage(),
             ], 422);
         }
     }
 
     /**
-     * Print receipt (Load receipt for printing)
+     * Print receipt (Load receipt for printing).
      */
     public function print(int $id)
     {
         $receipt = $this->stockReceiptService->getReceipt($id);
         $totalInWords = NumberToText::convertCurrency($receipt->total_value ?? 0);
+
         return view('Warehouse::accounting-print', [
             'receipt' => $receipt,
-            'totalInWords' => $totalInWords
+            'totalInWords' => $totalInWords,
         ]);
     }
 
     /**
-     * Convert number to Vietnamese text
+     * Convert number to Vietnamese text.
      */
     public function numberToText(Request $request)
     {
-        $number = (float)$request->get('number', 0);
+        $number = (float) $request->get('number', 0);
         $text = NumberToText::convertCurrency($number);
-        
+
         return response()->json([
             'success' => true,
             'text' => $text,
@@ -150,17 +152,17 @@ class WarehouseAccountingController extends Controller
     }
 
     /**
-     * Public view of receipt (no auth required)
+     * Public view of receipt (no auth required).
      */
     public function publicView(string $receiptCode)
     {
         try {
             $receipt = StockReceipt::where('receipt_code', $receiptCode)->firstOrFail();
             $totalInWords = NumberToText::convertCurrency($receipt->total_value ?? 0);
-            
+
             return view('Warehouse::accounting-public', [
                 'receipt' => $receipt,
-                'totalInWords' => $totalInWords
+                'totalInWords' => $totalInWords,
             ]);
         } catch (\Exception $e) {
             abort(404, 'Phiếu không tồn tại');
@@ -168,14 +170,14 @@ class WarehouseAccountingController extends Controller
     }
 
     /**
-     * Generate QR code image for receipt
+     * Generate QR code image for receipt.
      */
     public function qrCode(string $receiptCode)
     {
         try {
             // Generate QR code with public URL instead of just receipt code
             $publicUrl = route('warehouse.receipt.public', ['receiptCode' => $receiptCode]);
-            
+
             // Use SVG format (doesn't require imagick extension)
             return response(
                 QrCode::format('svg')
@@ -186,9 +188,9 @@ class WarehouseAccountingController extends Controller
                 ['Content-Type' => 'image/svg+xml']
             );
         } catch (\Exception $e) {
-            \Log::error('QR Code generation failed: ' . $e->getMessage(), [
+            \Log::error('QR Code generation failed: '.$e->getMessage(), [
                 'receipt_code' => $receiptCode,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
             // Return a simple error image or 404
             abort(404, 'QR Code not found');
@@ -196,7 +198,7 @@ class WarehouseAccountingController extends Controller
     }
 
     /**
-     * Store receipt
+     * Store receipt.
      */
     public function store(Request $request)
     {
@@ -220,7 +222,7 @@ class WarehouseAccountingController extends Controller
 
         try {
             $receipt = $this->stockReceiptService->createReceipt($validated);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Lưu phiếu thành công',
@@ -230,23 +232,22 @@ class WarehouseAccountingController extends Controller
                     'view_url' => route('warehouse.accounting.create', ['id' => $receipt->id]),
                 ],
             ], 201);
-            
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Lưu phiếu thất bại: ' . $e->getMessage(),
+                'message' => 'Lưu phiếu thất bại: '.$e->getMessage(),
             ], 422);
         }
     }
 
     /**
-     * Complete receipt
+     * Complete receipt.
      */
     public function complete(Request $request, int $id)
     {
         try {
             $receipt = $this->stockReceiptService->completeReceipt($id, Auth::id());
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Hoàn thành phiếu thành công',
@@ -255,13 +256,11 @@ class WarehouseAccountingController extends Controller
                     'status' => $receipt->status,
                 ],
             ], 200);
-            
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Hoàn thành phiếu thất bại: ' . $e->getMessage(),
+                'message' => 'Hoàn thành phiếu thất bại: '.$e->getMessage(),
             ], 422);
         }
     }
 }
-

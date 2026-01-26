@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Gmc;
 
 use App\Modules\Product\Models\Variant;
@@ -23,6 +24,3 @@ class GmcOfferId
         return (string) $variant->id;
     }
 }
-
-
-

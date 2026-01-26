@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
@@ -28,23 +29,25 @@ class ClearWarehouseGarbage extends Command
     public function handle()
     {
         $this->info('⚠️  CẢNH BÁO: Lệnh này sẽ XÓA SẠCH toàn bộ dữ liệu trong bảng product_warehouse!');
-        
-        if (!$this->confirm('Bạn có chắc chắn muốn tiếp tục?', false)) {
+
+        if (! $this->confirm('Bạn có chắc chắn muốn tiếp tục?', false)) {
             $this->info('Đã hủy lệnh.');
+
             return 0;
         }
 
         try {
             $countBefore = DB::table('product_warehouse')->count();
-            
+
             DB::table('product_warehouse')->truncate();
-            
+
             $this->info("✅ Đã xóa sạch {$countBefore} dòng dữ liệu trong bảng product_warehouse.");
             $this->info('📝 Bây giờ bạn có thể import lại dữ liệu hàng mới.');
-            
+
             return 0;
         } catch (\Exception $e) {
-            $this->error('❌ Lỗi khi xóa dữ liệu: ' . $e->getMessage());
+            $this->error('❌ Lỗi khi xóa dữ liệu: '.$e->getMessage());
+
             return 1;
         }
     }

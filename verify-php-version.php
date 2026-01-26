@@ -1,9 +1,9 @@
 <?php
+
 /**
  * PHP Version Verification Script
- * Run this to verify PHP version before Laravel 11 upgrade
+ * Run this to verify PHP version before Laravel 11 upgrade.
  */
-
 echo "=== PHP Version Verification ===\n\n";
 
 $phpVersion = phpversion();
@@ -22,4 +22,3 @@ if ($major >= 8 && $minor >= 3) {
     echo "   Required: PHP 8.2+\n";
     exit(1);
 }
-

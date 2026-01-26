@@ -1,13 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Category;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Category Resource for API responses
- * 
+ * Category Resource for API responses.
+ *
  * Formats category data for API output with tree structure support
  */
 class CategoryResource extends JsonResource
@@ -16,7 +17,6 @@ class CategoryResource extends JsonResource
      * Transform the resource into an array.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return array
      */
     public function toArray($request): array
     {
@@ -60,4 +60,3 @@ class CategoryResource extends JsonResource
         ];
     }
 }
-

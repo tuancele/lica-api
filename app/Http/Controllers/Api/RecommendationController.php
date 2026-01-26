@@ -1,19 +1,18 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\Recommendation\RecommendationService;
-use App\Services\Warehouse\WarehouseServiceInterface;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use App\Modules\Deal\Models\Deal;
 use App\Modules\Deal\Models\ProductDeal;
 use App\Modules\Deal\Models\SaleDeal;
 use App\Modules\Product\Models\Variant;
+use App\Services\Recommendation\RecommendationService;
+use App\Services\Warehouse\WarehouseServiceInterface;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class RecommendationController extends Controller
 {
@@ -36,20 +35,20 @@ class RecommendationController extends Controller
         $limit = (int) $request->get('limit', 12);
         $offset = (int) $request->get('offset', 0);
         $excludeIds = $request->get('exclude', []);
-        
-        if (!is_array($excludeIds)) {
+
+        if (! is_array($excludeIds)) {
             $excludeIds = explode(',', $excludeIds);
         }
         $excludeIds = array_filter(array_map('intval', $excludeIds));
 
         $products = $this->recommendationService->getRecommendedProducts($limit, $excludeIds, $offset);
 
-        $formattedProducts = $products->map(function($product) {
-            $priceInfo = $product->price_info ?? (object)[
+        $formattedProducts = $products->map(function ($product) {
+            $priceInfo = $product->price_info ?? (object) [
                 'price' => $product->price ?? 0,
                 'original_price' => $product->price ?? 0,
                 'type' => 'normal',
-                'label' => ''
+                'label' => '',
             ];
 
             $rates = $product->rates ?? collect();
@@ -82,7 +81,7 @@ class RecommendationController extends Controller
                     $isOutOfStock = $warehouseStock <= 0;
                 }
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::warning('Failed to get warehouse stock for product: ' . $product->id);
+                \Illuminate\Support\Facades\Log::warning('Failed to get warehouse stock for product: '.$product->id);
                 $warehouseStock = (int) ($product->stock ?? 1);
                 $isOutOfStock = $warehouseStock <= 0;
             }
@@ -93,14 +92,14 @@ class RecommendationController extends Controller
             try {
                 $now = strtotime(date('Y-m-d H:i:s'));
                 $deal_id = ProductDeal::where('product_id', $product->id)->where('status', 1)->pluck('deal_id')->toArray();
-                if (!empty($deal_id)) {
+                if (! empty($deal_id)) {
                     $activeDeal = Deal::whereIn('id', $deal_id)
                         ->where([['status', '1'], ['start', '<=', $now], ['end', '>=', $now]])
                         ->first();
-                    
+
                     if ($activeDeal) {
                         $dealName = $activeDeal->name ?? 'Deal sốc';
-                        $variant = \App\Modules\Product\Models\Variant::select('price','sale')->where('product_id', $product->id)->first();
+                        $variant = \App\Modules\Product\Models\Variant::select('price', 'sale')->where('product_id', $product->id)->first();
                         if ($variant && isset($variant->price) && $variant->price > 0) {
                             $saleDeal = SaleDeal::where([['deal_id', $activeDeal->id], ['product_id', $product->id], ['status', '1']])->first();
                             if ($saleDeal && isset($saleDeal->price)) {
@@ -123,7 +122,7 @@ class RecommendationController extends Controller
                 'price' => $priceInfo->price,
                 'original_price' => $priceInfo->original_price,
                 'price_label' => $priceInfo->label,
-                'url' => url('/' . $product->slug),
+                'url' => url('/'.$product->slug),
                 'brand_name' => $product->brand->name ?? null,
                 'brand_url' => $product->brand ? route('home.brand', ['url' => $product->brand->slug]) : null,
                 'rating' => round($averageRating, 1),
@@ -145,7 +144,7 @@ class RecommendationController extends Controller
     }
 
     /**
-     * 跟踪用户行为
+     * 跟踪用户行为.
      */
     public function trackBehavior(Request $request): JsonResponse
     {
@@ -180,19 +179,19 @@ class RecommendationController extends Controller
     }
 
     /**
-     * 获取浏览历史
+     * 获取浏览历史.
      */
     public function getViewHistory(Request $request): JsonResponse
     {
         $limit = (int) $request->get('limit', 20);
         $products = $this->recommendationService->getUserViewHistory($limit);
 
-        $formattedProducts = $products->map(function($product) {
-            $priceInfo = $product->price_info ?? (object)[
+        $formattedProducts = $products->map(function ($product) {
+            $priceInfo = $product->price_info ?? (object) [
                 'price' => 0,
                 'original_price' => 0,
                 'type' => 'normal',
-                'label' => ''
+                'label' => '',
             ];
 
             return [
@@ -203,7 +202,7 @@ class RecommendationController extends Controller
                 'price' => $priceInfo->price,
                 'original_price' => $priceInfo->original_price,
                 'price_label' => $priceInfo->label,
-                'url' => url('/' . $product->slug),
+                'url' => url('/'.$product->slug),
             ];
         });
 

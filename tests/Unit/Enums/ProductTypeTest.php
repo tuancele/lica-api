@@ -1,10 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Unit\Enums;
 
-use Tests\TestCase;
 use App\Enums\ProductType;
+use Tests\TestCase;
 
 class ProductTypeTest extends TestCase
 {
@@ -28,7 +29,7 @@ class ProductTypeTest extends TestCase
     public function it_can_convert_to_array()
     {
         $array = ProductType::toArray();
-        
+
         $this->assertIsArray($array);
         $this->assertArrayHasKey('product', $array);
         $this->assertArrayHasKey('taxonomy', $array);

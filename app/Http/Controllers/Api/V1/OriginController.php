@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 class OriginController extends Controller
 {
     /**
-     * Get origin options for select inputs
+     * Get origin options for select inputs.
      *
      * GET /api/v1/origins/options
      */
@@ -35,7 +36,7 @@ class OriginController extends Controller
                 })->values(),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get origin options failed: ' . $e->getMessage(), [
+            Log::error('Get origin options failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -47,4 +48,3 @@ class OriginController extends Controller
         }
     }
 }
-

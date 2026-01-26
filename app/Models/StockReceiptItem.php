@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
@@ -87,12 +88,12 @@ class StockReceiptItem extends Model
 
     public function getUnitPriceFormattedAttribute(): string
     {
-        return number_format($this->unit_price, 0, ',', '.') . ' đ';
+        return number_format($this->unit_price, 0, ',', '.').' đ';
     }
 
     public function getTotalPriceFormattedAttribute(): string
     {
-        return number_format($this->total_price, 0, ',', '.') . ' đ';
+        return number_format($this->total_price, 0, ',', '.').' đ';
     }
 
     public function getProductNameAttribute(): ?string
@@ -115,6 +116,7 @@ class StockReceiptItem extends Model
         if ($this->stock_before === null || $this->stock_after === null) {
             return 0;
         }
+
         return $this->stock_after - $this->stock_before;
     }
 
@@ -154,31 +156,31 @@ class StockReceiptItem extends Model
     */
 
     /**
-     * Check if item is expiring soon
+     * Check if item is expiring soon.
      */
     public function isExpiringSoon(int $days = 30): bool
     {
-        if (!$this->expiry_date) {
+        if (! $this->expiry_date) {
             return false;
         }
-        
+
         return $this->expiry_date->isBetween(now(), now()->addDays($days));
     }
 
     /**
-     * Check if item is expired
+     * Check if item is expired.
      */
     public function isExpired(): bool
     {
-        if (!$this->expiry_date) {
+        if (! $this->expiry_date) {
             return false;
         }
-        
+
         return $this->expiry_date->isPast();
     }
 
     /**
-     * Calculate total price
+     * Calculate total price.
      */
     public function calculateTotal(): float
     {

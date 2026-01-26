@@ -1,9 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Feature;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -30,7 +30,7 @@ class InventoryV2Test extends TestCase
 
         // Import +5
         $importRes = $this->postJson('/api/v2/inventory/receipts/import', [
-            'code' => 'TEST-IMP-' . time(),
+            'code' => 'TEST-IMP-'.time(),
             'subject' => 'Test import',
             'warehouse_id' => 1,
             'items' => [
@@ -42,7 +42,7 @@ class InventoryV2Test extends TestCase
 
         // Export -2
         $exportRes = $this->postJson('/api/v2/inventory/receipts/export', [
-            'code' => 'TEST-EXP-' . time(),
+            'code' => 'TEST-EXP-'.time(),
             'subject' => 'Test export',
             'warehouse_id' => 1,
             'items' => [
@@ -78,5 +78,3 @@ class InventoryV2Test extends TestCase
         }
     }
 }
-
-

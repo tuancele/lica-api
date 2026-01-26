@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
@@ -18,21 +19,33 @@ class ShowroomController extends Controller
     {
         try {
             $filters = [];
-            if ($request->has('status') && $request->status !== '') $filters['status'] = $request->status;
-            if ($request->has('cat_id') && $request->cat_id !== '') $filters['cat_id'] = $request->cat_id;
-            if ($request->has('keyword') && $request->keyword !== '') $filters['keyword'] = $request->keyword;
-            
+            if ($request->has('status') && $request->status !== '') {
+                $filters['status'] = $request->status;
+            }
+            if ($request->has('cat_id') && $request->cat_id !== '') {
+                $filters['cat_id'] = $request->cat_id;
+            }
+            if ($request->has('keyword') && $request->keyword !== '') {
+                $filters['keyword'] = $request->keyword;
+            }
+
             $perPage = (int) $request->get('limit', 10);
             $perPage = $perPage > 0 && $perPage <= 100 ? $perPage : 10;
-            
+
             $query = Showroom::query();
-            if (isset($filters['status'])) $query->where('status', $filters['status']);
-            if (isset($filters['cat_id'])) $query->where('cat_id', $filters['cat_id']);
-            if (isset($filters['keyword'])) $query->where('name', 'like', '%' . $filters['keyword'] . '%');
+            if (isset($filters['status'])) {
+                $query->where('status', $filters['status']);
+            }
+            if (isset($filters['cat_id'])) {
+                $query->where('cat_id', $filters['cat_id']);
+            }
+            if (isset($filters['keyword'])) {
+                $query->where('name', 'like', '%'.$filters['keyword'].'%');
+            }
             $query->orderBy('sort', 'asc');
-            
+
             $showrooms = $query->paginate($perPage);
-            
+
             return response()->json([
                 'success' => true,
                 'data' => ShowroomResource::collection($showrooms->items()),
@@ -44,7 +57,8 @@ class ShowroomController extends Controller
                 ],
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get showrooms list failed: ' . $e->getMessage());
+            Log::error('Get showrooms list failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get showrooms list'], 500);
         }
     }
@@ -53,10 +67,14 @@ class ShowroomController extends Controller
     {
         try {
             $showroom = Showroom::find($id);
-            if (!$showroom) return response()->json(['success' => false, 'message' => 'Showroom not found'], 404);
+            if (! $showroom) {
+                return response()->json(['success' => false, 'message' => 'Showroom not found'], 404);
+            }
+
             return response()->json(['success' => true, 'data' => new ShowroomResource($showroom)], 200);
         } catch (\Exception $e) {
-            Log::error('Get showroom details failed: ' . $e->getMessage());
+            Log::error('Get showroom details failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to get showroom details'], 500);
         }
     }
@@ -76,7 +94,7 @@ class ShowroomController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             $showroom = Showroom::create([
                 'name' => $request->name,
                 'image' => $request->image,
@@ -87,14 +105,15 @@ class ShowroomController extends Controller
                 'sort' => $request->sort ?? 0,
                 'user_id' => Auth::id(),
             ]);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Showroom created successfully',
                 'data' => new ShowroomResource($showroom),
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Create showroom failed: ' . $e->getMessage());
+            Log::error('Create showroom failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to create showroom'], 500);
         }
     }
@@ -103,8 +122,10 @@ class ShowroomController extends Controller
     {
         try {
             $showroom = Showroom::find($id);
-            if (!$showroom) return response()->json(['success' => false, 'message' => 'Showroom not found'], 404);
-            
+            if (! $showroom) {
+                return response()->json(['success' => false, 'message' => 'Showroom not found'], 404);
+            }
+
             $validator = Validator::make($request->all(), [
                 'name' => 'sometimes|required|string|min:1|max:250',
                 'image' => 'nullable|string',
@@ -117,25 +138,40 @@ class ShowroomController extends Controller
             if ($validator->fails()) {
                 return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
             }
-            
+
             $updateData = [];
-            if ($request->has('name')) $updateData['name'] = $request->name;
-            if ($request->has('image')) $updateData['image'] = $request->image;
-            if ($request->has('address')) $updateData['address'] = $request->address;
-            if ($request->has('phone')) $updateData['phone'] = $request->phone;
-            if ($request->has('cat_id')) $updateData['cat_id'] = $request->cat_id;
-            if ($request->has('status')) $updateData['status'] = $request->status;
-            if ($request->has('sort')) $updateData['sort'] = $request->sort;
-            
+            if ($request->has('name')) {
+                $updateData['name'] = $request->name;
+            }
+            if ($request->has('image')) {
+                $updateData['image'] = $request->image;
+            }
+            if ($request->has('address')) {
+                $updateData['address'] = $request->address;
+            }
+            if ($request->has('phone')) {
+                $updateData['phone'] = $request->phone;
+            }
+            if ($request->has('cat_id')) {
+                $updateData['cat_id'] = $request->cat_id;
+            }
+            if ($request->has('status')) {
+                $updateData['status'] = $request->status;
+            }
+            if ($request->has('sort')) {
+                $updateData['sort'] = $request->sort;
+            }
+
             $showroom->update($updateData);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Showroom updated successfully',
                 'data' => new ShowroomResource($showroom->fresh()),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Update showroom failed: ' . $e->getMessage());
+            Log::error('Update showroom failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to update showroom'], 500);
         }
     }
@@ -144,13 +180,16 @@ class ShowroomController extends Controller
     {
         try {
             $showroom = Showroom::find($id);
-            if (!$showroom) return response()->json(['success' => false, 'message' => 'Showroom not found'], 404);
+            if (! $showroom) {
+                return response()->json(['success' => false, 'message' => 'Showroom not found'], 404);
+            }
             $showroom->delete();
+
             return response()->json(['success' => true, 'message' => 'Showroom deleted successfully'], 200);
         } catch (\Exception $e) {
-            Log::error('Delete showroom failed: ' . $e->getMessage());
+            Log::error('Delete showroom failed: '.$e->getMessage());
+
             return response()->json(['success' => false, 'message' => 'Failed to delete showroom'], 500);
         }
     }
 }
-

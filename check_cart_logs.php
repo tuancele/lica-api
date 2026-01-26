@@ -1,17 +1,18 @@
 <?php
+
 /**
- * Cart Logs Checker
- * 
+ * Cart Logs Checker.
+ *
  * Tự động kiểm tra logs từ Laravel để debug cart issues
- * 
+ *
  * Usage: php check_cart_logs.php [--tail=50] [--filter=CART]
  */
 
 // Try multiple possible log file locations
-$logDir = __DIR__ . '/storage/logs';
+$logDir = __DIR__.'/storage/logs';
 $possibleLogFiles = [
-    $logDir . '/laravel.log',
-    $logDir . '/laravel-' . date('Y-m-d') . '.log',
+    $logDir.'/laravel.log',
+    $logDir.'/laravel-'.date('Y-m-d').'.log',
 ];
 
 $logFile = null;
@@ -23,11 +24,11 @@ foreach ($possibleLogFiles as $file) {
 }
 
 // If still not found, try to find any laravel log file
-if (!$logFile && is_dir($logDir)) {
-    $files = glob($logDir . '/laravel*.log');
-    if (!empty($files)) {
+if (! $logFile && is_dir($logDir)) {
+    $files = glob($logDir.'/laravel*.log');
+    if (! empty($files)) {
         // Get the most recent one
-        usort($files, function($a, $b) {
+        usort($files, function ($a, $b) {
             return filemtime($b) - filemtime($a);
         });
         $logFile = $files[0];
@@ -40,7 +41,7 @@ $filter = 'CART';
 if ($argc > 1) {
     foreach ($argv as $arg) {
         if (strpos($arg, '--tail=') === 0) {
-            $tail = (int)substr($arg, 7);
+            $tail = (int) substr($arg, 7);
         }
         if (strpos($arg, '--filter=') === 0) {
             $filter = substr($arg, 9);
@@ -48,7 +49,7 @@ if ($argc > 1) {
     }
 }
 
-if (!$logFile || !file_exists($logFile)) {
+if (! $logFile || ! file_exists($logFile)) {
     echo "❌ Log file not found!\n";
     echo "📁 Tried locations:\n";
     foreach ($possibleLogFiles as $file) {
@@ -65,7 +66,7 @@ echo "📋 Checking Cart Logs...\n";
 echo "📁 Log file: $logFile\n";
 echo "🔍 Filter: $filter\n";
 echo "📊 Tail: $tail lines\n";
-echo str_repeat("=", 80) . "\n\n";
+echo str_repeat('=', 80)."\n\n";
 
 // Read log file
 $lines = file($logFile);
@@ -84,7 +85,7 @@ foreach ($relevantLines as $line) {
     if (stripos($line, $filter) !== false || stripos($line, 'CartService') !== false || stripos($line, 'CartController') !== false) {
         $found = true;
         $currentLog[] = $line;
-        
+
         // If line starts with date, it's a new log entry
         if (preg_match('/^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/', $line, $matches)) {
             // Display previous log if exists
@@ -97,16 +98,16 @@ foreach ($relevantLines as $line) {
 }
 
 // Display last log
-if (!empty($currentLog)) {
+if (! empty($currentLog)) {
     echo implode('', $currentLog);
 }
 
-if (!$found) {
+if (! $found) {
     echo "⚠️  No logs found with filter '$filter' in last $tail lines\n";
     echo "\n💡 Try:\n";
     echo "   - Increase tail: php check_cart_logs.php --tail=200\n";
     echo "   - Check all logs: php check_cart_logs.php --filter=\n";
 }
 
-echo "\n" . str_repeat("=", 80) . "\n";
+echo "\n".str_repeat('=', 80)."\n";
 echo "✅ Done!\n";

@@ -1,13 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Brand;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Brand Resource for API responses
- * 
+ * Brand Resource for API responses.
+ *
  * Formats brand data for API output with full information
  */
 class BrandResource extends JsonResource
@@ -16,20 +17,19 @@ class BrandResource extends JsonResource
      * Transform the resource into an array.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return array
      */
     public function toArray($request): array
     {
         $gallery = [];
-        if (!empty($this->gallery)) {
+        if (! empty($this->gallery)) {
             $galleryData = is_string($this->gallery) ? json_decode($this->gallery, true) : $this->gallery;
             if (is_array($galleryData)) {
-                $gallery = array_map(function($url) {
+                $gallery = array_map(function ($url) {
                     return getImage($url);
                 }, $galleryData);
             }
         }
-        
+
         return [
             'id' => $this->id,
             'name' => $this->name,

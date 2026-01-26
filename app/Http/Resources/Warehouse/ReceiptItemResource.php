@@ -1,13 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Warehouse;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Receipt Item Resource for API responses
- * 
+ * Receipt Item Resource for API responses.
+ *
  * Formats receipt item data for API output
  */
 class ReceiptItemResource extends JsonResource
@@ -16,7 +17,6 @@ class ReceiptItemResource extends JsonResource
      * Transform the resource into an array.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return array
      */
     public function toArray($request): array
     {

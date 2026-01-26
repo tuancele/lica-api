@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Pick;
 
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -30,4 +31,3 @@ class PickResource extends JsonResource
         ];
     }
 }
-

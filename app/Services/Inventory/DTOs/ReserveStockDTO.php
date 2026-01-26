@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Inventory\DTOs;
 
 use Carbon\Carbon;
@@ -8,14 +9,14 @@ use Carbon\Carbon;
 class ReserveStockDTO
 {
     /**
-     * @param int $variantId ID variant cần giữ
-     * @param int $quantity Số lượng giữ
-     * @param string $referenceType Loại tham chiếu (order, cart, flash_sale)
-     * @param int $referenceId ID của order/cart
-     * @param int|null $warehouseId ID kho (null = default warehouse)
-     * @param Carbon|null $expiresAt Thời điểm hết hạn
-     * @param string|null $referenceCode Mã tham chiếu
-     * @param array|null $metadata Dữ liệu bổ sung
+     * @param  int  $variantId  ID variant cần giữ
+     * @param  int  $quantity  Số lượng giữ
+     * @param  string  $referenceType  Loại tham chiếu (order, cart, flash_sale)
+     * @param  int  $referenceId  ID của order/cart
+     * @param  int|null  $warehouseId  ID kho (null = default warehouse)
+     * @param  Carbon|null  $expiresAt  Thời điểm hết hạn
+     * @param  string|null  $referenceCode  Mã tham chiếu
+     * @param  array|null  $metadata  Dữ liệu bổ sung
      */
     public function __construct(
         public int $variantId,
@@ -32,7 +33,7 @@ class ReserveStockDTO
     }
 
     /**
-     * Validate quantity
+     * Validate quantity.
      */
     private function validateQuantity(): void
     {
@@ -42,7 +43,7 @@ class ReserveStockDTO
     }
 
     /**
-     * Set default expiry based on reference type
+     * Set default expiry based on reference type.
      */
     private function setDefaultExpiry(): void
     {
@@ -57,7 +58,7 @@ class ReserveStockDTO
     }
 
     /**
-     * Create from array
+     * Create from array.
      */
     public static function fromArray(array $data): self
     {
@@ -74,7 +75,7 @@ class ReserveStockDTO
     }
 
     /**
-     * Create for order
+     * Create for order.
      */
     public static function forOrder(int $orderId, int $variantId, int $quantity, ?string $orderCode = null): self
     {
@@ -88,7 +89,7 @@ class ReserveStockDTO
     }
 
     /**
-     * Create for cart
+     * Create for cart.
      */
     public static function forCart(int $cartId, int $variantId, int $quantity): self
     {
@@ -101,7 +102,7 @@ class ReserveStockDTO
     }
 
     /**
-     * Create for flash sale
+     * Create for flash sale.
      */
     public static function forFlashSale(int $flashSaleId, int $variantId, int $quantity): self
     {

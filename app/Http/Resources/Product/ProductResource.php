@@ -1,13 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Product;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Product Resource for API responses
- * 
+ * Product Resource for API responses.
+ *
  * Formats product data for API output
  */
 class ProductResource extends JsonResource
@@ -16,7 +17,6 @@ class ProductResource extends JsonResource
      * Transform the resource into an array.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return array
      */
     public function toArray($request): array
     {
@@ -57,24 +57,22 @@ class ProductResource extends JsonResource
     }
 
     /**
-     * Get gallery as array
-     * 
-     * @return array
+     * Get gallery as array.
      */
     private function getGalleryArray(): array
     {
         $gallery = json_decode($this->gallery ?? '[]', true);
+
         return is_array($gallery) ? $gallery : [];
     }
 
     /**
-     * Get categories as array
-     * 
-     * @return array
+     * Get categories as array.
      */
     private function getCategoriesArray(): array
     {
         $catIds = json_decode($this->cat_id ?? '[]', true);
+
         return is_array($catIds) ? $catIds : [];
     }
 }

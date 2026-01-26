@@ -29,5 +29,3 @@ return [
     // Debug flag: when true, log detailed GMC payload info (without secrets).
     'debug' => (bool) env('GMC_DEBUG', false),
 ];
-
-

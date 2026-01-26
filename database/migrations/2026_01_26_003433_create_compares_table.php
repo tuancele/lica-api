@@ -9,7 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('compares')) {
+        if (! Schema::hasTable('compares')) {
             Schema::create('compares', function (Blueprint $table) {
                 $table->increments('id');
                 $table->integer('store_id')->nullable();
@@ -21,7 +21,7 @@ return new class extends Migration
                 $table->smallInteger('status')->default(1);
                 $table->integer('user_id')->nullable();
                 $table->timestamps();
-                
+
                 $table->index('store_id');
                 $table->index('status');
             });

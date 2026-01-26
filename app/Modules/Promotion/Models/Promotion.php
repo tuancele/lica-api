@@ -1,14 +1,15 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Promotion\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
 class Promotion extends Model
 {
-    protected $table = "promotions";
-    
+    protected $table = 'promotions';
+
     protected $fillable = [
         'name',
         'code',
@@ -25,7 +26,7 @@ class Promotion extends Model
         'sort',
         'user_id',
     ];
-    
+
     protected $casts = [
         'value' => 'decimal:2',
         'order_sale' => 'decimal:2',
@@ -35,12 +36,14 @@ class Promotion extends Model
         'start' => 'datetime',
         'end' => 'datetime',
     ];
-    
-    public function user(){
-    	return $this->belongsTo('App\User','user_id','id');
+
+    public function user()
+    {
+        return $this->belongsTo('App\User', 'user_id', 'id');
     }
-    
-    public function order(){
-    	return $this->hasMany('App\Modules\Order\Models\Order','promotion_id','id');
+
+    public function order()
+    {
+        return $this->hasMany('App\Modules\Order\Models\Order', 'promotion_id', 'id');
     }
 }

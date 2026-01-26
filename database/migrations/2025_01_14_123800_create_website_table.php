@@ -5,21 +5,19 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-/**
+/*
  * Create website table
- * 
+ *
  * This migration creates the website table for storing header/footer blocks
  */
 return new class extends Migration
 {
     /**
      * Run the migrations.
-     *
-     * @return void
      */
     public function up()
     {
-        if (!Schema::hasTable('website')) {
+        if (! Schema::hasTable('website')) {
             Schema::create('website', function (Blueprint $table) {
                 $table->increments('id');
                 $table->string('code')->unique();
@@ -35,7 +33,7 @@ return new class extends Migration
                 $table->text('block_9')->nullable();
                 $table->integer('user_id')->nullable();
                 $table->timestamps();
-                
+
                 $table->index('code');
             });
         }
@@ -43,8 +41,6 @@ return new class extends Migration
 
     /**
      * Reverse the migrations.
-     *
-     * @return void
      */
     public function down()
     {

@@ -1,15 +1,15 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Themes\Website\Controllers;
 
-use Illuminate\Http\Request;
-use App\Modules\Product\Models\Product;
 use App\Http\Controllers\Controller;
-use App\Themes\Website\Models\Wishlist;
-use Illuminate\Support\Facades\Auth;
+use App\Modules\Product\Models\Product;
 use App\Themes\Website\Models\Facebook;
+use App\Themes\Website\Models\Wishlist;
 use Exception;
+use Illuminate\Http\Request;
 
 class WishlistController extends Controller
 {
@@ -17,6 +17,7 @@ class WishlistController extends Controller
     {
         $member = auth()->guard('member')->user();
         $data['list'] = Wishlist::where('member_id', $member['id'])->get();
+
         return view('Website::wishlist.get', $data);
     }
 
@@ -26,9 +27,9 @@ class WishlistController extends Controller
             $member = auth()->guard('member')->user();
             $wishlist = Wishlist::where([['member_id', $member['id']], ['product_id', $request->id]])->get();
             $total = Wishlist::where('member_id', $member['id'])->count();
-            
+
             $product = Product::select('id', 'slug')->where('id', $request->id)->first();
-            
+
             if ($product) {
                 $dataf = [
                     'product_id' => $product->id,
@@ -45,8 +46,9 @@ class WishlistController extends Controller
                 Wishlist::insert([
                     'member_id' => $member['id'],
                     'product_id' => $request->id,
-                    'created_at' => date('Y-m-d H:i:s')
+                    'created_at' => date('Y-m-d H:i:s'),
                 ]);
+
                 return $total + 1;
             }
         } catch (Exception $e) {
@@ -59,11 +61,11 @@ class WishlistController extends Controller
         try {
             $member = auth()->guard('member')->user();
             $wishlist = Wishlist::where([['member_id', $member['id']], ['product_id', $request->id]])->first();
-            
+
             if ($wishlist) {
                 $wishlist->delete();
             }
-            
+
             return Wishlist::where('member_id', $member['id'])->count();
         } catch (Exception $e) {
             return response()->json(['message' => $e->getMessage()]);
@@ -75,6 +77,7 @@ class WishlistController extends Controller
         try {
             $member = auth()->guard('member')->user();
             Wishlist::where('member_id', $member['id'])->delete();
+
             return '<div class="title-wish">
                 <h3>Ưa thích</h3>
                 <a href="javascript:;" class="remove-all-wishlist">Xóa hết</a>

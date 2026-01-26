@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Jobs\Inventory;
 
 use App\Services\Inventory\Contracts\InventoryServiceInterface;

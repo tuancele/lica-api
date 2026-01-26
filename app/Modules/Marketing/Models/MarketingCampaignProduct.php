@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\Marketing\Models;
 
 use Illuminate\Database\Eloquent\Model;

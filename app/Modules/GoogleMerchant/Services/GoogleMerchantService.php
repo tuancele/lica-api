@@ -1,37 +1,36 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\GoogleMerchant\Services;
 
 use App\Enums\ProductType;
-use App\Modules\Product\Models\Product;
-use App\Modules\Product\Models\Variant;
-use App\Modules\Marketing\Models\MarketingCampaign;
-use App\Modules\Marketing\Models\MarketingCampaignProduct;
-use App\Modules\FlashSale\Models\FlashSale;
-use App\Modules\FlashSale\Models\ProductSale;
 use App\Modules\Deal\Models\Deal;
 use App\Modules\Deal\Models\SaleDeal;
+use App\Modules\FlashSale\Models\FlashSale;
+use App\Modules\FlashSale\Models\ProductSale;
+use App\Modules\Marketing\Models\MarketingCampaignProduct;
+use App\Modules\Product\Models\Product;
+use App\Modules\Product\Models\Variant;
 use App\Services\Gmc\GmcOfferId;
-use App\Services\Pricing\PriceEngineService;
 use App\Services\Inventory\Contracts\InventoryServiceInterface;
+use Carbon\Carbon;
 use Google\Client as GoogleClient;
 use Google\Service\ShoppingContent;
-use Google\Service\ShoppingContent\Product as GmcProduct;
 use Google\Service\ShoppingContent\Price as GmcPrice;
+use Google\Service\ShoppingContent\Product as GmcProduct;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 class GoogleMerchantService
 {
     private function makeContentService(): ShoppingContent
     {
         $jsonPath = storage_path('app/google/service-account.json');
-        if (!is_file($jsonPath)) {
+        if (! is_file($jsonPath)) {
             throw new \RuntimeException('Google Merchant service account JSON is missing.');
         }
 
-        $client = new GoogleClient();
+        $client = new GoogleClient;
         $client->setAuthConfig($jsonPath);
         $client->setScopes([ShoppingContent::CONTENT]);
         $client->setApplicationName('lica-google-merchant');
@@ -85,7 +84,7 @@ class GoogleMerchantService
             $offerId = app(GmcOfferId::class)->forVariant($variantModel);
         } else {
             // Fallback if product truly has no variants
-            $offerId = 'PROD_' . (int) $product->id;
+            $offerId = 'PROD_'.(int) $product->id;
         }
 
         $title = $this->resolveTitle($product, $variantModel);
@@ -97,7 +96,7 @@ class GoogleMerchantService
 
         // Get stock from warehouse (availableStock)
         $availability = $this->resolveAvailability($product, $variantModel) > 0 ? 'in stock' : 'out of stock';
-        
+
         // Get dynamic price (Priority: Campaign price if active, otherwise original price)
         $currentPriceInfo = $this->resolveCurrentPrice($product, $variantModel);
         $originalPrice = $currentPriceInfo['original_price'];
@@ -109,13 +108,13 @@ class GoogleMerchantService
 
         $dimensions = $this->resolveDimensions($product, $variantModel);
 
-        $g = new GmcProduct();
+        $g = new GmcProduct;
         $g->setOfferId($offerId);
-        
+
         // Rule 2: Set itemGroupId ONLY for VARIABLE products to group variants under parent product id.
         if ($variantModel !== null && $hasVariants === 1) {
             $g->setItemGroupId((string) $product->id);
-            
+
             // Set isDefaultVariant for the first variant (to help Google choose main display image)
             $isDefaultVariant = $this->isFirstVariant($product, $variantModel);
             if ($isDefaultVariant && method_exists($g, 'setIsDefaultVariant')) {
@@ -126,7 +125,7 @@ class GoogleMerchantService
                 }
             }
         }
-        
+
         $g->setTitle($title);
         $g->setDescription($description);
         $g->setLink($link);
@@ -166,7 +165,7 @@ class GoogleMerchantService
         // Price rules:
         // - price: always original/base price (NOT promotional price)
         // - salePrice: promotional/campaign price (if active)
-        $price = new GmcPrice();
+        $price = new GmcPrice;
         $price->setValue(number_format(max(0.0, $originalPrice), 0, '.', ''));
         $price->setCurrency('VND');
         $g->setPrice($price);
@@ -174,7 +173,7 @@ class GoogleMerchantService
         // Set sale price: If campaign is active, set salePrice to campaign price to show "Sale" badge
         // salePriceEffectiveDate will indicate the promotion period
         if ($salePriceInfo !== null && $campaignPrice !== null) {
-            $salePrice = new GmcPrice();
+            $salePrice = new GmcPrice;
             $salePrice->setValue(number_format(max(0.0, $campaignPrice), 0, '.', ''));
             $salePrice->setCurrency('VND');
             $g->setSalePrice($salePrice);
@@ -251,16 +250,17 @@ class GoogleMerchantService
         $text = strip_tags($text);
         $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $text = preg_replace('/\s+/', ' ', $text) ?? $text;
+
         return trim($text);
     }
 
     private function resolveImageLink(Product $product, ?Variant $variant): string
     {
         $image = '';
-        if ($variant && !empty($variant->image)) {
+        if ($variant && ! empty($variant->image)) {
             $image = (string) $variant->image;
         }
-        if ($image === '' && !empty($product->image)) {
+        if ($image === '' && ! empty($product->image)) {
             $image = (string) $product->image;
         }
         if ($image === '') {
@@ -280,7 +280,7 @@ class GoogleMerchantService
 
         $r2BaseUrl = (string) config('filesystems.disks.r2.url', '');
         if ($r2BaseUrl !== '') {
-            return rtrim($r2BaseUrl, '/') . '/' . ltrim($image, '/');
+            return rtrim($r2BaseUrl, '/').'/'.ltrim($image, '/');
         }
 
         return (string) asset($image);
@@ -289,6 +289,7 @@ class GoogleMerchantService
     private function decodeGallery(string $galleryJson): array
     {
         $decoded = json_decode($galleryJson, true);
+
         return is_array($decoded) ? array_values($decoded) : [];
     }
 
@@ -296,7 +297,7 @@ class GoogleMerchantService
     {
         $base = trim((string) config('gmc.store_base_url', ''));
         if ($base !== '') {
-            return rtrim($base, '/') . '/' . ltrim((string) ($product->slug ?? ''), '/');
+            return rtrim($base, '/').'/'.ltrim((string) ($product->slug ?? ''), '/');
         }
 
         return function_exists('getSlug') ? (string) getSlug((string) $product->slug) : (string) url((string) $product->slug);
@@ -313,18 +314,18 @@ class GoogleMerchantService
 
         $brand = $this->cleanText($this->resolveBrand($product));
         if ($brand !== '') {
-            $parts[] = 'Brand: ' . $brand;
+            $parts[] = 'Brand: '.$brand;
         }
 
         $originName = $this->cleanText((string) ($product->origin?->name ?? ''));
         if ($originName !== '') {
-            $parts[] = 'Origin: ' . $originName;
+            $parts[] = 'Origin: '.$originName;
         }
 
         if ($variant) {
             $opt = $this->cleanText((string) ($variant->option1_value ?? ''));
             if ($opt !== '') {
-                $parts[] = 'Variant: ' . $opt;
+                $parts[] = 'Variant: '.$opt;
             }
         }
 
@@ -339,14 +340,14 @@ class GoogleMerchantService
         }
 
         if ($ingredient !== '') {
-            $parts[] = 'Ingredients: ' . mb_substr($ingredient, 0, 800);
+            $parts[] = 'Ingredients: '.mb_substr($ingredient, 0, 800);
         }
 
         $text = trim(implode('. ', array_filter($parts)));
         $text = $this->cleanText($text);
 
         if (mb_strlen($text) < 30) {
-            $text = $name !== '' ? ($name . '. ' . 'High quality product for daily use.') : 'High quality product for daily use.';
+            $text = $name !== '' ? ($name.'. '.'High quality product for daily use.') : 'High quality product for daily use.';
         }
 
         return mb_substr($text, 0, 4800);
@@ -378,7 +379,7 @@ class GoogleMerchantService
 
         $r2BaseUrl = (string) config('filesystems.disks.r2.url', '');
         if ($r2BaseUrl !== '') {
-            return rtrim($r2BaseUrl, '/') . '/' . ltrim($image, '/');
+            return rtrim($r2BaseUrl, '/').'/'.ltrim($image, '/');
         }
 
         return (string) asset($image);
@@ -392,45 +393,47 @@ class GoogleMerchantService
     {
         $warehouseId = config('gmc.warehouse_id', null);
         $inventoryService = app(InventoryServiceInterface::class);
-        
+
         if ($variant) {
             $stockDto = $inventoryService->getStock((int) $variant->id, $warehouseId !== null ? (int) $warehouseId : null);
+
             return (int) ($stockDto->availableStock ?? 0);
         }
-        
+
         // For product without variant, try to get from first variant or fallback to product stock
         $firstVariant = $product->variants()->first();
         if ($firstVariant) {
             $stockDto = $inventoryService->getStock((int) $firstVariant->id, $warehouseId !== null ? (int) $warehouseId : null);
+
             return (int) ($stockDto->availableStock ?? 0);
         }
-        
+
         return (int) ($product->stock ?? 0);
     }
 
     /**
      * Resolve current price with dynamic campaign detection.
      * Returns array with original_price, campaign_price, and sale_price_info.
-     * 
+     *
      * Logic: If campaign is active, use campaign price as display price.
      * This ensures GMC always shows the current selling price.
-     * 
+     *
      * @return array{original_price:float, campaign_price:float|null, sale_price_info:array|null}
      */
     private function resolveCurrentPrice(Product $product, ?Variant $variant): array
     {
         // Get original price (base price from variant/product, before promotions)
         $originalPrice = $this->resolveOriginalPrice($product, $variant);
-        
+
         // Get sale price info (Priority: Flash Sale > Deal > Marketing Campaign)
         $salePriceInfo = $this->resolveSalePriceInfo($product, $variant);
-        
+
         // If campaign is active, use campaign price
         $campaignPrice = null;
         if ($salePriceInfo !== null) {
             $campaignPrice = (float) $salePriceInfo['price'];
         }
-        
+
         return [
             'original_price' => $originalPrice,
             'campaign_price' => $campaignPrice,
@@ -441,10 +444,6 @@ class GoogleMerchantService
     /**
      * Resolve original price (base price from variant/product, NOT promotional price).
      * This is used for GMC 'price' field.
-     *
-     * @param Product $product
-     * @param Variant|null $variant
-     * @return float
      */
     private function resolveOriginalPrice(Product $product, ?Variant $variant): float
     {
@@ -452,18 +451,18 @@ class GoogleMerchantService
         if ($variant && $variant->price > 0) {
             return (float) $variant->price;
         }
-        
+
         // Fallback to product price
         if ($product->price > 0) {
             return (float) $product->price;
         }
-        
+
         // Last resort: try to get from first variant
         $firstVariant = $product->variants()->first();
         if ($firstVariant && $firstVariant->price > 0) {
             return (float) $firstVariant->price;
         }
-        
+
         return 0.0;
     }
 
@@ -475,13 +474,14 @@ class GoogleMerchantService
         }
 
         $appName = (string) config('app.name', '');
+
         return $appName !== '' ? $appName : 'Website';
     }
 
     private function resolveTitle(Product $product, ?Variant $variant): string
     {
         $base = (string) ($product->name ?? '');
-        if (!$variant) {
+        if (! $variant) {
             return $base;
         }
 
@@ -499,7 +499,7 @@ class GoogleMerchantService
             return $base;
         }
 
-        return $base . ' - ' . implode(' - ', $parts);
+        return $base.' - '.implode(' - ', $parts);
     }
 
     /**
@@ -512,25 +512,25 @@ class GoogleMerchantService
     {
         $now = Carbon::now();
         $nowTimestamp = $now->timestamp;
-        
+
         // Priority 1: Flash Sale
         $flashSaleInfo = $this->resolveFlashSaleInfo($product, $variant, $nowTimestamp);
         if ($flashSaleInfo !== null) {
             return array_merge($flashSaleInfo, ['type' => 'flashsale']);
         }
-        
+
         // Priority 2: Deal
         $dealInfo = $this->resolveDealInfo($product, $variant, $nowTimestamp);
         if ($dealInfo !== null) {
             return array_merge($dealInfo, ['type' => 'deal']);
         }
-        
+
         // Priority 3: Marketing Campaign
         $marketingCampaignInfo = $this->resolveMarketingCampaignInfo($product, $variant, $now);
         if ($marketingCampaignInfo !== null) {
             return array_merge($marketingCampaignInfo, ['type' => 'marketing_campaign']);
         }
-        
+
         return null;
     }
 
@@ -546,38 +546,38 @@ class GoogleMerchantService
             ->where('start', '<=', $nowTimestamp)
             ->where('end', '>=', $nowTimestamp)
             ->first();
-        
-        if (!$activeFlashSale) {
+
+        if (! $activeFlashSale) {
             return null;
         }
-        
+
         // Find ProductSale for this product/variant
         $productSaleQuery = ProductSale::where('flashsale_id', $activeFlashSale->id)
             ->where('product_id', $product->id);
-        
+
         if ($variant) {
             $productSaleQuery->where('variant_id', $variant->id);
         } else {
             $productSaleQuery->whereNull('variant_id');
         }
-        
+
         $productSale = $productSaleQuery->first();
-        
-        if (!$productSale) {
+
+        if (! $productSale) {
             return null;
         }
-        
+
         // Check if still has stock
         $remainingStock = $productSale->number - $productSale->buy;
         if ($remainingStock <= 0) {
             return null;
         }
-        
+
         // Format effective date: YYYY-MM-DDTHH:mm:ssZ/YYYY-MM-DDTHH:mm:ssZ
         $startDate = Carbon::createFromTimestamp($activeFlashSale->start)->utc();
         $endDate = Carbon::createFromTimestamp($activeFlashSale->end)->utc();
-        $effectiveDate = $startDate->format('Y-m-d\TH:i:s\Z') . '/' . $endDate->format('Y-m-d\TH:i:s\Z');
-        
+        $effectiveDate = $startDate->format('Y-m-d\TH:i:s\Z').'/'.$endDate->format('Y-m-d\TH:i:s\Z');
+
         return [
             'price' => (float) $productSale->price_sale,
             'effective_date' => $effectiveDate,
@@ -596,33 +596,33 @@ class GoogleMerchantService
             ->where('start', '<=', $nowTimestamp)
             ->where('end', '>=', $nowTimestamp)
             ->first();
-        
-        if (!$activeDeal) {
+
+        if (! $activeDeal) {
             return null;
         }
-        
+
         // Find SaleDeal for this product/variant
         $saleDealQuery = SaleDeal::where('deal_id', $activeDeal->id)
             ->where('product_id', $product->id)
             ->where('status', '1');
-        
+
         if ($variant) {
             $saleDealQuery->where('variant_id', $variant->id);
         } else {
             $saleDealQuery->whereNull('variant_id');
         }
-        
+
         $saleDeal = $saleDealQuery->first();
-        
-        if (!$saleDeal || !$saleDeal->price || $saleDeal->price <= 0) {
+
+        if (! $saleDeal || ! $saleDeal->price || $saleDeal->price <= 0) {
             return null;
         }
-        
+
         // Format effective date: YYYY-MM-DDTHH:mm:ssZ/YYYY-MM-DDTHH:mm:ssZ
         $startDate = Carbon::createFromTimestamp($activeDeal->start)->utc();
         $endDate = Carbon::createFromTimestamp($activeDeal->end)->utc();
-        $effectiveDate = $startDate->format('Y-m-d\TH:i:s\Z') . '/' . $endDate->format('Y-m-d\TH:i:s\Z');
-        
+        $effectiveDate = $startDate->format('Y-m-d\TH:i:s\Z').'/'.$endDate->format('Y-m-d\TH:i:s\Z');
+
         return [
             'price' => (float) $saleDeal->price,
             'effective_date' => $effectiveDate,
@@ -640,23 +640,23 @@ class GoogleMerchantService
         $campaignProduct = MarketingCampaignProduct::where('product_id', $product->id)
             ->whereHas('campaign', function ($q) use ($now) {
                 $q->where('status', '1')
-                  ->where('start_at', '<=', $now)
-                  ->where('end_at', '>=', $now);
+                    ->where('start_at', '<=', $now)
+                    ->where('end_at', '>=', $now);
             })
             ->orderByDesc('id')
             ->first();
-        
-        if (!$campaignProduct || !$campaignProduct->campaign) {
+
+        if (! $campaignProduct || ! $campaignProduct->campaign) {
             return null;
         }
-        
+
         $campaign = $campaignProduct->campaign;
-        
+
         // Format effective date: YYYY-MM-DDTHH:mm:ssZ/YYYY-MM-DDTHH:mm:ssZ
         $startDate = Carbon::parse($campaign->start_at)->utc();
         $endDate = Carbon::parse($campaign->end_at)->utc();
-        $effectiveDate = $startDate->format('Y-m-d\TH:i:s\Z') . '/' . $endDate->format('Y-m-d\TH:i:s\Z');
-        
+        $effectiveDate = $startDate->format('Y-m-d\TH:i:s\Z').'/'.$endDate->format('Y-m-d\TH:i:s\Z');
+
         return [
             'price' => (float) $campaignProduct->price,
             'effective_date' => $effectiveDate,
@@ -701,16 +701,16 @@ class GoogleMerchantService
     }
 
     /**
-     * Delete product from GMC by offerId
-     * 
-     * @param string $offerId The offerId to delete
+     * Delete product from GMC by offerId.
+     *
+     * @param  string  $offerId  The offerId to delete
      * @return array{success:bool,message:string}
      */
     public function deleteProduct(string $offerId): array
     {
         $merchantId = (string) config('gmc.merchant_id', '');
         $debug = (bool) config('gmc.debug', false);
-        
+
         if ($merchantId === '') {
             return ['success' => false, 'message' => 'GMC merchant_id is missing'];
         }
@@ -745,11 +745,7 @@ class GoogleMerchantService
 
     /**
      * Check if this variant is the first/default variant of the product.
-     * Priority: position ASC -> id ASC
-     *
-     * @param Product $product
-     * @param Variant|null $variant
-     * @return bool
+     * Priority: position ASC -> id ASC.
      */
     private function isFirstVariant(Product $product, ?Variant $variant): bool
     {
@@ -774,5 +770,3 @@ class GoogleMerchantService
         return $firstVariant->id === $variant->id;
     }
 }
-
-

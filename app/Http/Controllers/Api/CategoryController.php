@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
@@ -13,13 +14,10 @@ use Illuminate\Support\Facades\Log;
 class CategoryController extends Controller
 {
     /**
-     * 获取热门分类列表（用于移动端和首页）
-     * 
+     * 获取热门分类列表（用于移动端和首页）.
+     *
      * REST API 标准：
      * GET /api/categories/featured
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getFeaturedCategories(Request $request): JsonResponse
     {
@@ -39,27 +37,24 @@ class CategoryController extends Controller
                 'count' => $formattedCategories->count(),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('获取热门分类失败: ' . $e->getMessage(), [
+            Log::error('获取热门分类失败: '.$e->getMessage(), [
                 'method' => __METHOD__,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => '获取分类数据失败',
-                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误'
+                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误',
             ], 500);
         }
     }
 
     /**
-     * 获取所有分类列表
-     * 
+     * 获取所有分类列表.
+     *
      * REST API 标准：
      * GET /api/categories
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function index(Request $request): JsonResponse
     {
@@ -93,27 +88,24 @@ class CategoryController extends Controller
                 'offset' => $offset,
             ], 200);
         } catch (\Exception $e) {
-            Log::error('获取分类列表失败: ' . $e->getMessage(), [
+            Log::error('获取分类列表失败: '.$e->getMessage(), [
                 'method' => __METHOD__,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => '获取分类列表失败',
-                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误'
+                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误',
             ], 500);
         }
     }
 
     /**
-     * 获取单个分类详情
-     * 
+     * 获取单个分类详情.
+     *
      * REST API 标准：
      * GET /api/categories/{id}
-     * 
-     * @param int $id
-     * @return JsonResponse
      */
     public function show(int $id): JsonResponse
     {
@@ -122,10 +114,10 @@ class CategoryController extends Controller
                 ->where([['id', $id], ['status', '1'], ['type', 'taxonomy']])
                 ->first();
 
-            if (!$category) {
+            if (! $category) {
                 return response()->json([
                     'success' => false,
-                    'message' => '分类不存在'
+                    'message' => '分类不存在',
                 ], 404);
             }
 
@@ -134,26 +126,24 @@ class CategoryController extends Controller
                 'data' => new CategoryResource($category),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('获取分类详情失败: ' . $e->getMessage(), [
+            Log::error('获取分类详情失败: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'category_id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => '获取分类详情失败',
-                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误'
+                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误',
             ], 500);
         }
     }
 
     /**
-     * 获取层级分类（用于前端 4-level picker）
+     * 获取层级分类（用于前端 4-level picker）.
      *
      * GET /api/categories/hierarchical
-     *
-     * @return JsonResponse
      */
     public function hierarchical(): JsonResponse
     {
@@ -177,15 +167,15 @@ class CategoryController extends Controller
                 'data' => $data,
             ], 200);
         } catch (\Exception $e) {
-            Log::error('获取层级分类失败: ' . $e->getMessage(), [
+            Log::error('获取层级分类失败: '.$e->getMessage(), [
                 'method' => __METHOD__,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => '获取层级分类失败',
-                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误'
+                'error' => config('app.debug') ? $e->getMessage() : '服务器内部错误',
             ], 500);
         }
     }

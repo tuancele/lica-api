@@ -13,35 +13,35 @@ return new class extends Migration
     {
         Schema::create('stock_reservations', function (Blueprint $table) {
             $table->id();
-            
+
             $table->unsignedBigInteger('warehouse_id');
             $table->unsignedBigInteger('variant_id');
-            
+
             // Reservation details
             $table->integer('quantity')->comment('Số lượng giữ');
-            
+
             // Reference (usually order or cart)
             $table->string('reference_type', 50)->comment('Loại: order, cart, flash_sale, deal');
             $table->unsignedBigInteger('reference_id')->comment('ID của order/cart');
             $table->string('reference_code', 100)->nullable()->comment('Mã order/cart');
-            
+
             // Status
             $table->enum('status', ['active', 'confirmed', 'released', 'expired'])
                 ->default('active')
                 ->comment('active=đang giữ, confirmed=đã xác nhận (trừ stock), released=đã thả, expired=hết hạn');
-            
+
             // Timing
             $table->timestamp('expires_at')->nullable()->comment('Thời điểm hết hạn tự động release');
             $table->timestamp('confirmed_at')->nullable()->comment('Thời điểm xác nhận (khi thanh toán)');
             $table->timestamp('released_at')->nullable()->comment('Thời điểm release');
-            
+
             // Who released (for manual releases)
             $table->unsignedBigInteger('released_by')->nullable();
             $table->text('release_reason')->nullable();
-            
+
             // Metadata
             $table->json('metadata')->nullable();
-            
+
             $table->timestamps();
 
             // Unique constraint - one reservation per reference + variant
@@ -55,7 +55,7 @@ return new class extends Migration
                 ->references('id')
                 ->on('warehouses_v2')
                 ->onDelete('cascade');
-            
+
             $table->foreign('variant_id')
                 ->references('id')
                 ->on('variants')

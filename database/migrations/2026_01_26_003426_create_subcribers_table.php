@@ -9,12 +9,12 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('subcribers')) {
+        if (! Schema::hasTable('subcribers')) {
             Schema::create('subcribers', function (Blueprint $table) {
                 $table->increments('id');
                 $table->string('email', 200)->unique();
                 $table->timestamps();
-                
+
                 $table->index('email');
             });
         }

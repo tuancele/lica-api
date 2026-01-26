@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Inventory\DTOs;
 
 use App\Models\InventoryStock;
@@ -26,12 +27,12 @@ class StockDTO
     ) {}
 
     /**
-     * Create from InventoryStock model
+     * Create from InventoryStock model.
      */
     public static function fromModel(InventoryStock $model): self
     {
         $sellable = max(0, $model->available_stock - $model->flash_sale_hold - $model->deal_hold);
-        
+
         return new self(
             variantId: $model->variant_id,
             warehouseId: $model->warehouse_id,
@@ -52,7 +53,7 @@ class StockDTO
     }
 
     /**
-     * Create empty stock DTO (for non-existent stock records)
+     * Create empty stock DTO (for non-existent stock records).
      */
     public static function empty(int $variantId, int $warehouseId): self
     {
@@ -76,7 +77,7 @@ class StockDTO
     }
 
     /**
-     * Convert to array
+     * Convert to array.
      */
     public function toArray(): array
     {

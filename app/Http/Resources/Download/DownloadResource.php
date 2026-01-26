@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Download;
 
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -22,4 +23,3 @@ class DownloadResource extends JsonResource
         ];
     }
 }
-

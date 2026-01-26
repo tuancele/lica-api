@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Models\InventoryStock;
@@ -23,8 +24,9 @@ class SyncInventoryStocks extends Command
         $warehouseId = $this->option('warehouse_id') ? (int) $this->option('warehouse_id') : null;
         $warehouse = $warehouseId ? WarehouseV2::find($warehouseId) : WarehouseV2::getDefault();
 
-        if (!$warehouse) {
+        if (! $warehouse) {
             $this->error('Warehouse not found. Please create a default warehouse or pass --warehouse_id.');
+
             return 1;
         }
 
@@ -35,14 +37,15 @@ class SyncInventoryStocks extends Command
         $totalVariants = (int) DB::table('variants')->count();
         $existingStocks = (int) InventoryStock::where('warehouse_id', $warehouse->id)->count();
 
-        $this->info('Target warehouse: ' . $warehouse->id . ' (' . ($warehouse->code ?? 'N/A') . ')');
-        $this->info('Total variants: ' . $totalVariants);
-        $this->info('Existing inventory_stocks rows (warehouse): ' . $existingStocks);
+        $this->info('Target warehouse: '.$warehouse->id.' ('.($warehouse->code ?? 'N/A').')');
+        $this->info('Total variants: '.$totalVariants);
+        $this->info('Existing inventory_stocks rows (warehouse): '.$existingStocks);
 
-        if (!$dryRun && !$force) {
+        if (! $dryRun && ! $force) {
             $confirm = $this->confirm('Create missing inventory_stocks rows with zero stock?', true);
-            if (!$confirm) {
+            if (! $confirm) {
                 $this->comment('Cancelled.');
+
                 return 0;
             }
         }
@@ -53,7 +56,7 @@ class SyncInventoryStocks extends Command
             ->select('id')
             ->orderBy('id')
             ->chunk($chunk, function ($rows) use ($warehouse, $dryRun, &$missing) {
-                $variantIds = $rows->pluck('id')->map(fn($v) => (int) $v)->all();
+                $variantIds = $rows->pluck('id')->map(fn ($v) => (int) $v)->all();
                 if (empty($variantIds)) {
                     return;
                 }
@@ -61,7 +64,7 @@ class SyncInventoryStocks extends Command
                 $existing = InventoryStock::where('warehouse_id', $warehouse->id)
                     ->whereIn('variant_id', $variantIds)
                     ->pluck('variant_id')
-                    ->map(fn($v) => (int) $v)
+                    ->map(fn ($v) => (int) $v)
                     ->all();
 
                 $existingMap = array_fill_keys($existing, true);
@@ -94,23 +97,22 @@ class SyncInventoryStocks extends Command
                     ];
                 }
 
-                if (!$dryRun && !empty($toInsert)) {
+                if (! $dryRun && ! empty($toInsert)) {
                     InventoryStock::insert($toInsert);
                 }
             });
 
-        $this->info('Missing rows detected: ' . $missing);
+        $this->info('Missing rows detected: '.$missing);
 
         if ($dryRun) {
             $this->comment('Dry-run mode: no changes were written.');
+
             return 0;
         }
 
         $this->info('Sync completed.');
-        $this->info('New inventory_stocks rows (warehouse): ' . InventoryStock::where('warehouse_id', $warehouse->id)->count());
+        $this->info('New inventory_stocks rows (warehouse): '.InventoryStock::where('warehouse_id', $warehouse->id)->count());
 
         return 0;
     }
 }
-
-

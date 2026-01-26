@@ -1,12 +1,13 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Exceptions;
 
 use Exception;
 
 /**
- * Exception thrown when a product is not found
+ * Exception thrown when a product is not found.
  */
 class ProductNotFoundException extends Exception
 {
@@ -22,10 +23,10 @@ class ProductNotFoundException extends Exception
             return response()->json([
                 'status' => 'error',
                 'message' => 'Sản phẩm không tồn tại',
-                'error_code' => 'PRODUCT_NOT_FOUND'
+                'error_code' => 'PRODUCT_NOT_FOUND',
             ], 404);
         }
-        
+
         return redirect()->route('product.index')
             ->with('error', 'Sản phẩm không tồn tại');
     }

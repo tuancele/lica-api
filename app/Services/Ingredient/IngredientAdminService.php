@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Ingredient;
 
 use App\Modules\Dictionary\Models\IngredientBenefit;
@@ -26,8 +27,7 @@ class IngredientAdminService
         private IngredientBenefit $benefit,
         private IngredientRate $rate,
         private Client $client
-    ) {
-    }
+    ) {}
 
     public function list(array $filters, int $perPage = 20): LengthAwarePaginator
     {
@@ -37,26 +37,26 @@ class IngredientAdminService
             $query->where('status', $filters['status']);
         }
 
-        if (!empty($filters['keyword'])) {
-            $query->where('name', 'like', '%' . $filters['keyword'] . '%');
+        if (! empty($filters['keyword'])) {
+            $query->where('name', 'like', '%'.$filters['keyword'].'%');
         }
 
-        if (!empty($filters['rate_id'])) {
+        if (! empty($filters['rate_id'])) {
             $query->where('rate_id', $filters['rate_id']);
         }
 
-        if (!empty($filters['cat_id'])) {
+        if (! empty($filters['cat_id'])) {
             $query->where(function ($q) use ($filters) {
                 foreach ((array) $filters['cat_id'] as $catId) {
-                    $q->orWhere('cat_id', 'like', '%"' . $catId . '"%');
+                    $q->orWhere('cat_id', 'like', '%"'.$catId.'"%');
                 }
             });
         }
 
-        if (!empty($filters['benefit_id'])) {
+        if (! empty($filters['benefit_id'])) {
             $query->where(function ($q) use ($filters) {
                 foreach ((array) $filters['benefit_id'] as $benefitId) {
-                    $q->orWhere('benefit_id', 'like', '%"' . $benefitId . '"%');
+                    $q->orWhere('benefit_id', 'like', '%"'.$benefitId.'"%');
                 }
             });
         }
@@ -73,6 +73,7 @@ class IngredientAdminService
     public function find(int $id): IngredientPaulas
     {
         $item = $this->ingredient->newQuery()->with('rate')->findOrFail($id);
+
         return $this->attachRelations($item);
     }
 
@@ -142,6 +143,7 @@ class IngredientAdminService
     public function listDictionary(string $type, int $perPage = 40): LengthAwarePaginator
     {
         $model = $this->dictionaryModel($type);
+
         return $model->newQuery()->orderBy('sort', 'asc')->paginate($perPage);
     }
 
@@ -258,7 +260,7 @@ class IngredientAdminService
                 try {
                     $status = 'created';
                     $existing = $this->ingredient->newQuery()->where('slug', $item['id'])->first();
-                    $detailUrl = 'https://www.paulaschoice.com' . $item['url'] . '&ajax=true';
+                    $detailUrl = 'https://www.paulaschoice.com'.$item['url'].'&ajax=true';
 
                     Log::info('Ingredient crawl item processing', [
                         'offset' => $offset,
@@ -310,15 +312,17 @@ class IngredientAdminService
                 'url' => $listUrl,
                 'error' => $e->getMessage(),
             ]);
+
             return [
                 'status' => 'error',
-                'message' => 'Crawl timeout or request error: ' . $e->getMessage(),
+                'message' => 'Crawl timeout or request error: '.$e->getMessage(),
             ];
         } catch (Exception $e) {
             Log::error('Ingredient crawl failed', [
                 'url' => $listUrl,
                 'error' => $e->getMessage(),
             ]);
+
             return [
                 'status' => 'error',
                 'message' => $e->getMessage(),
@@ -362,6 +366,7 @@ class IngredientAdminService
                 $ids[] = (string) $detail->id;
             }
         }
+
         return $ids;
     }
 
@@ -374,6 +379,7 @@ class IngredientAdminService
                 $ids[] = (string) $detail->id;
             }
         }
+
         return $ids;
     }
 
@@ -385,12 +391,13 @@ class IngredientAdminService
         }
 
         $detail = $this->rate->newQuery()->where('name', $rateName)->first();
+
         return $detail ? (string) $detail->id : '0';
     }
 
     private function buildDescription(mixed $sections): string
     {
-        if (!is_array($sections)) {
+        if (! is_array($sections)) {
             // Normalize string or scalar to expected section structure
             $normalized = $this->normalizeString($sections);
             if ($normalized === '') {
@@ -407,15 +414,15 @@ class IngredientAdminService
         foreach ($sections as $value) {
             $texts = $value['text'] ?? [];
             if (is_string($texts)) {
-                $content .= '<p>' . $texts . '</p>';
+                $content .= '<p>'.$texts.'</p>';
                 continue;
             }
 
-            if (is_array($texts) && !empty($texts)) {
+            if (is_array($texts) && ! empty($texts)) {
                 $last = end($texts);
                 $normalized = $this->normalizeString($last);
                 if ($normalized !== '') {
-                    $content .= '<p>' . $normalized . '</p>';
+                    $content .= '<p>'.$normalized.'</p>';
                 }
             }
         }
@@ -429,7 +436,7 @@ class IngredientAdminService
         foreach ($references as $ref) {
             $text = $this->normalizeString($ref);
             if ($text !== '') {
-                $content .= '<p>' . $text . '</p>';
+                $content .= '<p>'.$text.'</p>';
             }
         }
 
@@ -450,7 +457,7 @@ class IngredientAdminService
             return '';
         }
 
-        return '<ul><li>' . implode('</li><li>', $items) . '</li></ul>';
+        return '<ul><li>'.implode('</li><li>', $items).'</li></ul>';
     }
 
     private function normalizeString(mixed $value): string
@@ -467,10 +474,11 @@ class IngredientAdminService
                 if (is_scalar($v)) {
                     return (string) $v;
                 }
+
                 return '';
             }, $value), fn ($v) => $v !== '');
 
-            return !empty($flatten) ? trim(implode(' ', $flatten)) : '';
+            return ! empty($flatten) ? trim(implode(' ', $flatten)) : '';
         }
 
         if (is_scalar($value)) {
@@ -507,11 +515,11 @@ class IngredientAdminService
 
         $item->setRelation('rate', $item->rate()->first());
 
-        $item->setRelation('categories', !empty($catIds)
+        $item->setRelation('categories', ! empty($catIds)
             ? $this->category->newQuery()->whereIn('id', $catIds)->get()
             : collect());
 
-        $item->setRelation('benefits', !empty($benefitIds)
+        $item->setRelation('benefits', ! empty($benefitIds)
             ? $this->benefit->newQuery()->whereIn('id', $benefitIds)->get()
             : collect());
 

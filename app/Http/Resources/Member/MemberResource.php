@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Member;
 
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -13,7 +14,7 @@ class MemberResource extends JsonResource
             'id' => $this->id,
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
-            'full_name' => trim($this->first_name . ' ' . $this->last_name),
+            'full_name' => trim($this->first_name.' '.$this->last_name),
             'email' => $this->email,
             'phone' => $this->phone,
             'status' => $this->status,
@@ -34,4 +35,3 @@ class MemberResource extends JsonResource
         ];
     }
 }
-

@@ -1,13 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Slider;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Slider Resource for API responses
- * 
+ * Slider Resource for API responses.
+ *
  * Formats slider data for API output with full information
  */
 class SliderResource extends JsonResource
@@ -16,7 +17,6 @@ class SliderResource extends JsonResource
      * Transform the resource into an array.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return array
      */
     public function toArray($request): array
     {

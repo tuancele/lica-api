@@ -9,7 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasColumn('variants', 'position')) {
+        if (! Schema::hasColumn('variants', 'position')) {
             Schema::table('variants', function (Blueprint $table) {
                 $table->integer('position')->default(0)->after('stock');
             });
@@ -25,4 +25,3 @@ return new class extends Migration
         }
     }
 };
-

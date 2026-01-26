@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Showroom;
 
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -23,4 +24,3 @@ class ShowroomResource extends JsonResource
         ];
     }
 }
-

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
@@ -31,7 +32,7 @@ class TaxonomyController extends Controller
             }
             if ($request->filled('keyword')) {
                 $keyword = (string) $request->get('keyword');
-                $query->where('name', 'like', '%' . $keyword . '%');
+                $query->where('name', 'like', '%'.$keyword.'%');
             }
             if ($request->filled('parent_id')) {
                 $query->where('cat_id', (int) $request->get('parent_id'));
@@ -59,6 +60,7 @@ class TaxonomyController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('List taxonomy categories failed', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => '获取分类列表失败',
@@ -77,6 +79,7 @@ class TaxonomyController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('Show taxonomy category failed', ['error' => $e->getMessage(), 'id' => $id]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Danh muc khong ton tai',
@@ -115,6 +118,7 @@ class TaxonomyController extends Controller
                 'error' => $e->getMessage(),
                 'payload' => $request->validated(),
             ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Tao danh muc that bai',
@@ -155,6 +159,7 @@ class TaxonomyController extends Controller
                 'id' => $id,
                 'payload' => $request->validated(),
             ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Cap nhat danh muc that bai',
@@ -183,6 +188,7 @@ class TaxonomyController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('Delete taxonomy category failed', ['error' => $e->getMessage(), 'id' => $id]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Xoa danh muc that bai',
@@ -205,6 +211,7 @@ class TaxonomyController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('Update taxonomy status failed', ['error' => $e->getMessage(), 'id' => $id]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Cap nhat trang thai that bai',
@@ -244,6 +251,7 @@ class TaxonomyController extends Controller
                 'ids' => $request->checklist,
                 'action' => $request->action,
             ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Bulk action danh muc that bai',
@@ -255,7 +263,7 @@ class TaxonomyController extends Controller
     {
         try {
             $items = $request->get('items', []);
-            if (!is_array($items)) {
+            if (! is_array($items)) {
                 $items = [];
             }
 
@@ -281,6 +289,7 @@ class TaxonomyController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('Update taxonomy sort failed', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Cap nhat sap xep that bai',
@@ -288,4 +297,3 @@ class TaxonomyController extends Controller
         }
     }
 }
-

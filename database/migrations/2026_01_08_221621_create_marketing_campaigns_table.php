@@ -9,8 +9,6 @@ class CreateMarketingCampaignsTable extends Migration
 {
     /**
      * Run the migrations.
-     *
-     * @return void
      */
     public function up()
     {
@@ -33,19 +31,17 @@ class CreateMarketingCampaignsTable extends Migration
             $table->timestamps();
 
             $table->foreign('campaign_id')->references('id')->on('marketing_campaigns')->onDelete('cascade');
-            // product_id refers to posts.id where type='product'. 
-            // Assuming no foreign key constraint strictly needed here to avoid issues if product deleted differently, 
+            // product_id refers to posts.id where type='product'.
+            // Assuming no foreign key constraint strictly needed here to avoid issues if product deleted differently,
             // but for data integrity it's good. However, legacy system might have soft deletes or different logic.
             // I will add index for faster lookup.
             $table->index(['campaign_id', 'product_id']);
-            $table->index('product_id'); 
+            $table->index('product_id');
         });
     }
 
     /**
      * Reverse the migrations.
-     *
-     * @return void
      */
     public function down()
     {

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
@@ -12,11 +13,10 @@ use App\Services\Warehouse\WarehouseServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
 
 /**
- * Brand API Controller V1
- * 
+ * Brand API Controller V1.
+ *
  * RESTful API endpoints for brand management
  * Base URL: /api/v1/brands
  */
@@ -30,18 +30,15 @@ class BrandController extends Controller
     }
 
     /**
-     * Get list of all brands
-     * 
+     * Get list of all brands.
+     *
      * GET /api/v1/brands
-     * 
+     *
      * Query Parameters:
      * - page (integer, optional): Page number, default 1
      * - limit (integer, optional): Items per page, default 20
      * - status (string, optional): Filter by status (0/1)
      * - keyword (string, optional): Search by name
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function index(Request $request): JsonResponse
     {
@@ -67,8 +64,8 @@ class BrandController extends Controller
             }
 
             // Search by keyword
-            if (!empty($keyword)) {
-                $query->where('name', 'like', '%' . $keyword . '%');
+            if (! empty($keyword)) {
+                $query->where('name', 'like', '%'.$keyword.'%');
             }
 
             // Order by name
@@ -90,28 +87,24 @@ class BrandController extends Controller
                     'last_page' => $brands->lastPage(),
                 ],
             ], 200);
-
         } catch (\Exception $e) {
-            Log::error('Get brands list failed: ' . $e->getMessage(), [
+            Log::error('Get brands list failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Lấy danh sách thương hiệu thất bại',
-                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ'
+                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ',
             ], 500);
         }
     }
 
     /**
-     * Get brand options for select inputs
+     * Get brand options for select inputs.
      *
      * GET /api/v1/brands/options
-     *
-     * @param Request $request
-     * @return JsonResponse
      */
     public function options(Request $request): JsonResponse
     {
@@ -132,7 +125,7 @@ class BrandController extends Controller
                 })->values(),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get brand options failed: ' . $e->getMessage(), [
+            Log::error('Get brand options failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -145,22 +138,19 @@ class BrandController extends Controller
     }
 
     /**
-     * Get brand detail by slug
-     * 
+     * Get brand detail by slug.
+     *
      * GET /api/v1/brands/{slug}
-     * 
-     * @param string $slug
-     * @return JsonResponse
      */
     public function show(string $slug): JsonResponse
     {
         try {
             $brand = Brand::where([
                 ['slug', $slug],
-                ['status', '1']
+                ['status', '1'],
             ])->first();
 
-            if (!$brand) {
+            if (! $brand) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Thương hiệu không tồn tại',
@@ -171,7 +161,7 @@ class BrandController extends Controller
             $totalProducts = Product::where([
                 ['type', 'product'],
                 ['status', '1'],
-                ['brand_id', $brand->id]
+                ['brand_id', $brand->id],
             ])->count();
 
             // Add total_products to brand model temporarily
@@ -184,36 +174,31 @@ class BrandController extends Controller
                 'success' => true,
                 'data' => $formattedBrand,
             ], 200);
-
         } catch (\Exception $e) {
-            Log::error('Get brand detail failed: ' . $e->getMessage(), [
+            Log::error('Get brand detail failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'slug' => $slug,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Lấy thông tin thương hiệu thất bại',
-                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ'
+                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ',
             ], 500);
         }
     }
 
     /**
-     * Get products of a brand
-     * 
+     * Get products of a brand.
+     *
      * GET /api/v1/brands/{slug}/products
-     * 
+     *
      * Query Parameters:
      * - page (integer, optional): Page number, default 1
      * - limit (integer, optional): Items per page, default 30
      * - stock (string, optional): Filter by stock status (0=out of stock, 1=in stock, all=all)
      * - sort (string, optional): Sort order (newest, oldest, price_asc, price_desc, name_asc, name_desc)
-     * 
-     * @param Request $request
-     * @param string $slug
-     * @return JsonResponse
      */
     public function getProducts(Request $request, string $slug): JsonResponse
     {
@@ -221,10 +206,10 @@ class BrandController extends Controller
             // Find brand
             $brand = Brand::where([
                 ['slug', $slug],
-                ['status', '1']
+                ['status', '1'],
             ])->first();
 
-            if (!$brand) {
+            if (! $brand) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Thương hiệu không tồn tại',
@@ -248,11 +233,11 @@ class BrandController extends Controller
                 'variants:id,product_id,price,sale,stock,sku',
                 'rates:id,product_id,rate',
                 'origin:id,name',
-                'category:id,name,slug'
+                'category:id,name,slug',
             ])->where([
                 ['type', 'product'],
                 ['status', '1'],
-                ['brand_id', $brand->id]
+                ['brand_id', $brand->id],
             ]);
 
             // Filter by stock status
@@ -278,45 +263,45 @@ class BrandController extends Controller
                     $query->orderBy('created_at', 'desc');
                     break;
             }
-            
+
             // For price sorting, we'll handle it after getting results
             // to avoid conflicts with eager loading
             $needsPriceSort = in_array($sort, ['price_asc', 'price_desc']);
 
             // Paginate results
             $products = $query->paginate($limit, ['*'], 'page', $page);
-            
+
             // Handle price sorting if needed
             if ($needsPriceSort) {
                 $items = $products->items();
-                usort($items, function($a, $b) use ($sort) {
+                usort($items, function ($a, $b) use ($sort) {
                     // Get price from first variant or use 0
                     $priceA = 0;
                     $priceB = 0;
-                    
+
                     if ($a->variants && $a->variants->count() > 0) {
                         $variantA = $a->variants->first();
                         $priceA = $variantA->sale > 0 ? $variantA->sale : $variantA->price;
                     }
-                    
+
                     if ($b->variants && $b->variants->count() > 0) {
                         $variantB = $b->variants->first();
                         $priceB = $variantB->sale > 0 ? $variantB->sale : $variantB->price;
                     }
-                    
+
                     if ($sort === 'price_asc') {
                         return $priceA <=> $priceB;
                     } else {
                         return $priceB <=> $priceA;
                     }
                 });
-                
+
                 // Recreate paginator with sorted items
                 $products->setCollection(collect($items));
             }
 
             // Add warehouse_stock to products before formatting with ProductResource
-            $products->getCollection()->transform(function($product) {
+            $products->getCollection()->transform(function ($product) {
                 // Get warehouse stock for first variant
                 $warehouseStock = 0;
                 $isOutOfStock = false;
@@ -326,7 +311,7 @@ class BrandController extends Controller
                         $stockData = $this->warehouseService->getVariantStock($firstVariant->id);
                         $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
                         $isOutOfStock = $warehouseStock <= 0;
-                        
+
                         // Add warehouse_stock to variant
                         $firstVariant->warehouse_stock = $warehouseStock;
                         $firstVariant->is_out_of_stock = $isOutOfStock;
@@ -335,17 +320,17 @@ class BrandController extends Controller
                         $isOutOfStock = $warehouseStock <= 0;
                     }
                 } catch (\Exception $e) {
-                    Log::warning('Failed to get warehouse stock for product: ' . $product->id);
+                    Log::warning('Failed to get warehouse stock for product: '.$product->id);
                     $warehouseStock = (int) ($product->stock ?? 0);
                     $isOutOfStock = $warehouseStock <= 0;
                 }
-                
+
                 // Add warehouse_stock to product
                 $product->warehouse_stock = $warehouseStock;
                 $product->is_out_of_stock = $isOutOfStock;
-                
+
                 // Add warehouse_stock to all variants
-                $product->variants->each(function($variant) {
+                $product->variants->each(function ($variant) {
                     try {
                         $stockData = $this->warehouseService->getVariantStock($variant->id);
                         $variant->warehouse_stock = (int) ($stockData['current_stock'] ?? 0);
@@ -355,10 +340,10 @@ class BrandController extends Controller
                         $variant->is_out_of_stock = $variant->warehouse_stock <= 0;
                     }
                 });
-                
+
                 return $product;
             });
-            
+
             // Format response with ProductResource
             $formattedProducts = ProductResource::collection($products->items());
 
@@ -377,64 +362,54 @@ class BrandController extends Controller
                     'last_page' => $products->lastPage(),
                 ],
             ], 200);
-
         } catch (\Exception $e) {
-            Log::error('Get brand products failed: ' . $e->getMessage(), [
+            Log::error('Get brand products failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
                 'slug' => $slug,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Lấy danh sách sản phẩm thất bại',
-                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ'
+                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ',
             ], 500);
         }
     }
 
     /**
-     * Get available products (in stock) of a brand
-     * 
+     * Get available products (in stock) of a brand.
+     *
      * GET /api/v1/brands/{slug}/products/available
-     * 
-     * @param Request $request
-     * @param string $slug
-     * @return JsonResponse
      */
     public function getAvailableProducts(Request $request, string $slug): JsonResponse
     {
         // Set stock filter to 1 (in stock) and call getProducts
         $request->merge(['stock' => '1']);
+
         return $this->getProducts($request, $slug);
     }
 
     /**
-     * Get out of stock products of a brand
-     * 
+     * Get out of stock products of a brand.
+     *
      * GET /api/v1/brands/{slug}/products/out-of-stock
-     * 
-     * @param Request $request
-     * @param string $slug
-     * @return JsonResponse
      */
     public function getOutOfStockProducts(Request $request, string $slug): JsonResponse
     {
         // Set stock filter to 0 (out of stock) and call getProducts
         $request->merge(['stock' => '0']);
+
         return $this->getProducts($request, $slug);
     }
 
     /**
-     * Get featured brands for home page
-     * 
+     * Get featured brands for home page.
+     *
      * GET /api/v1/brands/featured
-     * 
+     *
      * Query Parameters:
      * - limit (integer, optional): Number of brands to return, default 14, max 50
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getFeatured(Request $request): JsonResponse
     {
@@ -461,17 +436,16 @@ class BrandController extends Controller
                 'data' => $formattedBrands,
                 'count' => $formattedBrands->count(),
             ], 200);
-
         } catch (\Exception $e) {
-            Log::error('Get featured brands failed: ' . $e->getMessage(), [
+            Log::error('Get featured brands failed: '.$e->getMessage(), [
                 'method' => __METHOD__,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Lấy danh sách thương hiệu nổi bật thất bại',
-                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ'
+                'error' => config('app.debug') ? $e->getMessage() : 'Lỗi máy chủ',
             ], 500);
         }
     }

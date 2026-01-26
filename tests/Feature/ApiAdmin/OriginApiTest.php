@@ -1,11 +1,12 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Tests\Feature\ApiAdmin;
 
-use Tests\TestCase;
 use App\Modules\Origin\Models\Origin;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class OriginApiTest extends TestCase
 {
@@ -24,7 +25,7 @@ class OriginApiTest extends TestCase
         $response = $this->getJson('/admin/api/origins?limit=5');
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_get_single_origin(): void
@@ -34,7 +35,7 @@ class OriginApiTest extends TestCase
         $response = $this->getJson("/admin/api/origins/{$origin->id}");
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_create_origin(): void
@@ -43,13 +44,13 @@ class OriginApiTest extends TestCase
             'name' => 'New Origin',
             'slug' => 'new-origin',
             'status' => '1',
-            'sort' => 0
+            'sort' => 0,
         ];
 
         $response = $this->postJson('/admin/api/origins', $originData);
 
         $response->assertStatus(201)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_update_origin(): void
@@ -58,11 +59,11 @@ class OriginApiTest extends TestCase
 
         $response = $this->putJson("/admin/api/origins/{$origin->id}", [
             'name' => 'Updated Origin',
-            'status' => '1'
+            'status' => '1',
         ]);
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 
     public function test_can_delete_origin(): void
@@ -72,7 +73,6 @@ class OriginApiTest extends TestCase
         $response = $this->deleteJson("/admin/api/origins/{$origin->id}");
 
         $response->assertStatus(200)
-                 ->assertJson(['success' => true]);
+            ->assertJson(['success' => true]);
     }
 }
-

@@ -5,19 +5,19 @@ namespace App\Services\Inventory\DTOs;
 class ExportStockDTO
 {
     /**
-     * @param string $code Mã đơn hàng
-     * @param string $subject Tiêu đề / Nội dung xuất
-     * @param int $warehouseId ID kho xuất
-     * @param array $items Danh sách sản phẩm [{variant_id, quantity, unit_price}]
-     * @param int $createdBy ID người tạo
-     * @param string|null $content Ghi chú
-     * @param string|null $vatInvoice Số hóa đơn VAT
-     * @param string|null $referenceType Loại tham chiếu (order, manual, etc.)
-     * @param int|null $referenceId ID tham chiếu
-     * @param string|null $referenceCode Mã tham chiếu
-     * @param int|null $customerId ID khách hàng
-     * @param string|null $customerName Tên khách hàng
-     * @param array|null $metadata Dữ liệu bổ sung
+     * @param  string  $code  Mã đơn hàng
+     * @param  string  $subject  Tiêu đề / Nội dung xuất
+     * @param  int  $warehouseId  ID kho xuất
+     * @param  array  $items  Danh sách sản phẩm [{variant_id, quantity, unit_price}]
+     * @param  int  $createdBy  ID người tạo
+     * @param  string|null  $content  Ghi chú
+     * @param  string|null  $vatInvoice  Số hóa đơn VAT
+     * @param  string|null  $referenceType  Loại tham chiếu (order, manual, etc.)
+     * @param  int|null  $referenceId  ID tham chiếu
+     * @param  string|null  $referenceCode  Mã tham chiếu
+     * @param  int|null  $customerId  ID khách hàng
+     * @param  string|null  $customerName  Tên khách hàng
+     * @param  array|null  $metadata  Dữ liệu bổ sung
      */
     public function __construct(
         public string $code,
@@ -38,7 +38,7 @@ class ExportStockDTO
     }
 
     /**
-     * Validate items array
+     * Validate items array.
      */
     private function validateItems(): void
     {
@@ -47,17 +47,17 @@ class ExportStockDTO
         }
 
         foreach ($this->items as $index => $item) {
-            if (!isset($item['variant_id'])) {
+            if (! isset($item['variant_id'])) {
                 throw new \InvalidArgumentException("Item at index {$index} is missing variant_id");
             }
-            if (!isset($item['quantity']) || $item['quantity'] <= 0) {
+            if (! isset($item['quantity']) || $item['quantity'] <= 0) {
                 throw new \InvalidArgumentException("Item at index {$index} has invalid quantity");
             }
         }
     }
 
     /**
-     * Create from request array
+     * Create from request array.
      */
     public static function fromArray(array $data): self
     {
@@ -79,12 +79,12 @@ class ExportStockDTO
     }
 
     /**
-     * Create from order
+     * Create from order.
      */
     public static function fromOrder($order, int $warehouseId, int $createdBy): self
     {
         $items = [];
-        
+
         foreach ($order->details as $detail) {
             $items[] = [
                 'variant_id' => $detail->variant_id,
@@ -92,10 +92,10 @@ class ExportStockDTO
                 'unit_price' => $detail->price,
             ];
         }
-        
+
         return new self(
-            code: 'ORD-' . $order->code,
-            subject: 'Xuất hàng cho đơn #' . $order->code,
+            code: 'ORD-'.$order->code,
+            subject: 'Xuất hàng cho đơn #'.$order->code,
             warehouseId: $warehouseId,
             items: $items,
             createdBy: $createdBy,
@@ -108,7 +108,7 @@ class ExportStockDTO
     }
 
     /**
-     * Get total quantity
+     * Get total quantity.
      */
     public function getTotalQuantity(): int
     {
@@ -116,7 +116,7 @@ class ExportStockDTO
     }
 
     /**
-     * Get total value
+     * Get total value.
      */
     public function getTotalValue(): float
     {
@@ -126,7 +126,7 @@ class ExportStockDTO
     }
 
     /**
-     * Get item count
+     * Get item count.
      */
     public function getItemCount(): int
     {

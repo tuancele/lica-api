@@ -2,14 +2,14 @@
 
 namespace App\Repositories\Product;
 
-use App\Modules\Product\Models\Product;
 use App\Enums\ProductType;
+use App\Modules\Product\Models\Product;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 
 /**
- * Repository for Product data access
- * 
+ * Repository for Product data access.
+ *
  * This repository handles all database operations for products,
  * separating data access logic from business logic.
  */
@@ -20,10 +20,7 @@ class ProductRepository implements ProductRepositoryInterface
     ) {}
 
     /**
-     * Find product by ID
-     * 
-     * @param int $id
-     * @return Product|null
+     * Find product by ID.
      */
     public function find(int $id): ?Product
     {
@@ -31,10 +28,7 @@ class ProductRepository implements ProductRepositoryInterface
     }
 
     /**
-     * Find product with relations
-     * 
-     * @param int $id
-     * @return Product|null
+     * Find product with relations.
      */
     public function findWithRelations(int $id): ?Product
     {
@@ -45,10 +39,7 @@ class ProductRepository implements ProductRepositoryInterface
     }
 
     /**
-     * Create new product
-     * 
-     * @param array $data
-     * @return Product
+     * Create new product.
      */
     public function create(array $data): Product
     {
@@ -56,11 +47,7 @@ class ProductRepository implements ProductRepositoryInterface
     }
 
     /**
-     * Update product
-     * 
-     * @param int $id
-     * @param array $data
-     * @return bool
+     * Update product.
      */
     public function update(int $id, array $data): bool
     {
@@ -68,10 +55,7 @@ class ProductRepository implements ProductRepositoryInterface
     }
 
     /**
-     * Delete product
-     * 
-     * @param int $id
-     * @return bool
+     * Delete product.
      */
     public function delete(int $id): bool
     {
@@ -79,11 +63,7 @@ class ProductRepository implements ProductRepositoryInterface
     }
 
     /**
-     * Get paginated products with filters
-     * 
-     * @param array $filters
-     * @param int $perPage
-     * @return LengthAwarePaginator
+     * Get paginated products with filters.
      */
     public function paginate(array $filters = [], int $perPage = 10): LengthAwarePaginator
     {
@@ -95,11 +75,11 @@ class ProductRepository implements ProductRepositoryInterface
         }
 
         if (isset($filters['cat_id'])) {
-            $query->where('cat_id', 'like', '%' . $filters['cat_id'] . '%');
+            $query->where('cat_id', 'like', '%'.$filters['cat_id'].'%');
         }
 
         if (isset($filters['keyword'])) {
-            $query->where('name', 'like', '%' . $filters['keyword'] . '%');
+            $query->where('name', 'like', '%'.$filters['keyword'].'%');
         }
 
         // Apply sorting
@@ -112,9 +92,7 @@ class ProductRepository implements ProductRepositoryInterface
     }
 
     /**
-     * Get all active products
-     * 
-     * @return Collection
+     * Get all active products.
      */
     public function getActiveProducts(): Collection
     {
@@ -127,18 +105,14 @@ class ProductRepository implements ProductRepositoryInterface
     }
 
     /**
-     * Get products by category
-     * 
-     * @param int $categoryId
-     * @param int $limit
-     * @return Collection
+     * Get products by category.
      */
     public function getByCategory(int $categoryId, int $limit = 10): Collection
     {
         return $this->model
             ->where('type', ProductType::PRODUCT->value)
             ->where('status', '1')
-            ->where('cat_id', 'like', '%' . $categoryId . '%')
+            ->where('cat_id', 'like', '%'.$categoryId.'%')
             ->with(['brand', 'variants'])
             ->orderBy('sort', 'desc')
             ->limit($limit)
@@ -146,10 +120,7 @@ class ProductRepository implements ProductRepositoryInterface
     }
 
     /**
-     * Get featured products
-     * 
-     * @param int $limit
-     * @return Collection
+     * Get featured products.
      */
     public function getFeaturedProducts(int $limit = 10): Collection
     {
@@ -164,11 +135,7 @@ class ProductRepository implements ProductRepositoryInterface
     }
 
     /**
-     * Search products
-     * 
-     * @param string $keyword
-     * @param int $limit
-     * @return Collection
+     * Search products.
      */
     public function search(string $keyword, int $limit = 20): Collection
     {
@@ -186,20 +153,16 @@ class ProductRepository implements ProductRepositoryInterface
     }
 
     /**
-     * Check if slug exists
-     * 
-     * @param string $slug
-     * @param int|null $exceptId
-     * @return bool
+     * Check if slug exists.
      */
     public function slugExists(string $slug, ?int $exceptId = null): bool
     {
         $query = $this->model->where('slug', $slug);
-        
+
         if ($exceptId) {
             $query->where('id', '!=', $exceptId);
         }
-        
+
         return $query->exists();
     }
 }

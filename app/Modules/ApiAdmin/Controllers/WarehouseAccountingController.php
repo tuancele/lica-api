@@ -1,11 +1,12 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Modules\ApiAdmin\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Services\Warehouse\StockReceiptService;
 use App\Models\StockReceipt;
+use App\Services\Warehouse\StockReceiptService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,8 +14,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 /**
- * Warehouse Accounting API Controller (V2)
- * 
+ * Warehouse Accounting API Controller (V2).
+ *
  * Handles all warehouse accounting API endpoints for stock receipts
  */
 class WarehouseAccountingController extends Controller
@@ -24,12 +25,9 @@ class WarehouseAccountingController extends Controller
     ) {}
 
     /**
-     * List stock receipts with filters
-     * 
+     * List stock receipts with filters.
+     *
      * GET /admin/api/v2/warehouse/accounting/receipts
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function index(Request $request): JsonResponse
     {
@@ -44,8 +42,8 @@ class WarehouseAccountingController extends Controller
                 'search' => $request->get('search'), // Search by code or partner name
             ];
 
-            $perPage = (int)$request->get('per_page', 15);
-            $page = (int)$request->get('page', 1);
+            $perPage = (int) $request->get('per_page', 15);
+            $page = (int) $request->get('page', 1);
 
             $receipts = $this->stockReceiptService->listReceipts($filters, $perPage, $page);
 
@@ -60,52 +58,48 @@ class WarehouseAccountingController extends Controller
                 ],
             ], 200);
         } catch (\Exception $e) {
-            Log::error('List receipts failed: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+            Log::error('List receipts failed: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Lỗi khi lấy danh sách phiếu: ' . $e->getMessage(),
+                'message' => 'Lỗi khi lấy danh sách phiếu: '.$e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Get single receipt by ID
-     * 
+     * Get single receipt by ID.
+     *
      * GET /admin/api/v2/warehouse/accounting/receipts/{id}
-     * 
-     * @param int $id
-     * @return JsonResponse
      */
     public function show(int $id): JsonResponse
     {
         try {
             $receipt = $this->stockReceiptService->getReceipt($id);
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $this->formatReceipt($receipt),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get receipt failed: ' . $e->getMessage(), [
+            Log::error('Get receipt failed: '.$e->getMessage(), [
                 'receipt_id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Không tìm thấy phiếu hoặc có lỗi xảy ra: ' . $e->getMessage(),
+                'message' => 'Không tìm thấy phiếu hoặc có lỗi xảy ra: '.$e->getMessage(),
             ], 404);
         }
     }
 
     /**
-     * Create new receipt
-     * 
+     * Create new receipt.
+     *
      * POST /admin/api/v2/warehouse/accounting/receipts
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function store(Request $request): JsonResponse
     {
@@ -146,41 +140,38 @@ class WarehouseAccountingController extends Controller
         try {
             $data = $validator->validated();
             $data['created_by'] = Auth::id();
-            
+
             $receipt = $this->stockReceiptService->createReceipt($data);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Tạo phiếu thành công',
                 'data' => $this->formatReceipt($receipt),
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Create receipt failed: ' . $e->getMessage(), [
+            Log::error('Create receipt failed: '.$e->getMessage(), [
                 'data' => $request->all(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Tạo phiếu thất bại: ' . $e->getMessage(),
+                'message' => 'Tạo phiếu thất bại: '.$e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Update receipt
-     * 
+     * Update receipt.
+     *
      * PUT /admin/api/v2/warehouse/accounting/receipts/{id}
-     * 
-     * @param Request $request
-     * @param int $id
-     * @return JsonResponse
      */
     public function update(Request $request, int $id): JsonResponse
     {
         try {
             $receipt = $this->stockReceiptService->getReceipt($id);
-            
-            if (!$receipt->canEdit()) {
+
+            if (! $receipt->canEdit()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Phiếu đã hoàn thành, không thể chỉnh sửa',
@@ -221,64 +212,59 @@ class WarehouseAccountingController extends Controller
 
             $data = $validator->validated();
             $data['updated_by'] = Auth::id();
-            
+
             $receipt = $this->stockReceiptService->updateReceipt($id, $data);
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Cập nhật phiếu thành công',
                 'data' => $this->formatReceipt($receipt),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Update receipt failed: ' . $e->getMessage(), [
+            Log::error('Update receipt failed: '.$e->getMessage(), [
                 'receipt_id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Cập nhật phiếu thất bại: ' . $e->getMessage(),
+                'message' => 'Cập nhật phiếu thất bại: '.$e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Complete receipt (mark as completed and update stock)
-     * 
+     * Complete receipt (mark as completed and update stock).
+     *
      * POST /admin/api/v2/warehouse/accounting/receipts/{id}/complete
-     * 
-     * @param int $id
-     * @return JsonResponse
      */
     public function complete(int $id): JsonResponse
     {
         try {
             $receipt = $this->stockReceiptService->completeReceipt($id, Auth::id());
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Hoàn thành phiếu thành công',
                 'data' => $this->formatReceipt($receipt),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Complete receipt failed: ' . $e->getMessage(), [
+            Log::error('Complete receipt failed: '.$e->getMessage(), [
                 'receipt_id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Hoàn thành phiếu thất bại: ' . $e->getMessage(),
+                'message' => 'Hoàn thành phiếu thất bại: '.$e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Void receipt (cancel and reverse stock)
-     * 
+     * Void receipt (cancel and reverse stock).
+     *
      * POST /admin/api/v2/warehouse/accounting/receipts/{id}/void
-     * 
-     * @param Request $request
-     * @param int $id
-     * @return JsonResponse
      */
     public function void(Request $request, int $id): JsonResponse
     {
@@ -303,33 +289,31 @@ class WarehouseAccountingController extends Controller
                     'message' => 'Không thể hủy phiếu được tạo từ đơn hàng. Phiếu chỉ có thể bị hủy khi đơn hàng bị hủy.',
                 ], 403);
             }
-            
+
             $receipt = $this->stockReceiptService->voidReceipt($id, Auth::id());
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Hủy phiếu thành công',
                 'data' => $this->formatReceipt($receipt),
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Void receipt failed: ' . $e->getMessage(), [
+            Log::error('Void receipt failed: '.$e->getMessage(), [
                 'receipt_id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Hủy phiếu thất bại: ' . $e->getMessage(),
+                'message' => 'Hủy phiếu thất bại: '.$e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Get receipt statistics
-     * 
+     * Get receipt statistics.
+     *
      * GET /admin/api/v2/warehouse/accounting/statistics
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function statistics(Request $request): JsonResponse
     {
@@ -341,21 +325,21 @@ class WarehouseAccountingController extends Controller
             ];
 
             $stats = [
-                'total_receipts' => StockReceipt::when($filters['type'], fn($q, $type) => $q->where('type', $type))
-                    ->when($filters['date_from'], fn($q, $date) => $q->whereDate('created_at', '>=', $date))
-                    ->when($filters['date_to'], fn($q, $date) => $q->whereDate('created_at', '<=', $date))
+                'total_receipts' => StockReceipt::when($filters['type'], fn ($q, $type) => $q->where('type', $type))
+                    ->when($filters['date_from'], fn ($q, $date) => $q->whereDate('created_at', '>=', $date))
+                    ->when($filters['date_to'], fn ($q, $date) => $q->whereDate('created_at', '<=', $date))
                     ->count(),
-                'total_value' => StockReceipt::when($filters['type'], fn($q, $type) => $q->where('type', $type))
-                    ->when($filters['date_from'], fn($q, $date) => $q->whereDate('created_at', '>=', $date))
-                    ->when($filters['date_to'], fn($q, $date) => $q->whereDate('created_at', '<=', $date))
+                'total_value' => StockReceipt::when($filters['type'], fn ($q, $type) => $q->where('type', $type))
+                    ->when($filters['date_from'], fn ($q, $date) => $q->whereDate('created_at', '>=', $date))
+                    ->when($filters['date_to'], fn ($q, $date) => $q->whereDate('created_at', '<=', $date))
                     ->sum('total_value'),
                 'import_count' => StockReceipt::where('type', 'import')
-                    ->when($filters['date_from'], fn($q, $date) => $q->whereDate('created_at', '>=', $date))
-                    ->when($filters['date_to'], fn($q, $date) => $q->whereDate('created_at', '<=', $date))
+                    ->when($filters['date_from'], fn ($q, $date) => $q->whereDate('created_at', '>=', $date))
+                    ->when($filters['date_to'], fn ($q, $date) => $q->whereDate('created_at', '<=', $date))
                     ->count(),
                 'export_count' => StockReceipt::where('type', 'export')
-                    ->when($filters['date_from'], fn($q, $date) => $q->whereDate('created_at', '>=', $date))
-                    ->when($filters['date_to'], fn($q, $date) => $q->whereDate('created_at', '<=', $date))
+                    ->when($filters['date_from'], fn ($q, $date) => $q->whereDate('created_at', '>=', $date))
+                    ->when($filters['date_to'], fn ($q, $date) => $q->whereDate('created_at', '<=', $date))
                     ->count(),
             ];
 
@@ -364,19 +348,17 @@ class WarehouseAccountingController extends Controller
                 'data' => $stats,
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Get statistics failed: ' . $e->getMessage());
+            Log::error('Get statistics failed: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Lỗi khi lấy thống kê: ' . $e->getMessage(),
+                'message' => 'Lỗi khi lấy thống kê: '.$e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Format receipt for API response
-     * 
-     * @param StockReceipt $receipt
-     * @return array
+     * Format receipt for API response.
      */
     private function formatReceipt(StockReceipt $receipt): array
     {
@@ -399,8 +381,8 @@ class WarehouseAccountingController extends Controller
             'customer_tax_id' => $receipt->customer_tax_id,
             'subject' => $receipt->subject,
             'vat_invoice' => $receipt->vat_invoice,
-            'total_value' => (float)$receipt->total_value,
-            'total_value_formatted' => number_format($receipt->total_value, 0, ',', '.') . ' đ',
+            'total_value' => (float) $receipt->total_value,
+            'total_value_formatted' => number_format($receipt->total_value, 0, ',', '.').' đ',
             'created_at' => $receipt->created_at->format('Y-m-d H:i:s'),
             'created_at_formatted' => $receipt->created_at->format('d/m/Y H:i'),
             'updated_at' => $receipt->updated_at->format('Y-m-d H:i:s'),
@@ -424,10 +406,10 @@ class WarehouseAccountingController extends Controller
                         ],
                         'option1_value' => $item->variant->option1_value,
                     ],
-                    'quantity' => (float)$item->quantity,
-                    'quantity_requested' => (float)$item->quantity_requested,
-                    'unit_price' => (float)$item->unit_price,
-                    'total_price' => (float)$item->total_price,
+                    'quantity' => (float) $item->quantity,
+                    'quantity_requested' => (float) $item->quantity_requested,
+                    'unit_price' => (float) $item->unit_price,
+                    'total_price' => (float) $item->total_price,
                     'stock_before' => $item->stock_before,
                     'stock_after' => $item->stock_after,
                     'batch_number' => $item->batch_number,
@@ -441,4 +423,3 @@ class WarehouseAccountingController extends Controller
         ];
     }
 }
-
