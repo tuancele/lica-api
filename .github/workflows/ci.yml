@@ -11,7 +11,7 @@ jobs:
   tests:
     name: Run Tests
     runs-on: ubuntu-latest
-    if: false  # Temporarily disabled
+    # if: false  # Temporarily disabled - Now enabled after fixes
     
     services:
       mysql:
@@ -156,7 +156,7 @@ jobs:
   code-quality:
     name: Code Quality Checks
     runs-on: ubuntu-latest
-    if: false  # Temporarily disabled
+    # if: false  # Temporarily disabled - Now enabled after fixes
 
     steps:
       - name: Checkout code
