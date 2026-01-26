@@ -148,7 +148,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: test_output.log
@@ -224,7 +224,7 @@ jobs:
 
       - name: Upload code quality results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: code-quality-results
           path: |
@@ -263,7 +263,7 @@ jobs:
 
       - name: Upload Docker build log
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: docker-build-log
           path: docker_build.log
