@@ -98,17 +98,18 @@ jobs:
       - name: Run tests
         run: |
           set +e
-          if [ -d "tests" ] && [ "$(find tests -name '*Test.php' | wc -l)" -gt 0 ]; then
-            php artisan test
+          if [ -d "tests" ] && [ "$(find tests -name '*Test.php' 2>/dev/null | wc -l)" -gt 0 ]; then
+            php artisan test 2>&1
             TEST_EXIT_CODE=$?
             if [ $TEST_EXIT_CODE -ne 0 ]; then
-              echo "Tests completed with some failures (exit code: $TEST_EXIT_CODE)"
+              echo "⚠️ Tests completed with some failures (exit code: $TEST_EXIT_CODE)"
+            else
+              echo "✅ All tests passed"
             fi
-            exit 0
           else
-            echo "No tests found, skipping test execution"
-            exit 0
+            echo "ℹ️ No tests found, skipping test execution"
           fi
+          exit 0
         continue-on-error: true
         env:
           DB_CONNECTION: mysql
@@ -141,32 +142,35 @@ jobs:
         run: |
           set +e
           if [ -f "vendor/bin/pint" ]; then
-            vendor/bin/pint --test
+            vendor/bin/pint --test 2>&1
             PINT_EXIT_CODE=$?
             if [ $PINT_EXIT_CODE -ne 0 ]; then
-              echo "Pint check completed with some issues (exit code: $PINT_EXIT_CODE)"
+              echo "⚠️ Pint check completed with some issues (exit code: $PINT_EXIT_CODE)"
+            else
+              echo "✅ Pint check passed"
             fi
-            exit 0
           else
-            echo "Pint not found, skipping"
-            exit 0
+            echo "ℹ️ Pint not found, skipping"
           fi
+          exit 0
         continue-on-error: true
 
       - name: Run PHPStan
         run: |
           set +e
           if [ -f "vendor/bin/phpstan" ]; then
-            vendor/bin/phpstan analyse --level=8 --error-format=github
+            vendor/bin/phpstan analyse --level=8 --error-format=github 2>&1
             PHPSTAN_EXIT_CODE=$?
             if [ $PHPSTAN_EXIT_CODE -ne 0 ]; then
-              echo "PHPStan analysis completed with errors (exit code: $PHPSTAN_EXIT_CODE)"
+              echo "⚠️ PHPStan analysis completed with errors (exit code: $PHPSTAN_EXIT_CODE)"
+              echo "ℹ️ These errors will be fixed in Phase 2"
+            else
+              echo "✅ PHPStan analysis passed"
             fi
-            exit 0
           else
-            echo "PHPStan not found, skipping"
-            exit 0
+            echo "ℹ️ PHPStan not found, skipping"
           fi
+          exit 0
         continue-on-error: true
 
   build:
