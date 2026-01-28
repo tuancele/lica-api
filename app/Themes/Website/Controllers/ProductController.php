@@ -39,7 +39,7 @@ class ProductController extends Controller
 
             $data['detail'] = $post;
             $data['product_id'] = $post->id;
-            $data['gallerys'] = json_decode($post->gallery);
+            $data['gallerys'] = json_decode($post->gallery ?? '[]', true) ?? [];
             $variants = Variant::where('product_id', $post->id)->orderBy('position', 'asc')->orderBy('id', 'asc')->get();
 
             // Get warehouse service and inventory service

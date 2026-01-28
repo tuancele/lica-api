@@ -422,7 +422,9 @@ class RecommendationService
     private function clearRecommendationCache(string $sessionId, ?int $userId)
     {
         try {
-            Cache::forget("recommendations:{$sessionId}:".($userId ?? 'guest').':*');
+            // Note: Cache::forget doesn't support wildcards
+            // Cache will expire automatically based on TTL (1800 seconds)
+            // If needed, use Redis directly: Redis::connection('cache')->keys("recommendations:{$sessionId}:*")
         } catch (\Exception $e) {
         }
     }

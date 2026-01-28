@@ -11,7 +11,7 @@
     });
 </script>
 <section class="content">
-    <form role="form" id="tblForm" method="post" ajax="{{route('compare.store')}}">
+    <form role="form" id="tblForm" method="post" ajax="{{route('compare.create.store')}}">
         @csrf
         <div class="row">
             <div class="col-lg-9">

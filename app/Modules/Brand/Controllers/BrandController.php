@@ -49,7 +49,7 @@ class BrandController extends Controller
         active('product', 'brand');
         $detail = $this->model::find($id);
         $data['detail'] = $detail;
-        $data['gallerys'] = json_decode($detail->gallery);
+        $data['gallerys'] = json_decode($detail->gallery ?? '[]', true) ?? [];
 
         return view($this->view.'::edit', $data);
     }

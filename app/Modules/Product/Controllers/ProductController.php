@@ -107,7 +107,7 @@ class ProductController extends Controller
 
         try {
             // Get product with relations using service
-            $detail = $this->productService->getProductWithRelations($id);
+            $detail = $this->productService->getProductWithRelations((int) $id);
         } catch (\Exception $e) {
             return redirect()->route('product')
                 ->with('error', 'Sản phẩm không tồn tại');

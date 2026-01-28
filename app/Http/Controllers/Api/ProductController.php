@@ -948,7 +948,7 @@ class ProductController extends Controller
                 ->sum('orderdetail.qty') ?? 0;
 
             // Get gallery
-            $gallery = json_decode($product->gallery) ?? [];
+            $gallery = json_decode($product->gallery ?? '[]', true) ?? [];
             $galleryImages = [];
             if (! empty($gallery)) {
                 foreach ($gallery as $img) {

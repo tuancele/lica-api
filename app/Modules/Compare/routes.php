@@ -7,7 +7,7 @@ Route::group(['middleware' => 'web'], function () {
             Route::get('/', 'CompareController@index')->name('compare');
             Route::get('create', 'CompareController@create')->name('compare.create');
             Route::get('edit/{id}', 'CompareController@edit')->name('compare.edit');
-            Route::post('create', 'CompareController@store')->name('compare.store');
+            Route::post('create', 'CompareController@store')->name('compare.create.store');
             Route::post('edit', 'CompareController@update')->name('compare.update');
             Route::post('delete', 'CompareController@delete')->name('compare.delete');
             Route::post('status', 'CompareController@status')->name('compare.status');

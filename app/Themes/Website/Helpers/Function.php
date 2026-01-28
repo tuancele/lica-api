@@ -54,22 +54,32 @@ if (! function_exists('getOption')) {
 if (! function_exists('getSlug')) {
     function getSlug($slug)
     {
-        if ($slug != '') {
-            if (strlen(strstr($slug, 'https://')) > 0 || strlen(strstr($slug, 'http://'))) {
-                return $slug;
-            } else {
-                return asset($slug);
-            }
-        } else {
+        // Validate input: must be string and not empty
+        if (! is_string($slug) || $slug === '') {
             return '';
         }
+
+        // Check if slug is already a full URL (PHP 8.0+ str_contains is preferred)
+        if (function_exists('str_contains')) {
+            if (str_contains($slug, 'https://') || str_contains($slug, 'http://')) {
+                return $slug;
+            }
+        } else {
+            // Fallback for older PHP versions
+            if (strstr($slug, 'https://') !== false || strstr($slug, 'http://') !== false) {
+                return $slug;
+            }
+        }
+
+        // Return asset URL for relative paths
+        return asset($slug);
     }
 }
 
 if (! function_exists('formatPrice')) {
     function formatPrice($price)
     {
-        return number_format($price).'₫';
+        return number_format((float) $price).'₫';
     }
 }
 
@@ -78,7 +88,7 @@ if (! function_exists('getPrice')) {
     {
         $variant = App\Modules\Product\Models\Variant::select('price')->where('product_id', $id)->first();
         if (isset($variant) && ! empty($variant)) {
-            return '<p>'.number_format($variant->price).'đ</p>';
+            return '<p>'.number_format((float) $variant->price).'đ</p>';
         } else {
             return '<p>Liên hệ</p>';
         }
@@ -88,7 +98,7 @@ if (! function_exists('getPrice')) {
 if (! function_exists('getPrice2')) {
     function getPrice2($price, $sale)
     {
-        return '<p>'.number_format($price).'đ</p>';
+        return '<p>'.number_format((float) $price).'đ</p>';
     }
 }
 
@@ -126,7 +136,7 @@ if (! function_exists('getVariantFinalPrice')) {
                     return [
                         'final_price' => $finalPrice,
                         'original_price' => $originalPrice,
-                        'html' => '<p>'.number_format($finalPrice).'đ</p><del>'.number_format($originalPrice).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>',
+                        'html' => '<p>'.number_format((float) $finalPrice).'đ</p><del>'.number_format((float) $originalPrice).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>',
                     ];
                 }
             }
@@ -148,7 +158,7 @@ if (! function_exists('getVariantFinalPrice')) {
             return [
                 'final_price' => $finalPrice,
                 'original_price' => $originalPrice,
-                'html' => '<p>'.number_format($finalPrice).'đ</p><del>'.number_format($originalPrice).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>',
+                'html' => '<p>'.number_format((float) $finalPrice).'đ</p><del>'.number_format((float) $originalPrice).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>',
             ];
         }
 
@@ -156,7 +166,7 @@ if (! function_exists('getVariantFinalPrice')) {
         return [
             'final_price' => $originalPrice,
             'original_price' => $originalPrice,
-            'html' => '<p>'.number_format($originalPrice).'đ</p>',
+            'html' => '<p>'.number_format((float) $originalPrice).'đ</p>',
         ];
     }
 }
@@ -176,9 +186,9 @@ if (! function_exists('checkSale')) {
             $product = App\Modules\FlashSale\Models\ProductSale::select('product_id', 'price_sale', 'number', 'buy')->where([['flashsale_id', $flash->id], ['product_id', $id]])->first();
             if (isset($product) && ! empty($product)) {
                 if ($product->buy < $product->number) {
-                    $percent = round(($variant->price - $product->price_sale) / ($variant->price / 100));
+                    $percent = round(((float) $variant->price - (float) $product->price_sale) / ((float) $variant->price / 100));
 
-                    return '<p>'.number_format($product->price_sale).'đ</p><del>'.number_format($variant->price).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>';
+                    return '<p>'.number_format((float) $product->price_sale).'đ</p><del>'.number_format((float) $variant->price).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>';
                 }
             }
         }
@@ -193,13 +203,13 @@ if (! function_exists('checkSale')) {
             })->first();
 
         if ($campaignProduct) {
-            $percent = round(($variant->price - $campaignProduct->price) / ($variant->price / 100));
+            $percent = round(((float) $variant->price - (float) $campaignProduct->price) / ((float) $variant->price / 100));
 
-            return '<p>'.number_format($campaignProduct->price).'đ</p><del>'.number_format($variant->price).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>';
+            return '<p>'.number_format((float) $campaignProduct->price).'đ</p><del>'.number_format((float) $variant->price).'đ</del><div class="tag"><span>-'.$percent.'%</span></div>';
         }
 
         // 3. Fallback to original price
-        return '<p>'.number_format($variant->price).'đ</p>';
+        return '<p>'.number_format((float) $variant->price).'đ</p>';
     }
 }
 

@@ -5605,3 +5605,2304 @@ Phần này trình bày kế hoạch nâng cấp toàn diện để hiện đạ
 - 2025-01-21: Added Categories, Origins, Banners, and Pages Management APIs
 - 2025-01-20: Added Brands Management API and Variant Management documentation
 
+---
+
+## Business Logic Flows & Architecture Documentation
+
+**Purpose:** Complete documentation for refactoring to Go backend and Next.js frontend
+
+---
+
+## 1. Core Business Logic Flows
+
+### 1.1. Pricing Engine Flow
+
+**Priority Order:**
+```
+Flash Sale > Marketing Campaign > Deal Sốc > Sale Price > Normal Price
+```
+
+**Key Components:**
+- `PriceEngineService`: Main pricing calculation service
+- `FlashSaleStockService`: Flash Sale stock management
+- `CartService`: Cart price calculation with mixed pricing support
+
+**Mixed Pricing Logic:**
+- When quantity exceeds Flash Sale quota:
+  - First N items: Flash Sale price
+  - Remaining items: Normal/Promotion price
+- Returns `price_breakdown` array with detailed breakdown
+
+**Files:**
+- `app/Services/Pricing/PriceEngineService.php`
+- `app/Services/Cart/CartService.php`
+- `app/Services/FlashSale/FlashSaleStockService.php`
+
+### 1.2. Cart & Checkout Flow
+
+**Flow Diagram:**
+```
+Add to Cart → CartService::addItem() → Session Storage
+     ↓
+Cart Page → CartService::getCart() → PriceEngineService → Apply Deal Logic
+     ↓
+Checkout Page → Recalculate Prices → Validate Stock → Create Order
+```
+
+**Key Logic:**
+1. **Single Source of Truth:** `CartService::getCart()` is the only source for cart summary
+2. **Price Recalculation:** Always recalculate prices from backend, never trust frontend
+3. **Deal Sốc Logic:**
+   - `is_deal = 1`: Always use Deal price (even 0đ), ignore Flash Sale/Promotion
+   - `is_deal = 0`: Apply normal priority (Flash Sale > Promotion > Deal > Normal)
+4. **Stock Validation:** Validate against Warehouse physical stock before checkout
+
+**Files:**
+- `app/Services/Cart/CartService.php` (2300+ lines - needs refactoring)
+- `app/Themes/Website/Controllers/CartController.php`
+- `app/Themes/Website/Views/cart/index.blade.php`
+- `app/Themes/Website/Views/cart/checkout.blade.php`
+
+**Related Documentation:**
+- `CART_CALCULATION_PROCESS.md` - Detailed cart calculation process
+- `CART_DEAL_PRICING_LOGIC.md` - Deal Sốc pricing logic
+
+### 1.3. Inventory & Warehouse Flow
+
+**Stock Calculation Formula:**
+```
+physical_stock = Total Import - Total Export (from inventory_stocks)
+flash_sale_stock = SUM(number - buy) of active Flash Sales
+deal_stock = SUM(qty - buy) of active Deals
+available_stock = MAX(0, physical_stock - flash_sale_stock - deal_stock)
+sellable_stock = available_stock
+```
+
+**Stock Sources (Priority):**
+1. `inventory_stocks` table (warehouse_id = 1) - Primary source
+2. `product_warehouse.physical_stock` - Fallback snapshot
+3. `variants.stock` - Legacy fallback
+
+**Key Operations:**
+- **Import Receipt:** `InventoryService::importStock()` → Increase `physical_stock`
+- **Export Receipt:** `InventoryService::exportStock()` → Decrease `physical_stock`
+- **Order Processing:** `WarehouseService::processOrderStock()` → Decrease stock + hold
+- **Order Cancellation:** `WarehouseService::rollbackOrderStock()` → Restore stock
+
+**Files:**
+- `app/Services/Warehouse/WarehouseService.php`
+- `app/Services/Inventory/InventoryService.php`
+- `app/Services/Warehouse/OrderStockReceiptService.php`
+- `app/Models/StockReceipt.php`
+- `app/Models/StockReceiptItem.php`
+
+**Related Documentation:**
+- `WAREHOUSE_V2_DEEP_DIVE_REPORT.md` - Warehouse V2 architecture
+
+### 1.4. Order Processing Flow
+
+**Order Creation Steps:**
+1. Validate cart items (stock, prices)
+2. Calculate final prices (recalculate from backend)
+3. Create order record
+4. Create order items
+5. Process stock deduction:
+   - Determine product type: Deal > Flash Sale > Normal
+   - Deduct `physical_stock` (always)
+   - Deduct `flash_sale_hold`/`deal_hold` if applicable
+   - Increment `ProductSale.buy`/`SaleDeal.buy`
+6. Clear cart session
+7. Send confirmation email
+
+**Order Status Flow:**
+```
+pending → confirmed → processing → shipping → delivered → completed
+                              ↓
+                          cancelled (can rollback stock)
+```
+
+**Files:**
+- `app/Modules/Order/Controllers/OrderController.php`
+- `app/Services/Warehouse/OrderStockReceiptService.php`
+- `app/Modules/Order/Models/Order.php`
+- `app/Modules/Order/Models/OrderItem.php`
+
+### 1.5. Flash Sale Flow
+
+**Flash Sale Lifecycle:**
+1. **Creation:** Admin creates Flash Sale campaign
+2. **Product Assignment:** Assign products with `price_sale` and `number` (quota)
+3. **Stock Reservation:** `FlashSaleStockService::reserveStock()` → Increase `flash_sale_hold`
+4. **Activation:** Campaign becomes active (start <= now <= end)
+5. **Purchase:** When order created, deduct from `flash_sale_hold` and increment `buy`
+6. **Expiration:** When campaign ends, release remaining hold
+
+**Stock Management:**
+- `flash_sale_stock = SUM(number - buy)` for active campaigns
+- `available_stock = physical_stock - flash_sale_stock - deal_stock`
+- Mixed pricing when quantity > remaining flash sale stock
+
+**Files:**
+- `app/Modules/FlashSale/Controllers/FlashSaleController.php`
+- `app/Services/FlashSale/FlashSaleStockService.php`
+- `app/Modules/FlashSale/Models/FlashSale.php`
+- `app/Modules/FlashSale/Models/ProductSale.php`
+
+### 1.6. Deal Sốc Flow
+
+**Deal Types:**
+1. **Main Product:** Regular product (can have Flash Sale/Promotion)
+2. **Sale Product (is_deal = 1):** Bundle product, always uses Deal price
+
+**Deal Logic:**
+- Main product: Normal pricing priority
+- Sale product: **ALWAYS** uses Deal price (even 0đ), ignores Flash Sale/Promotion
+- Validation: Check Deal availability (quota, stock) before applying
+
+**Stock Management:**
+- `deal_stock = SUM(qty - buy)` for active Deals
+- When order created: Deduct from `deal_hold` and increment `SaleDeal.buy`
+
+**Files:**
+- `app/Modules/Deal/Controllers/DealController.php`
+- `app/Services/Cart/CartService.php` (applyDealPriceForCartItem method)
+- `app/Modules/Deal/Models/Deal.php`
+- `app/Modules/Deal/Models/SaleDeal.php`
+
+**Related Documentation:**
+- `CART_DEAL_PRICING_LOGIC.md` - Detailed Deal pricing logic
+
+---
+
+## 2. Service Layer Architecture
+
+### 2.1. Service Classes Overview
+
+**Core Services:**
+- `CartService` (2300+ lines) - Cart management, needs refactoring
+- `PriceEngineService` - Price calculation engine
+- `WarehouseService` - Warehouse and inventory management
+- `InventoryService` - Stock operations (import/export)
+- `ProductService` - Product operations
+- `OrderStockReceiptService` - Order stock processing
+
+**Supporting Services:**
+- `FlashSaleStockService` - Flash Sale stock management
+- `ProductCacheService` - Product caching
+- `RecommendationService` - Product recommendations
+- `UserAnalyticsService` - User behavior analytics
+- `GmcSyncService` - Google Merchant Center sync
+- `ImageService` - Image upload/processing
+
+**Service Location:** `app/Services/`
+
+### 2.2. Service Dependencies
+
+**Dependency Graph:**
+```
+CartService
+  ├── PriceEngineService
+  ├── FlashSaleStockService
+  ├── InventoryService
+  └── ProductService
+
+WarehouseService
+  ├── InventoryService
+  └── ProductService
+
+OrderStockReceiptService
+  ├── WarehouseService
+  ├── InventoryService
+  └── FlashSaleStockService
+```
+
+### 2.3. Service Interfaces
+
+**Current State:** Most services don't have interfaces (needs refactoring)
+
+**Recommended Pattern:**
+```php
+interface CartServiceInterface {
+    public function getCart(): array;
+    public function addItem(int $variantId, int $qty, bool $isDeal = false): array;
+    public function updateItem(int $variantId, int $qty): array;
+    public function removeItem(int $variantId): array;
+}
+```
+
+---
+
+## 3. Database Schema Overview
+
+### 3.1. Core Tables
+
+**Products:**
+- `products` - Main product table
+- `variants` - Product variants (SKU, price, stock)
+- `product_categories` - Product-Category relationship
+- `product_brands` - Product-Brand relationship
+
+**Inventory:**
+- `inventory_stocks` - Single source of truth for stock (V2)
+- `product_warehouse` - Legacy stock history
+- `stock_receipts` - Import/Export receipts (V2)
+- `stock_receipt_items` - Receipt items
+
+**Orders:**
+- `orders` - Order header
+- `order_items` - Order line items
+
+**Marketing:**
+- `flash_sales` - Flash Sale campaigns
+- `product_sales` - Flash Sale products
+- `deals` - Deal campaigns
+- `sale_deals` - Deal products
+- `marketing_campaigns` - Marketing campaigns
+- `marketing_campaign_products` - Campaign products
+- `promotions` - Coupon/promotion codes
+
+**Cart:**
+- Stored in Session (guest users)
+- Stored in database (authenticated users) - if implemented
+
+### 3.2. Key Relationships
+
+**Product → Variant:** One-to-Many
+**Product → Category:** Many-to-Many
+**Product → Brand:** Many-to-One
+**Order → OrderItem:** One-to-Many
+**FlashSale → ProductSale:** One-to-Many
+**Deal → SaleDeal:** One-to-Many
+
+### 3.3. Indexes
+
+**Critical Indexes:**
+- `products.status`, `products.slug` (unique)
+- `variants.product_id`, `variants.sku` (unique)
+- `orders.member_id`, `orders.status`, `orders.created_at`
+- `inventory_stocks.variant_id`, `inventory_stocks.warehouse_id`
+- `flash_sales.status`, `flash_sales.start`, `flash_sales.end`
+- `deals.status`, `deals.start`, `deals.end`
+
+**Related Documentation:**
+- `DATABASE_MODELS_SETUP.md` - Complete database schema
+
+---
+
+## 4. Module Structure
+
+### 4.1. Module Organization
+
+**Location:** `app/Modules/`
+
+**Module Pattern:**
+```
+ModuleName/
+├── Controllers/
+│   └── ModuleNameController.php
+├── Models/
+│   └── ModuleName.php
+├── routes.php
+└── Views/
+    └── index.blade.php
+```
+
+### 4.2. Complete Module List
+
+**Core eCommerce (40+ modules):**
+- Product, Category, Brand, Origin
+- Order, Cart (Service only)
+- Warehouse, Inventory
+- FlashSale, Deal, Marketing, Promotion
+- Member, User, Role, Permission
+- Banner, Slider, Page, Post, Video, Tag
+- Menu, FooterBlock, Redirection
+- Contact, Feedback, Subscriber
+- Search, Download, Config, Setting
+- Ingredient, Taxonomy
+- GoogleMerchant, R2 (CDN)
+- And more...
+
+**Module Status:**
+- ✅ **9 modules** with full RESTful API
+- ⚠️ **3 modules** with partial API (public only)
+- ❌ **33+ modules** without RESTful API
+
+**Related Documentation:**
+- `API_MIGRATION_ANALYSIS.md` - Complete API migration analysis
+
+---
+
+## 5. API Architecture
+
+### 5.1. API Versioning
+
+**Current Structure:**
+- `/api` - Legacy public API
+- `/api/v1` - Public API V1
+- `/admin/api` - Admin API (mixed V1/V2)
+- `/admin/api/v1` - Admin API V1
+- `/admin/api/v2` - Admin API V2 (new)
+
+**Versioning Strategy:**
+- V1: Legacy, deprecated (6 months notice)
+- V2: Current standard (2026)
+- Future: V3 when needed
+
+### 5.2. Response Format
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "data": {...},
+  "message": "Operation successful",
+  "pagination": {...} // if applicable
+}
+```
+
+**Error Response:**
+```json
+{
+  "success": false,
+  "message": "Error message",
+  "errors": {...} // validation errors
+}
+```
+
+### 5.3. Authentication
+
+**Public API:**
+- Optional authentication (session for guest, token for members)
+- Rate limiting per IP
+
+**Admin API:**
+- Required: `['web', 'auth']` middleware
+- Session-based authentication
+- Future: Token-based (Sanctum)
+
+---
+
+## 6. Migration Guide: Laravel → Go + Next.js
+
+### 6.1. Architecture Mapping
+
+**Laravel → Go Backend:**
+
+| Laravel Component | Go Equivalent | Notes |
+|-------------------|---------------|-------|
+| Laravel Framework | Gin/Echo/Fiber | Web framework |
+| Eloquent ORM | GORM/SQLX | Database ORM |
+| Service Classes | Go Services | Business logic layer |
+| Controllers | HTTP Handlers | Request handling |
+| Middleware | Middleware | Request processing |
+| Queue Jobs | Go Routines/Workers | Async processing |
+| Redis Cache | Go-Redis | Caching |
+| Session | JWT/Cookies | Authentication |
+
+**Laravel → Next.js Frontend:**
+
+| Laravel Component | Next.js Equivalent | Notes |
+|-------------------|-------------------|-------|
+| Blade Templates | React Components | View layer |
+| Laravel Mix/Vite | Next.js Build | Build tool |
+| Session Storage | Cookies/LocalStorage | Client storage |
+| Form Validation | React Hook Form | Form handling |
+| API Calls | Fetch/Axios | HTTP client |
+
+### 6.2. Business Logic Migration
+
+**Priority 1: Core Services**
+
+1. **PriceEngineService → Go Service**
+   ```go
+   type PriceEngine struct {
+       flashSaleRepo FlashSaleRepository
+       promotionRepo PromotionRepository
+   }
+   
+   func (pe *PriceEngine) CalculatePrice(productID, variantID, quantity int) PriceResult {
+       // Flash Sale > Marketing > Deal > Normal
+   }
+   ```
+
+2. **CartService → Go Service**
+   ```go
+   type CartService struct {
+       priceEngine *PriceEngine
+       inventoryService *InventoryService
+   }
+   
+   func (cs *CartService) GetCart(sessionID string) Cart {
+       // Single source of truth
+   }
+   ```
+
+3. **WarehouseService → Go Service**
+   ```go
+   type WarehouseService struct {
+       inventoryRepo InventoryRepository
+   }
+   
+   func (ws *WarehouseService) GetInventory(filters Filters) InventoryList {
+       // physical_stock - flash_sale_stock - deal_stock
+   }
+   ```
+
+**Priority 2: API Endpoints**
+
+- Migrate all `/api/v1/*` endpoints to Go
+- Maintain same response format
+- Use OpenAPI/Swagger for documentation
+
+**Priority 3: Database Layer**
+
+- Use GORM for ORM
+- Migrate migrations to Go migrations
+- Maintain same database schema initially
+
+### 6.3. Frontend Migration
+
+**Next.js Structure:**
+```
+app/
+├── (public)/
+│   ├── products/
+│   ├── cart/
+│   └── checkout/
+├── (admin)/
+│   ├── admin/
+│   │   ├── products/
+│   │   ├── orders/
+│   │   └── warehouse/
+│   └── api/ (API routes if needed)
+├── components/
+│   ├── cart/
+│   ├── product/
+│   └── checkout/
+└── lib/
+    ├── api.ts (API client)
+    └── services/ (business logic)
+```
+
+**Key Migrations:**
+
+1. **Cart State Management:**
+   - Replace Session storage with React Context/Redux
+   - Use cookies for persistence
+
+2. **Price Calculation:**
+   - Always call backend API (never trust frontend)
+   - Use React Query for caching
+
+3. **Checkout Flow:**
+   - Server-side price validation
+   - Real-time stock checking
+
+### 6.4. Data Flow Preservation
+
+**Critical Flows to Preserve:**
+
+1. **Cart → Checkout Flow:**
+   ```
+   Add to Cart → Backend API → Session/DB Storage
+   Cart Page → Backend API → Recalculate Prices
+   Checkout → Backend API → Validate & Create Order
+   ```
+
+2. **Price Calculation Flow:**
+   ```
+   Frontend Request → Go Service → PriceEngine → Database
+   Response → Price Breakdown → Frontend Display
+   ```
+
+3. **Stock Management Flow:**
+   ```
+   Order Created → Go Service → InventoryService → Database
+   Stock Deducted → Order Confirmed
+   ```
+
+### 6.5. Testing Strategy
+
+**Backend (Go):**
+- Unit tests for all services
+- Integration tests for API endpoints
+- Load testing for performance
+
+**Frontend (Next.js):**
+- Component tests (React Testing Library)
+- E2E tests (Playwright/Cypress)
+- API integration tests
+
+### 6.6. Deployment Strategy
+
+**Phased Migration:**
+1. **Phase 1:** Migrate public API endpoints (read-only)
+2. **Phase 2:** Migrate cart/checkout APIs
+3. **Phase 3:** Migrate admin APIs
+4. **Phase 4:** Migrate frontend to Next.js
+5. **Phase 5:** Decommission Laravel
+
+**Rollback Plan:**
+- Keep Laravel running in parallel
+- Feature flags for gradual rollout
+- Database migration scripts with rollback
+
+---
+
+## 7. Key Business Rules
+
+### 7.1. Pricing Rules
+
+1. **Price Priority:** Flash Sale > Marketing Campaign > Deal Sốc > Sale Price > Normal Price
+2. **Mixed Pricing:** When quantity exceeds Flash Sale quota, apply mixed pricing
+3. **Deal Sốc:** `is_deal = 1` always uses Deal price (even 0đ), ignores other promotions
+4. **Price Recalculation:** Always recalculate from backend, never trust frontend
+
+### 7.2. Stock Rules
+
+1. **Stock Formula:** `available_stock = MAX(0, physical_stock - flash_sale_stock - deal_stock)`
+2. **Stock Validation:** Always validate stock before checkout
+3. **Stock Deduction:** Deduct when order confirmed, not when added to cart
+4. **Stock Rollback:** Rollback stock when order cancelled (if campaign still active)
+
+### 7.3. Cart Rules
+
+1. **Single Source of Truth:** `CartService::getCart()` is the only source
+2. **Price Recalculation:** Always recalculate prices, never use cached prices
+3. **Session Storage:** Guest users use session, authenticated users use database
+4. **Deal Validation:** Validate Deal availability before applying price
+
+### 7.4. Order Rules
+
+1. **Price Validation:** Recalculate all prices before creating order
+2. **Stock Validation:** Validate stock availability before creating order
+3. **Stock Processing:** Process stock deduction after order confirmation
+4. **Order Status:** Follow strict status flow (pending → confirmed → ...)
+
+---
+
+## 8. Performance Considerations
+
+### 8.1. Current Issues
+
+- **N+1 Queries:** Need eager loading
+- **Large Services:** CartService 2300+ lines needs refactoring
+- **Cache Strategy:** Limited caching implementation
+- **Queue Processing:** Heavy operations should use queues
+
+### 8.2. Optimization Opportunities
+
+1. **Database:**
+   - Add missing indexes
+   - Optimize queries
+   - Use read replicas
+
+2. **Caching:**
+   - Cache product prices
+   - Cache cart summaries
+   - Cache inventory counts
+
+3. **Async Processing:**
+   - Email sending
+   - Stock updates
+   - Analytics tracking
+
+---
+
+## 9. Security Considerations
+
+### 9.1. Current State
+
+- Session-based authentication
+- CSRF protection for web routes
+- Input validation (needs improvement)
+- Rate limiting (limited)
+
+### 9.2. Recommendations
+
+1. **API Authentication:** Migrate to JWT tokens
+2. **Input Validation:** Strict validation on all inputs
+3. **Rate Limiting:** Implement per-user/IP rate limiting
+4. **SQL Injection:** Use parameterized queries (already using Eloquent)
+5. **XSS Protection:** Sanitize all outputs
+
+---
+
+## 10. Related Documentation Files
+
+**Business Logic:**
+- `CART_CALCULATION_PROCESS.md` - Cart calculation detailed process
+- `CART_DEAL_PRICING_LOGIC.md` - Deal Sốc pricing logic
+- `WAREHOUSE_V2_DEEP_DIVE_REPORT.md` - Warehouse architecture
+
+**Architecture:**
+- `BACKEND_V2_UPGRADE_PLAN.md` - Backend upgrade plan
+- `API_MIGRATION_ANALYSIS.md` - API migration analysis
+- `DATABASE_MODELS_SETUP.md` - Database schema
+
+**Setup & Configuration:**
+- `PHASE1_COMPLETE_GUIDE.md` - Phase 1 completion guide
+- `PHASE1_SETUP_GUIDE.md` - Setup instructions
+
+---
+
+---
+
+## 11. Complete Module Business Logic Analysis
+
+**Purpose:** Deep dive analysis of all modules to ensure no logic is missed during refactoring
+
+---
+
+### 11.1. Product Management Module
+
+**Location:** `app/Modules/Product/`, `app/Services/Product/`
+
+**Key Business Logic:**
+
+1. **Product Creation Flow:**
+   ```
+   POST /admin/api/products
+   → ProductService::createProduct()
+   → Validate slug uniqueness
+   → Process images (R2 upload)
+   → Process ingredients (link to IngredientPaulas)
+   → Create product record (posts table)
+   → Sync variants (if has_variants = 1)
+   → Create default variant (if has_variants = 0)
+   → Auto-create import receipt if stock > 0
+   → Clear cache
+   ```
+
+2. **Variant Management:**
+   - **Single Product Mode:** One default variant (SKU auto-generated)
+   - **Variable Product Mode:** Multiple variants from `variants_json` (Shopee-style)
+   - **Variant Sync:** Full sync on update (delete old, create new)
+   - **SKU Uniqueness:** Auto-handle conflicts with timestamp suffix
+
+3. **Image Processing:**
+   - R2 Cloud Storage integration
+   - Gallery management: `imageOther[]` array
+   - Main image: First image in gallery
+   - Session cleanup: `r2_session_key` for temp files
+
+4. **Ingredient Processing:**
+   - Auto-link ingredient text to `IngredientPaulas` dictionary
+   - HTML format support
+   - Ingredient scanning for product detail pages
+
+5. **Packaging Dimensions:**
+   - Product-level: `weight`, `length`, `width`, `height`
+   - Variant-level: Override product dimensions
+   - Fallback: Product → Default values (100g, 10x10x10cm)
+   - Used for: Shipping calculation, Google Merchant Center
+
+**API Endpoints:**
+- `GET /admin/api/products` - List with filters
+- `GET /admin/api/products/{id}` - Detail with variants
+- `POST /admin/api/products` - Create
+- `PUT /admin/api/products/{id}` - Update
+- `DELETE /admin/api/products/{id}` - Delete (check orders)
+- `PATCH /admin/api/products/{id}/status` - Toggle status
+- `POST /admin/api/products/bulk-action` - Bulk operations
+- `PATCH /admin/api/products/sort` - Update sort order
+- Variant CRUD: `/admin/api/products/{id}/variants/*`
+- Packaging: `/admin/api/products/{id}/packaging`
+
+**Database Tables:**
+- `posts` (type='product') - Main product table
+- `variants` - Product variants
+- `product_warehouse` - Stock snapshots
+
+**Critical Rules:**
+- Slug must be unique (regex: `^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+- Cannot delete product with existing orders
+- Auto-create import receipt when initial stock > 0
+- Slug change → Auto-create 301 redirect
+
+---
+
+### 11.2. Order Management Module
+
+**Location:** `app/Modules/Order/`, `app/Services/Cart/`, `app/Services/Warehouse/`
+
+**Key Business Logic:**
+
+1. **Order Creation Flow (Checkout):**
+   ```
+   POST /checkout/thanh-toan
+   → CartService::checkout()
+   → Validate cart items (stock, prices)
+   → Recalculate all prices from backend
+   → Validate promotion code (if provided)
+   → Calculate shipping fee (GHTK API)
+   → Create Order record
+   → Create OrderDetail records
+   → Process stock deduction:
+     - OrderStockReceiptService::createExportReceiptFromOrder()
+     - Deduct physical_stock
+     - Deduct flash_sale_hold/deal_hold
+     - Increment ProductSale.buy/SaleDeal.buy
+   → Clear cart session
+   → Send confirmation email (queue)
+   ```
+
+2. **Order Status Update Flow:**
+   ```
+   PATCH /admin/api/orders/{id}/status
+   → OrderController::updateStatus()
+   → Validate status transition
+   → Update order status
+   → If status = '4' (cancelled):
+     - OrderStockReceiptService::cancelExportReceiptFromOrder()
+     - Rollback stock (restore physical_stock)
+     - Release flash_sale_hold/deal_hold
+     - Decrement ProductSale.buy/SaleDeal.buy
+   → If status = '0' (pending) from cancelled:
+     - Re-deduct stock
+   → Update order record
+   ```
+
+3. **Stock Processing Logic:**
+   - **Order Created (status='0'):** Auto-create export receipt (status='completed')
+   - **Order Cancelled (status='2' or '4'):** Void export receipt + rollback stock
+   - **Stock Validation:** Always check `available_stock` before deduction
+   - **Transaction Safety:** Use DB transactions + row locking
+
+4. **Price Validation:**
+   - Always recalculate prices from backend before order creation
+   - Never trust frontend prices
+   - Validate promotion code validity and usage limits
+   - Calculate final total: `subtotal - discount + shipping_fee`
+
+**API Endpoints:**
+- `GET /admin/api/orders` - List with filters
+- `GET /admin/api/orders/{id}` - Detail with items
+- `PUT /admin/api/orders/{id}` - Update order info
+- `PATCH /admin/api/orders/{id}/status` - Update status
+- `GET /api/v1/orders` - User orders (authenticated)
+- `GET /api/v1/orders/{code}` - User order detail
+
+**Database Tables:**
+- `orders` - Order header
+- `order_details` - Order items
+- `stock_receipts` - Export receipts (reference_type='order')
+- `stock_receipt_items` - Receipt items
+
+**Critical Rules:**
+- Cannot edit cancelled orders
+- Stock deduction happens immediately on order creation
+- Stock rollback only if campaign still active
+- Price recalculation mandatory before order creation
+
+---
+
+### 11.3. Flash Sale Module
+
+**Location:** `app/Modules/FlashSale/`, `app/Services/FlashSale/`
+
+**Key Business Logic:**
+
+1. **Flash Sale Creation Flow:**
+   ```
+   POST /admin/api/flash-sales
+   → FlashSaleController::store()
+   → Validate date range (start < end)
+   → Validate all products have stock > 0
+   → Create FlashSale record
+   → Create ProductSale records
+   → FlashSaleStockService::reserveStock()
+   → Increase flash_sale_hold in inventory_stocks
+   ```
+
+2. **Flash Sale Activation:**
+   - Active when: `status = '1'` AND `start <= now <= end`
+   - Price Priority: Flash Sale > Marketing Campaign > Normal
+   - Stock Calculation: `flash_sale_stock = SUM(number - buy)` for active campaigns
+
+3. **Flash Sale Purchase Flow:**
+   ```
+   Order Created with Flash Sale product
+   → CartService::checkout()
+   → Determine product type (Flash Sale detected)
+   → Deduct physical_stock
+   → Increment ProductSale.buy
+   → Decrease flash_sale_hold
+   → Update available_stock
+   ```
+
+4. **Mixed Pricing Logic:**
+   - When `quantity > flash_sale_remaining`:
+     - First N items: Flash Sale price
+     - Remaining items: Next priority price (Promotion/Normal)
+   - Returns `price_breakdown` array
+
+5. **Stock Validation:**
+   - Before adding to Flash Sale: Check `available_stock > 0`
+   - Filter out products with `stock = 0` in search
+   - Auto-filter variants with `stock = 0`
+
+**API Endpoints:**
+- `GET /admin/api/flash-sales` - List
+- `GET /admin/api/flash-sales/{id}` - Detail with products
+- `POST /admin/api/flash-sales` - Create
+- `PUT /admin/api/flash-sales/{id}` - Update
+- `DELETE /admin/api/flash-sales/{id}` - Delete
+- `POST /admin/api/flash-sales/{id}/status` - Toggle status
+- `POST /admin/api/flash-sales/search-products` - Search products (filter stock > 0)
+
+**Database Tables:**
+- `flashsales` - Flash Sale campaigns
+- `productsales` - Flash Sale products (variant_id nullable)
+- `inventory_stocks` - Stock with flash_sale_hold
+
+**Critical Rules:**
+- Products must have stock > 0 to join Flash Sale
+- Stock reservation happens on creation
+- Stock release happens on expiration or deletion
+- Mixed pricing when quantity exceeds quota
+
+---
+
+### 11.4. Deal Sốc Module
+
+**Location:** `app/Modules/Deal/`, `app/Services/Cart/`
+
+**Key Business Logic:**
+
+1. **Deal Creation Flow:**
+   ```
+   POST /admin/api/deals
+   → DealController::store()
+   → Validate date range
+   → Validate products (has_variants check)
+   → Validate all products have stock > 0
+   → Check for conflicts (product already in active Deal)
+   → Create Deal record
+   → Create ProductDeal records (main products)
+   → Create SaleDeal records (bundle products)
+   → Reserve stock (deal_hold)
+   ```
+
+2. **Deal Types:**
+   - **Main Product (`products`):** Regular product, normal pricing priority
+   - **Sale Product (`sale_products`, `is_deal=1`):** Bundle product, **ALWAYS** uses Deal price
+
+3. **Deal Pricing Logic:**
+   - **Main Product:** Normal priority (Flash Sale > Promotion > Deal > Normal)
+   - **Sale Product (`is_deal=1`):** **ALWAYS** Deal price (even 0đ), ignores Flash Sale/Promotion
+   - **Validation:** Check Deal availability (quota, stock) before applying
+   - **Fallback:** If Deal unavailable, use normal/promo price
+
+4. **Deal Purchase Flow:**
+   ```
+   Order Created with Deal product
+   → CartService::checkout()
+   → If is_deal = 1:
+     - Apply Deal price (always)
+     - Validate Deal availability
+     - Deduct physical_stock
+     - Increment SaleDeal.buy
+     - Decrease deal_hold
+   → If is_deal = 0:
+     - Normal pricing priority
+   ```
+
+5. **Conflict Detection:**
+   - Check if (product_id, variant_id) already in active Deal
+   - Return 409 Conflict with conflict details
+   - Prevent duplicate Deal assignments
+
+**API Endpoints:**
+- `GET /admin/api/deals` - List
+- `GET /admin/api/deals/{id}` - Detail with products
+- `POST /admin/api/deals` - Create
+- `PUT /admin/api/deals/{id}` - Update
+- `DELETE /admin/api/deals/{id}` - Delete
+- `PATCH /admin/api/deals/{id}/status` - Toggle status
+- `GET /api/v1/deals/active-bundles` - Public active Deals
+- `GET /api/v1/deals/{id}/bundle` - Public Deal detail
+
+**Database Tables:**
+- `deals` - Deal campaigns
+- `deal_products` - Main products (variant_id nullable)
+- `deal_sales` - Bundle products (variant_id nullable)
+- `inventory_stocks` - Stock with deal_hold
+
+**Critical Rules:**
+- Sale products (`is_deal=1`) ALWAYS use Deal price, ignore other promotions
+- Products must have stock > 0 to join Deal
+- Conflict detection prevents duplicate assignments
+- Variant validation: `has_variants=1` requires `variant_id`, `has_variants=0` requires `variant_id=NULL`
+
+---
+
+### 11.5. Warehouse & Inventory Module
+
+**Location:** `app/Modules/Warehouse/`, `app/Services/Warehouse/`, `app/Services/Inventory/`
+
+**Key Business Logic:**
+
+1. **Stock Calculation Formula:**
+   ```
+   physical_stock = Latest snapshot from product_warehouse.physical_stock
+                    OR SUM(import - export) from product_warehouse
+                    OR variants.stock (legacy fallback)
+   
+   flash_sale_stock = SUM(number - buy) from active Flash Sales
+   deal_stock = SUM(qty - buy) from active Deals
+   
+   available_stock = MAX(0, physical_stock - flash_sale_stock - deal_stock)
+   ```
+
+2. **Import Receipt Flow:**
+   ```
+   POST /admin/api/v1/warehouse/import-receipts
+   → WarehouseController::createImportReceipt()
+   → Validate items (variant_id, quantity, price)
+   → Create Warehouse record (type='import')
+   → Create ProductWarehouse records
+   → Update physical_stock (increase)
+   → Update available_stock (recalculate)
+   → Generate QR code
+   ```
+
+3. **Export Receipt Flow:**
+   ```
+   POST /admin/api/v1/warehouse/export-receipts
+   → WarehouseController::createExportReceipt()
+   → Validate items
+   → Check available_stock >= quantity (for each item)
+   → Create Warehouse record (type='export')
+   → Create ProductWarehouse records
+   → Update physical_stock (decrease)
+   → Update available_stock (recalculate)
+   → Generate QR code
+   ```
+
+4. **Inventory Realtime Query:**
+   ```
+   GET /admin/api/v1/warehouse/inventory
+   → WarehouseService::getInventory()
+   → Query variants with stock calculations
+   → Apply filters (keyword, variant_id, product_id, min_stock, max_stock)
+   → Return realtime stock (physical, flash_sale, deal, available)
+   → Cache-Control: no-store (always fresh)
+   ```
+
+5. **Order Auto Export Receipt:**
+   ```
+   Order Created (status='0')
+   → OrderStockReceiptService::createExportReceiptFromOrder()
+   → Create StockReceipt (type='export', status='completed')
+   → Create StockReceiptItems from OrderDetails
+   → Link via reference_type='order', reference_id=order_id
+   → Process stock deduction immediately
+   ```
+
+**API Endpoints (V1):**
+- `GET /admin/api/v1/warehouse/inventory` - Realtime inventory
+- `GET /admin/api/v1/warehouse/inventory/{variantId}` - Variant stock
+- `GET /admin/api/v1/warehouse/inventory/by-product/{productId}` - Product stock
+- Import/Export Receipts CRUD
+- `GET /admin/api/v1/warehouse/products/search` - Search products
+- `GET /admin/api/v1/warehouse/products/{productId}/variants` - Get variants (with fallback)
+- Statistics endpoints
+
+**API Endpoints (V2 - Accounting):**
+- `GET /admin/api/v2/warehouse/accounting/receipts` - List receipts
+- `GET /admin/api/v2/warehouse/accounting/receipts/{id}` - Receipt detail
+- `POST /admin/api/v2/warehouse/accounting/receipts` - Create receipt
+- `PUT /admin/api/v2/warehouse/accounting/receipts/{id}` - Update receipt
+- `POST /admin/api/v2/warehouse/accounting/receipts/{id}/complete` - Complete receipt
+- `POST /admin/api/v2/warehouse/accounting/receipts/{id}/void` - Void receipt
+
+**Database Tables:**
+- `warehouse` (V1) - Import/Export receipts (legacy)
+- `product_warehouse` - Stock history (legacy)
+- `stock_receipts` (V2) - Receipts (new)
+- `stock_receipt_items` (V2) - Receipt items
+- `inventory_stocks` (V2) - Stock per warehouse (new)
+
+**Critical Rules:**
+- Stock calculation: physical_stock - flash_sale_stock - deal_stock
+- Export validation: Check available_stock before export
+- Order auto-export: Create receipt immediately on order creation
+- Stock snapshot: Use latest product_warehouse.physical_stock
+- Fallback: variants.stock if no warehouse record
+
+---
+
+### 11.6. Cart & Checkout Module
+
+**Location:** `app/Services/Cart/`, `app/Themes/Website/Controllers/`
+
+**Key Business Logic:**
+
+1. **Add to Cart Flow:**
+   ```
+   POST /cart/items
+   → CartControllerV2::addItem()
+   → CartService::addItem()
+   → Validate variant exists
+   → Validate stock availability
+   → Calculate price (PriceEngineService)
+   → If is_deal = 1:
+     - Validate Deal availability
+     - Apply Deal price (always)
+   → Store in session (guest) or database (authenticated)
+   → Return cart summary
+   ```
+
+2. **Cart Retrieval Flow:**
+   ```
+   GET /cart/gio-hang.json
+   → CartService::getCart()
+   → Read from session (single source of truth)
+   → For each item:
+     - Load variant + product
+     - Recalculate price (PriceEngineService)
+     - Apply Deal logic (if is_deal = 1)
+     - Validate Deal availability
+     - Calculate subtotal
+   → Calculate totals:
+     - subtotal = SUM(item subtotals)
+     - discount = promotion discount (if applied)
+     - shipping_fee = calculated or 0
+     - total = subtotal - discount + shipping_fee
+   → Return cart data
+   ```
+
+3. **Checkout Flow:**
+   ```
+   POST /checkout/thanh-toan
+   → CheckoutControllerV2::checkout()
+   → CartService::checkout()
+   → Validate cart not empty
+   → Recalculate all prices (mandatory)
+   → Validate stock for all items
+   → Validate promotion code (if provided)
+   → Calculate shipping fee (GHTK API or config)
+   → Create Order
+   → Create OrderDetails
+   → Process stock deduction
+   → Clear cart session
+   → Return order info
+   ```
+
+4. **Price Recalculation Logic:**
+   - **Always recalculate:** Never trust prices from session
+   - **PriceEngineService:** Calculate price with quantity
+   - **Mixed Pricing:** When quantity > flash_sale_remaining
+   - **Deal Logic:** `is_deal=1` always uses Deal price
+   - **Price Breakdown:** Return detailed breakdown for transparency
+
+5. **Promotion Code Logic:**
+   ```
+   POST /checkout/coupon/apply
+   → Validate promotion code
+   → Check status = '1'
+   → Check date range (start <= now <= end)
+   → Check order_sale <= subtotal
+   → Check usage limits
+   → Apply discount:
+     - unit = 0: Percentage discount
+     - unit = 1: Fixed amount discount
+   → Store in session (ss_counpon)
+   → Return updated cart summary
+   ```
+
+6. **Shipping Fee Calculation:**
+   ```
+   POST /checkout/shipping-fee
+   → CartService::calculateShippingFee()
+   → Check free_ship config:
+     - If free_ship = 1 AND subtotal >= free_order: Return 0
+   → If ghtk_status = 1:
+     - Call GHTK API (/services/shipment/fee)
+     - Use pick address from Pick model
+     - Use delivery address from request
+     - Return GHTK fee
+   → Else: Return config shipping_fee
+   ```
+
+**API Endpoints:**
+- `GET /cart/gio-hang` - Cart page (view)
+- `GET /cart/gio-hang.json` - Cart data (JSON)
+- `POST /cart/items` - Add item
+- `PUT /cart/items/{variant_id}` - Update quantity
+- `DELETE /cart/items/{variant_id}` - Remove item
+- `GET /checkout/thanh-toan` - Checkout page
+- `POST /checkout/thanh-toan` - Process checkout
+- `POST /checkout/coupon/apply` - Apply promotion
+- `POST /checkout/coupon/remove` - Remove promotion
+- `POST /checkout/shipping-fee` - Calculate shipping
+- `GET /checkout/search-location` - Search address
+
+**Critical Rules:**
+- **Single Source of Truth:** `CartService::getCart()` only
+- **Price Recalculation:** Always from backend
+- **Deal Logic:** `is_deal=1` always Deal price, ignore others
+- **Stock Validation:** Before checkout, not before add to cart
+- **Session Storage:** Guest users use session, authenticated use DB (if implemented)
+
+---
+
+### 11.7. Marketing Campaign Module
+
+**Location:** `app/Modules/Marketing/`
+
+**Key Business Logic:**
+
+1. **Campaign Creation Flow:**
+   ```
+   POST /admin/api/marketing/campaigns
+   → MarketingCampaignController::store()
+   → Validate date range
+   → Create MarketingCampaign record
+   → Add products (via POST /admin/api/marketing/campaigns/{id}/products)
+   → Auto-push to Google Merchant Center (if enabled)
+   ```
+
+2. **Product Assignment:**
+   - Add products to campaign
+   - Products get promotion price (campaign discount)
+   - Auto-sync to GMC if `is_gmc_enabled = 1`
+
+3. **Price Priority:**
+   - Marketing Campaign price is Priority 2 (after Flash Sale)
+   - Applied when: `status = '1'` AND `start_at <= now <= end_at`
+
+**API Endpoints:**
+- `GET /admin/api/marketing/campaigns` - List
+- `GET /admin/api/marketing/campaigns/{id}` - Detail
+- `POST /admin/api/marketing/campaigns` - Create
+- `PUT /admin/api/marketing/campaigns/{id}` - Update
+- `DELETE /admin/api/marketing/campaigns/{id}` - Delete
+- `PATCH /admin/api/marketing/campaigns/{id}/status` - Toggle status
+- `POST /admin/api/marketing/campaigns/{id}/products` - Add products
+- `DELETE /admin/api/marketing/campaigns/{id}/products/{productId}` - Remove product
+- `POST /admin/api/marketing/campaigns/search-products` - Search products
+
+**Database Tables:**
+- `marketing_campaigns` - Campaigns
+- `marketing_campaign_products` - Campaign products
+
+**Critical Rules:**
+- Price priority: Flash Sale > Marketing Campaign > Deal > Normal
+- Auto-sync to GMC when product added to campaign
+- Date range validation: start_at < end_at
+
+---
+
+### 11.8. Promotion (Coupon) Module
+
+**Location:** `app/Modules/Promotion/`
+
+**Key Business Logic:**
+
+1. **Promotion Creation:**
+   ```
+   POST /admin/api/promotions
+   → PromotionController::store()
+   → Validate code uniqueness
+   → Validate date range
+   → Validate discount rules (unit, value)
+   → Create Promotion record
+   ```
+
+2. **Promotion Application:**
+   ```
+   POST /checkout/coupon/apply
+   → Validate code exists and active
+   → Check date range
+   → Check order_sale <= subtotal
+   → Check usage limits (if set)
+   → Apply discount:
+     - unit = 0: percentage (value%)
+     - unit = 1: fixed amount (value VND)
+   → Store in session (ss_counpon)
+   ```
+
+3. **Discount Calculation:**
+   - Percentage: `discount = subtotal * (value / 100)`
+   - Fixed: `discount = value`
+   - Final total: `total = subtotal - discount + shipping_fee`
+
+**API Endpoints:**
+- `GET /admin/api/promotions` - List
+- `GET /admin/api/promotions/{id}` - Detail
+- `POST /admin/api/promotions` - Create
+- `PUT /admin/api/promotions/{id}` - Update
+- `DELETE /admin/api/promotions/{id}` - Delete
+- `PATCH /admin/api/promotions/{id}/status` - Toggle status
+- `POST /admin/api/promotions/bulk-action` - Bulk operations
+- `POST /admin/api/promotions/sort` - Update sort
+
+**Database Tables:**
+- `promotions` - Promotion codes
+
+**Critical Rules:**
+- Code must be unique
+- Minimum order value: `order_sale <= subtotal`
+- Usage limits: Track usage count (if implemented)
+- Date range: start <= now <= end
+
+---
+
+### 11.9. Google Merchant Center Module
+
+**Location:** `app/Modules/GoogleMerchant/`, `app/Services/Gmc/`
+
+**Key Business Logic:**
+
+1. **Auto-Push Triggers:**
+   - Product saved: If `is_gmc_enabled = 1` → Push variant
+   - Variant saved: If `is_gmc_enabled = 1` → Push variant
+   - Marketing Campaign: Product added → Auto-push
+   - VARIABLE products: Only push variants (not parent)
+
+2. **Payload Generation:**
+   ```
+   GmcProductMapper::mapProduct()
+   → Generate offerId (stable per variant)
+   → Build title (product name + variant options)
+   → Build description (strip HTML, normalize)
+   → Set imageLink (absolute URL)
+   → Set additionalImageLinks (gallery, max 10)
+   → Set brand (from product.brand.name)
+   → Set price (original/base price)
+   → Set salePrice (promotional price, priority: Flash Sale > Deal > Campaign)
+   → Set salePriceEffectiveDate (from active promotion)
+   → Set availability (in stock / out of stock)
+   → Set itemGroupId (product ID for variants)
+   ```
+
+3. **OfferId Strategy:**
+   - Default: `sku` (if exists and not empty)
+   - Fallback: `variant_id`
+   - Simple products: `PROD_{product_id}`
+
+4. **Price Rules:**
+   - `price`: Always original/base price (never promotional)
+   - `salePrice`: Promotional price (Flash Sale > Deal > Campaign)
+   - `salePriceEffectiveDate`: Date range from active promotion
+
+**API Endpoints:**
+- `GET /admin/api/gmc/products/preview` - Preview payload
+- `POST /admin/api/gmc/products/sync` - Sync variants
+- `GET /admin/google-merchant` - Management page
+- `POST /admin/google-merchant/sync` - Manual sync
+- `GET /admin/google-merchant/status` - Get GMC status
+
+**Database Tables:**
+- `posts` (is_gmc_enabled field)
+- `variants` (is_gmc_enabled field)
+
+**Critical Rules:**
+- offerId must be stable per variant
+- Only push variants for VARIABLE products
+- price = original, salePrice = promotional
+- Auto-push on product/variant save if enabled
+
+---
+
+### 11.10. Ingredient Dictionary Module
+
+**Location:** `app/Modules/Dictionary/`, `app/Services/Ingredient/`
+
+**Key Business Logic:**
+
+1. **Ingredient Management:**
+   ```
+   POST /admin/api/ingredients
+   → IngredientController::store()
+   → Validate slug uniqueness
+   → Create IngredientPaulas record
+   → Link to categories, benefits, rates
+   ```
+
+2. **Ingredient Linking:**
+   - Product ingredient text → Auto-link to IngredientPaulas
+   - HTML format support
+   - Ingredient scanning for product detail pages
+
+3. **Crawl Functionality:**
+   ```
+   POST /admin/api/ingredients/crawl/run
+   → Crawl Paula's Choice website
+   → Parse ingredient data
+   → Create/update IngredientPaulas records
+   → Link categories, benefits, rates
+   ```
+
+**API Endpoints:**
+- `GET /admin/api/ingredients` - List
+- `GET /admin/api/ingredients/{id}` - Detail
+- `POST /admin/api/ingredients` - Create
+- `PUT /admin/api/ingredients/{id}` - Update
+- `DELETE /admin/api/ingredients/{id}` - Delete
+- `PATCH /admin/api/ingredients/{id}/status` - Toggle status
+- `POST /admin/api/ingredients/bulk-action` - Bulk operations
+- `GET /admin/api/ingredients/crawl/summary` - Crawl summary
+- `POST /admin/api/ingredients/crawl/run` - Run crawl
+- Category/Benefit/Rate CRUD endpoints
+- `GET /api/dictionary/ingredients` - Public list (for scanning)
+- `GET /api/admin/dictionary/all-ingredients` - All ingredients with benefits/rates
+
+**Database Tables:**
+- `ingredient_paulas` - Ingredients
+- `ingredient_category` - Categories
+- `ingredient_benefit` - Benefits
+- `ingredient_rate` - Rates
+
+**Critical Rules:**
+- Slug must be unique
+- Auto-link ingredients from product text
+- Public API: Sort by title length DESC (for scanning)
+
+---
+
+### 11.11. Taxonomy (Product Category) Module
+
+**Location:** `app/Modules/Taxonomy/`
+
+**Key Business Logic:**
+
+1. **Taxonomy Management:**
+   ```
+   POST /admin/api/taxonomies
+   → TaxonomyController::store()
+   → Validate slug uniqueness
+   → Create Post record (type='taxonomy')
+   → Support hierarchical structure (parent_id)
+   ```
+
+2. **Tree Structure:**
+   - Hierarchical categories (parent_id)
+   - Sort order support
+   - Bulk sort update via PATCH /admin/api/taxonomies/sort
+
+3. **Product Assignment:**
+   - Products linked via `cat_id` JSON array
+   - Leaf category is the direct category
+
+**API Endpoints:**
+- `GET /admin/api/taxonomies` - List
+- `GET /admin/api/taxonomies/{id}` - Detail
+- `POST /admin/api/taxonomies` - Create
+- `PUT /admin/api/taxonomies/{id}` - Update
+- `DELETE /admin/api/taxonomies/{id}` - Delete (only if no children)
+- `PATCH /admin/api/taxonomies/{id}/status` - Toggle status
+- `POST /admin/api/taxonomies/bulk-action` - Bulk operations
+- `PATCH /admin/api/taxonomies/sort` - Update tree structure
+
+**Database Tables:**
+- `posts` (type='taxonomy') - Categories
+
+**Critical Rules:**
+- Cannot delete category with children
+- Slug must be unique
+- Hierarchical structure via parent_id
+
+---
+
+### 11.12. Other Admin Modules
+
+**Complete list of all modules with API endpoints:**
+
+1. **Brand Management:**
+   - CRUD operations
+   - Image upload
+   - Status toggle
+   - Bulk actions
+
+2. **Category Management:**
+   - CRUD operations
+   - Tree structure management
+   - Sort operations
+
+3. **Origin Management:**
+   - CRUD operations
+   - Status toggle
+   - Bulk actions
+
+4. **Banner Management:**
+   - CRUD operations
+   - Image upload
+   - Status toggle
+   - Sort operations
+
+5. **Page Management:**
+   - CRUD operations
+   - Content management
+   - Status toggle
+
+6. **Slider Management:**
+   - CRUD operations
+   - Desktop/Mobile support
+   - Status toggle
+   - Public API: `GET /api/v1/sliders`
+
+7. **User Management:**
+   - CRUD operations
+   - Password change
+   - Email check
+
+8. **Member Management:**
+   - CRUD operations
+   - Address management
+   - Password change
+
+9. **Pick (Warehouse Location) Management:**
+   - CRUD operations
+   - District/Ward lookup
+   - Status toggle
+
+10. **Role & Permission Management:**
+    - Role CRUD
+    - Permission assignment
+    - Permission list
+
+11. **Setting Management:**
+    - Get all settings
+    - Update settings
+    - Update single setting
+
+12. **Contact Management:**
+    - List contacts
+    - View contact
+    - Delete contact
+    - Status toggle
+
+13. **Feedback Management:**
+    - List feedbacks
+    - View feedback
+    - Delete feedback
+    - Status toggle
+
+14. **Subscriber Management:**
+    - List subscribers
+    - Create subscriber
+    - Delete subscriber
+    - Export subscribers
+
+15. **Tag Management:**
+    - CRUD operations
+
+16. **Post Management:**
+    - CRUD operations
+    - Status toggle
+
+17. **Video Management:**
+    - CRUD operations
+    - Status toggle
+
+18. **Rate Management:**
+    - List rates
+    - View rate
+    - Delete rate
+    - Status toggle
+
+19. **Dashboard:**
+    - Statistics
+    - Charts
+    - Recent orders
+    - Top products
+
+20. **Showroom Management:**
+    - CRUD operations
+
+21. **Menu Management:**
+    - CRUD operations
+    - Sort operations
+
+22. **Footer Block Management:**
+    - CRUD operations
+
+23. **Redirection Management:**
+    - CRUD operations
+    - 301 redirects
+
+24. **Selling Management:**
+    - List sellings
+    - View selling
+
+25. **Search Management:**
+    - Search logs
+    - Search analytics
+
+26. **Download Management:**
+    - CRUD operations
+
+27. **Config Management:**
+    - CRUD operations
+
+28. **Compare Management:**
+    - List compares
+    - View compare
+
+---
+
+## 12. Critical Business Rules Summary
+
+### 12.1. Pricing Rules (MUST PRESERVE)
+
+1. **Price Priority Order:**
+   ```
+   Flash Sale > Marketing Campaign > Deal Sốc > Sale Price > Normal Price
+   ```
+
+2. **Deal Sốc Special Rule:**
+   - `is_deal = 1`: **ALWAYS** uses Deal price (even 0đ), ignores Flash Sale/Promotion
+   - `is_deal = 0`: Normal priority applies
+
+3. **Mixed Pricing:**
+   - When `quantity > flash_sale_remaining`:
+     - First N items: Flash Sale price
+     - Remaining items: Next priority price
+
+4. **Price Recalculation:**
+   - **ALWAYS** recalculate from backend
+   - **NEVER** trust frontend prices
+   - Recalculate on: Cart retrieval, Checkout, Order creation
+
+### 12.2. Stock Rules (MUST PRESERVE)
+
+1. **Stock Formula:**
+   ```
+   physical_stock = Latest snapshot OR SUM(import - export)
+   flash_sale_stock = SUM(number - buy) from active Flash Sales
+   deal_stock = SUM(qty - buy) from active Deals
+   available_stock = MAX(0, physical_stock - flash_sale_stock - deal_stock)
+   ```
+
+2. **Stock Validation:**
+   - Before checkout: Validate `available_stock >= quantity`
+   - Before Flash Sale/Deal: Validate `available_stock > 0`
+   - Before export receipt: Validate `available_stock >= quantity`
+
+3. **Stock Deduction:**
+   - On order creation (status='0'): Deduct immediately
+   - Deduct `physical_stock` (always)
+   - Deduct `flash_sale_hold`/`deal_hold` if applicable
+   - Increment `ProductSale.buy`/`SaleDeal.buy`
+
+4. **Stock Rollback:**
+   - On order cancellation: Restore stock
+   - Only if campaign still active
+   - Release `flash_sale_hold`/`deal_hold`
+
+### 12.3. Cart Rules (MUST PRESERVE)
+
+1. **Single Source of Truth:**
+   - `CartService::getCart()` is the ONLY source for cart summary
+   - Always read from session/database, never cache
+
+2. **Price Recalculation:**
+   - Always recalculate prices on cart retrieval
+   - Use `PriceEngineService::calculatePriceWithQuantity()`
+   - Apply Deal logic after price calculation
+
+3. **Deal Validation:**
+   - Validate Deal availability before applying price
+   - If Deal unavailable: Fallback to normal/promo price
+   - Show warning message to user
+
+### 12.4. Order Rules (MUST PRESERVE)
+
+1. **Order Creation:**
+   - Recalculate all prices (mandatory)
+   - Validate stock for all items
+   - Validate promotion code (if provided)
+   - Create export receipt automatically
+   - Process stock deduction immediately
+
+2. **Order Status:**
+   - Cannot edit cancelled orders
+   - Stock rollback only if campaign active
+   - Export receipt auto-created on order creation
+   - Export receipt voided on order cancellation
+
+### 12.5. Flash Sale Rules (MUST PRESERVE)
+
+1. **Stock Validation:**
+   - Products must have `available_stock > 0` to join
+   - Auto-filter products with `stock = 0` in search
+   - Validate before creation/update
+
+2. **Mixed Pricing:**
+   - When `quantity > flash_sale_remaining`: Apply mixed pricing
+   - Return `price_breakdown` array
+
+3. **Stock Reservation:**
+   - Reserve stock on Flash Sale creation
+   - Release stock on expiration/deletion
+
+### 12.6. Deal Rules (MUST PRESERVE)
+
+1. **Pricing Logic:**
+   - Sale products (`is_deal=1`): **ALWAYS** Deal price
+   - Main products: Normal priority
+
+2. **Conflict Detection:**
+   - Check if product already in active Deal
+   - Return 409 Conflict if duplicate
+
+3. **Variant Validation:**
+   - `has_variants=1`: `variant_id` required
+   - `has_variants=0`: `variant_id` must be NULL
+
+---
+
+## 13. Data Flow Diagrams
+
+### 13.1. Complete Order Creation Flow
+
+```
+User clicks "Checkout"
+    ↓
+Frontend: GET /cart/gio-hang.json
+    ↓
+Backend: CartService::getCart()
+    ↓
+For each item:
+  - Load variant + product
+  - PriceEngineService::calculatePriceWithQuantity()
+  - Apply Deal logic (if is_deal=1)
+  - Validate Deal availability
+  - Calculate subtotal
+    ↓
+Calculate totals (subtotal, discount, shipping, total)
+    ↓
+Return cart data to frontend
+    ↓
+User submits checkout form
+    ↓
+Frontend: POST /checkout/thanh-toan
+    ↓
+Backend: CartService::checkout()
+    ↓
+1. Validate cart not empty
+2. Recalculate all prices (mandatory)
+3. Validate stock for all items
+4. Validate promotion code (if provided)
+5. Calculate shipping fee (GHTK API)
+    ↓
+Create Order record
+    ↓
+Create OrderDetail records
+    ↓
+OrderStockReceiptService::createExportReceiptFromOrder()
+    ↓
+Create StockReceipt (type='export', status='completed')
+    ↓
+Create StockReceiptItems from OrderDetails
+    ↓
+Process stock deduction:
+  - Deduct physical_stock
+  - Deduct flash_sale_hold/deal_hold
+  - Increment ProductSale.buy/SaleDeal.buy
+    ↓
+Clear cart session
+    ↓
+Send confirmation email (queue)
+    ↓
+Return order info to frontend
+```
+
+### 13.2. Complete Price Calculation Flow
+
+```
+Frontend requests price
+    ↓
+Backend: PriceEngineService::calculateDisplayPrice()
+    ↓
+Get original price (variant.price or product.price)
+    ↓
+Priority 1: Check Flash Sale
+  - Find active Flash Sale (status=1, start<=now<=end)
+  - Find ProductSale for product/variant
+  - Check remaining stock (number - buy > 0)
+  - If available: Return Flash Sale price
+    ↓
+Priority 2: Check Marketing Campaign
+  - Find active MarketingCampaignProduct
+  - Check date range
+  - If available: Return Campaign price
+    ↓
+Priority 3: Check Deal Sốc
+  - Find active SaleDeal
+  - Check remaining stock (qty - buy > 0)
+  - If available: Return Deal price
+    ↓
+Priority 4: Check Sale Price
+  - Use variant.sale (if exists)
+    ↓
+Priority 5: Normal Price
+  - Use variant.price or product.price
+    ↓
+Return price info:
+  - price (final price)
+  - original_price
+  - type (flashsale/promotion/deal/normal)
+  - label
+  - discount_percent
+```
+
+### 13.3. Complete Stock Calculation Flow
+
+```
+Request inventory
+    ↓
+WarehouseService::getInventory()
+    ↓
+For each variant:
+  - Get physical_stock:
+    * Latest product_warehouse.physical_stock (if exists)
+    * OR SUM(import - export) from product_warehouse
+    * OR variants.stock (legacy fallback)
+    ↓
+  - Get flash_sale_stock:
+    * SUM(number - buy) from active Flash Sales
+    * WHERE variant_id = variant.id OR variant_id IS NULL
+    ↓
+  - Get deal_stock:
+    * SUM(qty - buy) from active Deals
+    * WHERE variant_id = variant.id OR variant_id IS NULL
+    ↓
+  - Calculate available_stock:
+    * MAX(0, physical_stock - flash_sale_stock - deal_stock)
+    ↓
+Return inventory list with:
+  - physical_stock
+  - flash_sale_stock
+  - deal_stock
+  - available_stock
+```
+
+---
+
+## 14. Frontend Logic Minimization Assessment
+
+**Purpose:** Đánh giá và đề xuất chuyển toàn bộ logic nghiệp vụ sang backend, frontend chỉ nhận dữ liệu và hiển thị
+
+---
+
+### 14.1. Current State Analysis
+
+#### 14.1.1. Logic Đang Xử Lý Ở Frontend (CẦN CHUYỂN SANG BACKEND)
+
+**1. Price Calculation Logic (CRITICAL - MUST MOVE)**
+- **Location:** `public/js/flash-sale-mixed-price.js`
+- **Current:** Frontend gọi API `/api/price/calculate` nhưng vẫn có logic xử lý:
+  - Format giá hiển thị
+  - Tính toán breakdown display
+  - Xử lý warning messages
+- **Issue:** Frontend đang format và xử lý dữ liệu giá
+- **Solution:** Backend trả về formatted strings sẵn, frontend chỉ hiển thị
+
+**2. Cart Total Calculation (CRITICAL - MUST MOVE)**
+- **Location:** `public/js/cart-api-v1.js`
+- **Current:** Có thể có logic tính tổng tiền ở frontend
+- **Issue:** Risk of inconsistency với backend
+- **Solution:** Backend luôn trả về `summary` object với tất cả totals đã tính sẵn
+
+**3. Discount Calculation (CRITICAL - MUST MOVE)**
+- **Location:** Frontend có thể tính discount từ promotion
+- **Issue:** Logic tính discount nên ở backend
+- **Solution:** Backend trả về `discount_amount`, `discount_percent` đã tính sẵn
+
+**4. Stock Validation (CRITICAL - MUST MOVE)**
+- **Location:** Frontend có thể validate stock trước khi add to cart
+- **Issue:** Stock validation phải ở backend (single source of truth)
+- **Solution:** Backend validate và trả về `is_available`, `available_stock`
+
+**5. Form Validation (MEDIUM - CAN MOVE)**
+- **Location:** Frontend validation (HTML5, JavaScript)
+- **Issue:** Có thể bypass, cần backend validation
+- **Solution:** Backend validation là bắt buộc, frontend chỉ UX validation
+
+**6. Price Formatting (LOW - CAN STAY)**
+- **Location:** Frontend format số tiền
+- **Issue:** Formatting có thể để frontend nhưng backend nên cung cấp formatted string
+- **Solution:** Backend trả về cả `price` (number) và `price_formatted` (string)
+
+---
+
+### 14.2. Backend-First Architecture Principles
+
+#### 14.2.1. Core Principles
+
+1. **Single Source of Truth:**
+   - Tất cả business logic ở backend
+   - Frontend chỉ hiển thị dữ liệu từ backend
+   - Không có duplicate logic
+
+2. **Complete Data Response:**
+   - Backend trả về tất cả dữ liệu cần thiết
+   - Bao gồm formatted strings, calculated values
+   - Frontend không cần tính toán thêm
+
+3. **Validation at Backend:**
+   - Backend validation là bắt buộc
+   - Frontend validation chỉ để UX (không bắt buộc)
+   - Backend luôn reject invalid requests
+
+4. **No Business Logic in Frontend:**
+   - Không tính toán giá, tổng tiền
+   - Không validate stock, promotion
+   - Không xử lý Deal/Flash Sale logic
+
+---
+
+### 14.3. Refactored API Response Structure
+
+#### 14.3.1. Cart API Response (Complete)
+
+**Current (Incomplete):**
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "variant_id": 123,
+        "quantity": 2,
+        "unit_price": 100000,
+        "subtotal": 200000
+      }
+    ],
+    "summary": {
+      "subtotal": 200000,
+      "total": 200000
+    }
+  }
+}
+```
+
+**Refactored (Complete - Frontend chỉ hiển thị):**
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "variant_id": 123,
+        "product_id": 10,
+        "product_name": "Sản phẩm A",
+        "variant_name": "Màu đỏ - Size M",
+        "quantity": 2,
+        "unit_price": 100000,
+        "unit_price_formatted": "100.000₫",
+        "subtotal": 200000,
+        "subtotal_formatted": "200.000₫",
+        "price_info": {
+          "final_price": 100000,
+          "final_price_formatted": "100.000₫",
+          "original_price": 150000,
+          "original_price_formatted": "150.000₫",
+          "type": "flashsale",
+          "label": "Flash Sale",
+          "discount_percent": 33,
+          "discount_amount": 50000,
+          "discount_amount_formatted": "50.000₫"
+        },
+        "stock_info": {
+          "available_stock": 50,
+          "is_available": true,
+          "stock_status": "in_stock",
+          "stock_message": "Còn hàng"
+        },
+        "deal_info": {
+          "is_deal": false,
+          "deal_available": null,
+          "deal_warning": null
+        },
+        "image": "https://cdn/...",
+        "weight": 0.5,
+        "weight_formatted": "500g"
+      }
+    ],
+    "summary": {
+      "total_qty": 2,
+      "total_qty_formatted": "2 sản phẩm",
+      "subtotal": 200000,
+      "subtotal_formatted": "200.000₫",
+      "discount": 0,
+      "discount_formatted": "0₫",
+      "discount_percent": 0,
+      "shipping_fee": 30000,
+      "shipping_fee_formatted": "30.000₫",
+      "free_ship": false,
+      "free_ship_threshold": 500000,
+      "free_ship_threshold_formatted": "500.000₫",
+      "free_ship_message": "Mua thêm 300.000₫ để được miễn phí vận chuyển",
+      "total": 230000,
+      "total_formatted": "230.000₫",
+      "total_savings": 100000,
+      "total_savings_formatted": "100.000₫",
+      "total_savings_percent": 30
+    },
+    "promotion": {
+      "applied": false,
+      "code": null,
+      "discount": 0,
+      "discount_formatted": "0₫"
+    },
+    "shipping": {
+      "fee": 30000,
+      "fee_formatted": "30.000₫",
+      "method": "ghtk",
+      "estimated_days": 2,
+      "estimated_delivery": "2026-01-27"
+    },
+    "validation": {
+      "all_items_available": true,
+      "all_prices_valid": true,
+      "can_checkout": true,
+      "warnings": [],
+      "errors": []
+    }
+  }
+}
+```
+
+#### 14.3.2. Price Calculation API Response (Complete)
+
+**Current (Incomplete):**
+```json
+{
+  "success": true,
+  "data": {
+    "total_price": 1500000,
+    "price_breakdown": [
+      {
+        "type": "flashsale",
+        "quantity": 5,
+        "unit_price": 100000,
+        "subtotal": 500000
+      }
+    ]
+  }
+}
+```
+
+**Refactored (Complete - Frontend chỉ hiển thị):**
+```json
+{
+  "success": true,
+  "data": {
+    "product_id": 10,
+    "variant_id": 123,
+    "quantity": 15,
+    "total_price": 1500000,
+    "total_price_formatted": "1.500.000₫",
+    "original_total": 2000000,
+    "original_total_formatted": "2.000.000₫",
+    "total_savings": 500000,
+    "total_savings_formatted": "500.000₫",
+    "total_savings_percent": 25,
+    "price_breakdown": [
+      {
+        "type": "flashsale",
+        "type_label": "Flash Sale",
+        "quantity": 5,
+        "unit_price": 100000,
+        "unit_price_formatted": "100.000₫",
+        "subtotal": 500000,
+        "subtotal_formatted": "500.000₫",
+        "description": "5 sản phẩm giá Flash Sale"
+      },
+      {
+        "type": "promotion",
+        "type_label": "Khuyến mãi",
+        "quantity": 10,
+        "unit_price": 100000,
+        "unit_price_formatted": "100.000₫",
+        "subtotal": 1000000,
+        "subtotal_formatted": "1.000.000₫",
+        "description": "10 sản phẩm giá khuyến mãi"
+      }
+    ],
+    "price_breakdown_html": "<div>5 sản phẩm × 100.000₫ (FS) = 500.000₫<br>10 sản phẩm × 100.000₫ (KM) = 1.000.000₫</div>",
+    "price_breakdown_text": "5 sản phẩm × 100.000₫ (Flash Sale) + 10 sản phẩm × 100.000₫ (Khuyến mãi) = 1.500.000₫",
+    "flash_sale_info": {
+      "remaining": 5,
+      "remaining_formatted": "5 sản phẩm",
+      "warning": "Chỉ còn 5 sản phẩm giá Flash Sale, 10 sản phẩm còn lại sẽ được tính theo giá khuyến mãi",
+      "warning_html": "<div class='warning'>Chỉ còn <strong>5 sản phẩm</strong> giá Flash Sale</div>"
+    },
+    "stock_info": {
+      "available_stock": 50,
+      "is_available": true,
+      "stock_status": "in_stock",
+      "stock_message": "Còn hàng"
+    }
+  }
+}
+```
+
+#### 14.3.3. Checkout Validation Response (Complete)
+
+**Refactored (Complete - Frontend chỉ hiển thị):**
+```json
+{
+  "success": true,
+  "data": {
+    "can_checkout": true,
+    "validation": {
+      "cart_valid": true,
+      "all_items_available": true,
+      "all_prices_valid": true,
+      "stock_valid": true,
+      "promotion_valid": true,
+      "shipping_valid": true
+    },
+    "warnings": [],
+    "errors": [],
+    "cart_summary": {
+      // Complete cart summary as above
+    },
+    "shipping_options": [
+      {
+        "method": "ghtk",
+        "name": "Giao hàng tiết kiệm",
+        "fee": 30000,
+        "fee_formatted": "30.000₫",
+        "estimated_days": 2,
+        "estimated_delivery": "2026-01-27",
+        "estimated_delivery_formatted": "27/01/2026"
+      }
+    ],
+    "payment_methods": [
+      {
+        "code": "cod",
+        "name": "Thanh toán khi nhận hàng",
+        "available": true
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 14.4. Frontend Responsibilities (Minimal)
+
+#### 14.4.1. Frontend Chỉ Làm:
+
+1. **Display Data:**
+   - Hiển thị dữ liệu từ backend
+   - Render formatted strings
+   - Show/hide elements based on flags
+
+2. **User Interaction:**
+   - Capture user input
+   - Send requests to backend
+   - Handle responses
+
+3. **UX Enhancements:**
+   - Loading states
+   - Error messages display
+   - Form validation (UX only, not business logic)
+
+4. **No Business Logic:**
+   - ❌ Không tính toán giá
+   - ❌ Không validate stock
+   - ❌ Không xử lý Deal/Flash Sale logic
+   - ❌ Không format số tiền (dùng formatted từ backend)
+   - ❌ Không tính tổng tiền
+
+---
+
+### 14.5. Migration Checklist
+
+#### 14.5.1. Backend Changes Required
+
+- [ ] **Cart API:** Trả về complete summary với formatted strings
+- [ ] **Price Calculation API:** Trả về formatted breakdown
+- [ ] **Checkout API:** Trả về complete validation results
+- [ ] **Stock Validation:** Backend validate và trả về status
+- [ ] **Promotion API:** Trả về discount đã tính sẵn
+- [ ] **Shipping API:** Trả về fee và formatted strings
+- [ ] **All APIs:** Thêm `*_formatted` fields cho tất cả số tiền
+
+#### 14.5.2. Frontend Changes Required
+
+- [ ] **Remove Price Calculation:** Xóa logic tính giá ở frontend
+- [ ] **Remove Total Calculation:** Xóa logic tính tổng tiền
+- [ ] **Use Formatted Strings:** Dùng `*_formatted` từ backend
+- [ ] **Remove Stock Validation:** Chỉ hiển thị status từ backend
+- [ ] **Simplify Cart Display:** Chỉ render data từ backend
+- [ ] **Remove Business Logic:** Xóa tất cả logic nghiệp vụ
+
+---
+
+### 14.6. Example: Refactored Cart Flow
+
+#### 14.6.1. Add to Cart (Backend-First)
+
+**Frontend (Minimal):**
+```javascript
+// Frontend chỉ gửi request và hiển thị response
+CartAPI.addItem(variantId, qty, isDeal)
+  .done(function(response) {
+    if (response.success) {
+      // Backend trả về complete data, frontend chỉ hiển thị
+      updateCartDisplay(response.data);
+      showNotification('Đã thêm vào giỏ hàng');
+    }
+  })
+  .fail(function(xhr) {
+    // Backend trả về error message, frontend chỉ hiển thị
+    showError(xhr.responseJSON.message);
+  });
+```
+
+**Backend (Complete Logic):**
+```php
+// Backend xử lý tất cả logic
+public function addItem(Request $request) {
+    // 1. Validate input
+    // 2. Check stock availability
+    // 3. Calculate price (PriceEngineService)
+    // 4. Apply Deal logic (if is_deal = 1)
+    // 5. Store in session
+    // 6. Recalculate cart summary
+    // 7. Return complete formatted data
+    
+    return response()->json([
+        'success' => true,
+        'data' => [
+            'item' => [
+                'variant_id' => $variantId,
+                'quantity' => $qty,
+                'unit_price' => 100000,
+                'unit_price_formatted' => '100.000₫',
+                'subtotal' => 200000,
+                'subtotal_formatted' => '200.000₫',
+                // ... complete data
+            ],
+            'summary' => [
+                'total_qty' => 2,
+                'total_qty_formatted' => '2 sản phẩm',
+                'subtotal' => 200000,
+                'subtotal_formatted' => '200.000₫',
+                'total' => 230000,
+                'total_formatted' => '230.000₫',
+                // ... complete summary
+            ]
+        ]
+    ]);
+}
+```
+
+#### 14.6.2. Cart Display (Backend-First)
+
+**Frontend (Minimal):**
+```javascript
+// Frontend chỉ fetch và hiển thị
+CartAPI.getCart()
+  .done(function(response) {
+    if (response.success) {
+      // Backend trả về complete formatted data
+      renderCartItems(response.data.items);
+      renderCartSummary(response.data.summary);
+      renderPromotion(response.data.promotion);
+      renderShipping(response.data.shipping);
+      renderValidation(response.data.validation);
+    }
+  });
+```
+
+**Backend (Complete Logic):**
+```php
+// Backend tính toán tất cả
+public function getCart() {
+    $cart = $this->cartService->getCart();
+    
+    // Format tất cả dữ liệu
+    $formattedCart = [
+        'items' => array_map(function($item) {
+            return [
+                'variant_id' => $item['variant_id'],
+                'quantity' => $item['quantity'],
+                'unit_price' => $item['unit_price'],
+                'unit_price_formatted' => number_format($item['unit_price'], 0, ',', '.') . '₫',
+                'subtotal' => $item['subtotal'],
+                'subtotal_formatted' => number_format($item['subtotal'], 0, ',', '.') . '₫',
+                // ... complete formatted data
+            ];
+        }, $cart['items']),
+        'summary' => [
+            'subtotal' => $cart['subtotal'],
+            'subtotal_formatted' => number_format($cart['subtotal'], 0, ',', '.') . '₫',
+            'total' => $cart['total'],
+            'total_formatted' => number_format($cart['total'], 0, ',', '.') . '₫',
+            // ... complete formatted summary
+        ]
+    ];
+    
+    return response()->json([
+        'success' => true,
+        'data' => $formattedCart
+    ]);
+}
+```
+
+---
+
+### 14.7. Benefits of Backend-First Architecture
+
+1. **Consistency:**
+   - Single source of truth
+   - No duplicate logic
+   - Guaranteed accuracy
+
+2. **Security:**
+   - Business logic protected
+   - Cannot be bypassed
+   - Server-side validation
+
+3. **Maintainability:**
+   - Logic centralized
+   - Easier to update
+   - Less code duplication
+
+4. **Performance:**
+   - Backend optimized
+   - Frontend lightweight
+   - Better caching
+
+5. **Testing:**
+   - Easier to test backend
+   - Frontend testing simplified
+   - Integration tests focused
+
+---
+
+### 14.8. Implementation Priority
+
+**Priority 1 (CRITICAL):**
+1. Cart price calculation → Backend
+2. Cart total calculation → Backend
+3. Stock validation → Backend
+4. Promotion discount → Backend
+
+**Priority 2 (HIGH):**
+5. Price formatting → Backend (provide formatted strings)
+6. Shipping fee calculation → Backend
+7. Checkout validation → Backend
+
+**Priority 3 (MEDIUM):**
+8. Form validation → Backend (keep UX validation in frontend)
+9. Error messages → Backend (provide formatted messages)
+
+---
+
+**Last Updated:** 2026-01-25  
+**Version:** 3.1  
+**Purpose:** Complete deep dive documentation for Go/Next.js refactoring - ensuring no business logic is missed + Frontend logic minimization assessment
+

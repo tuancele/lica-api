@@ -340,7 +340,7 @@ class HomeController extends Controller
                     }
 
                     $data['detail'] = $post;
-                    $data['gallerys'] = json_decode($post->gallery);
+                    $data['gallerys'] = json_decode($post->gallery ?? '[]', true) ?? [];
                     $first = Variant::where('product_id', $post->id)->first();
                     $data['first'] = $first;
 

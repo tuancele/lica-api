@@ -15,7 +15,7 @@ class BrandController extends Controller
         $detail = Brand::where([['slug', $url], ['status', '1']])->first();
         if (isset($detail) && ! empty($detail)) {
             $data['detail'] = $detail;
-            $data['galleries'] = json_decode($detail->gallery);
+            $data['galleries'] = json_decode($detail->gallery ?? '[]', true) ?? [];
             $data['total'] = Product::select('id')->where([['type', 'product'], ['status', '1'], ['brand_id', $detail->id]])->get()->count();
             $data['products'] = Product::where([['type', 'product'], ['status', '1'], ['brand_id', $detail->id], ['stock', '1']])->paginate(30);
             $data['stocks'] = Product::where([['type', 'product'], ['status', '1'], ['brand_id', $detail->id], ['stock', '0']])->get();
