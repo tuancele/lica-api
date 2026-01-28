@@ -219,6 +219,26 @@ class WarehouseService implements WarehouseServiceInterface
         ];
     }
 
+    public function getLegacyProductWarehouseQuantity(int $productId, string $type): int
+    {
+        $total = 0;
+
+        $variants = \App\Modules\Product\Models\Variant::select('id')
+            ->where('product_id', $productId)
+            ->get();
+
+        foreach ($variants as $variant) {
+            $rows = ProductWarehouse::select('qty')
+                ->where('variant_id', $variant->id)
+                ->where('type', $type)
+                ->get();
+
+            $total += array_sum(array_column($rows->toArray(), 'qty'));
+        }
+
+        return $total;
+    }
+
     /**
      * Get import receipts list with filters.
      */
@@ -767,6 +787,7 @@ class WarehouseService implements WarehouseServiceInterface
 
         // Warehouse V2 only - no legacy fallback
         // Will try SKU fallback if variant_id not found
+        $defaultWarehouseId = app(\App\Services\Inventory\InventoryServiceInterface::class)->getDefaultWarehouseId();
 
         $activeFlashSaleQtySub = ProductSale::query()
             ->selectRaw('COALESCE(SUM(productsales.number),0)')
@@ -789,9 +810,9 @@ class WarehouseService implements WarehouseServiceInterface
             // We need to use the same table for consistency
             $variantSku = $variant->sku ?? '';
 
-            // Step 1: Query physical_stock from inventory_stocks by variant_id (main warehouse only)
+            // Step 1: Query physical_stock from inventory_stocks by variant_id (default warehouse only)
             $inventoryStock = \App\Models\InventoryStock::where('variant_id', $variantId)
-                ->where('warehouse_id', 1)
+                ->where('warehouse_id', $defaultWarehouseId)
                 ->first();
 
             $physicalStock = 0;
@@ -898,7 +919,7 @@ class WarehouseService implements WarehouseServiceInterface
                     $inventoryStockBySku = \App\Models\InventoryStock::query()
                         ->join('variants', 'variants.id', '=', 'inventory_stocks.variant_id')
                         ->where('variants.sku', $variantSku)
-                        ->where('inventory_stocks.warehouse_id', 1)
+                        ->where('inventory_stocks.warehouse_id', $defaultWarehouseId)
                         ->select('inventory_stocks.*')
                         ->first();
 
@@ -984,7 +1005,7 @@ class WarehouseService implements WarehouseServiceInterface
             Log::info('WarehouseService: Query physical_stock from inventory_stocks', [
                 'variant_id' => $variantId,
                 'variant_sku' => $variantSku,
-                'warehouse_id' => 1,
+                'warehouse_id' => $defaultWarehouseId,
                 'physical_stock' => $physicalStock,
                 'flash_sale_hold' => $flashSaleStock,
                 'deal_hold' => $dealStock,
@@ -1423,6 +1444,7 @@ class WarehouseService implements WarehouseServiceInterface
         try {
             $order = \App\Modules\Order\Models\Order::findOrFail($orderId);
             $orderDetails = \App\Modules\Order\Models\OrderDetail::where('order_id', $orderId)->get();
+            $defaultWarehouseId = app(\App\Services\Inventory\InventoryServiceInterface::class)->getDefaultWarehouseId();
 
             if ($orderDetails->isEmpty()) {
                 Log::warning('WarehouseService: processOrderStock - No order details found', [
@@ -1454,7 +1476,7 @@ class WarehouseService implements WarehouseServiceInterface
 
                 // Get inventory stock record
                 $inventoryStock = \App\Models\InventoryStock::where('variant_id', $variantId)
-                    ->where('warehouse_id', 1)
+                    ->where('warehouse_id', $defaultWarehouseId)
                     ->lockForUpdate()
                     ->first();
 
@@ -1637,6 +1659,7 @@ class WarehouseService implements WarehouseServiceInterface
         try {
             $order = \App\Modules\Order\Models\Order::findOrFail($orderId);
             $orderDetails = \App\Modules\Order\Models\OrderDetail::where('order_id', $orderId)->get();
+            $defaultWarehouseId = app(\App\Services\Inventory\InventoryServiceInterface::class)->getDefaultWarehouseId();
 
             if ($orderDetails->isEmpty()) {
                 Log::warning('WarehouseService: rollbackOrderStock - No order details found', [
@@ -1661,7 +1684,7 @@ class WarehouseService implements WarehouseServiceInterface
 
                 // Get inventory stock record
                 $inventoryStock = \App\Models\InventoryStock::where('variant_id', $variantId)
-                    ->where('warehouse_id', 1)
+                    ->where('warehouse_id', $defaultWarehouseId)
                     ->lockForUpdate()
                     ->first();
 

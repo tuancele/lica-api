@@ -11,7 +11,9 @@ return new class extends Migration
     public function up(): void
     {
         if (Schema::hasTable('configs')) {
-            Schema::table('configs', function (Blueprint $table) {
+            $afterValueCol = Schema::hasColumn('configs', 'value') ? 'value' : 'name';
+
+            Schema::table('configs', function (Blueprint $table) use ($afterValueCol) {
                 // Add code column if it doesn't exist (configs table uses 'name' as key)
                 if (! Schema::hasColumn('configs', 'code')) {
                     $table->string('code', 255)->unique()->nullable()->after('name');
@@ -22,11 +24,11 @@ return new class extends Migration
                 }
                 // value column already exists, but ensure it's text type
                 if (! Schema::hasColumn('configs', 'content')) {
-                    $table->text('content')->nullable()->after('value');
+                    $table->text('content')->nullable()->after($afterValueCol);
                 }
                 // Add group column
                 if (! Schema::hasColumn('configs', 'group')) {
-                    $table->string('group', 100)->default('general')->after('value');
+                    $table->string('group', 100)->default('general')->after($afterValueCol);
                 }
                 // Add status column if missing
                 if (! Schema::hasColumn('configs', 'status')) {
@@ -47,15 +49,26 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (! Schema::hasTable('configs')) {
+            return;
+        }
+
         Schema::table('configs', function (Blueprint $table) {
             if (Schema::hasColumn('configs', 'key')) {
                 $table->dropColumn('key');
             }
-            if (Schema::hasColumn('configs', 'value')) {
-                $table->dropColumn('value');
-            }
+            // Do not drop legacy `value` column.
             if (Schema::hasColumn('configs', 'group')) {
                 $table->dropColumn('group');
+            }
+            if (Schema::hasColumn('configs', 'content')) {
+                $table->dropColumn('content');
+            }
+            if (Schema::hasColumn('configs', 'code')) {
+                $table->dropColumn('code');
+            }
+            if (Schema::hasColumn('configs', 'status')) {
+                $table->dropColumn('status');
             }
         });
     }

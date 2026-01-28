@@ -12,9 +12,15 @@ return new class extends Migration
      */
     public function up()
     {
+        if (! Schema::hasTable('orderdetail')) {
+            return;
+        }
+
         Schema::table('orderdetail', function (Blueprint $table) {
-            $table->unsignedBigInteger('productsale_id')->nullable()->after('dealsale_id')->comment('ID of ProductSale record for Flash Sale tracking');
-            $table->index('productsale_id', 'orderdetail_productsale_id_index');
+            if (! Schema::hasColumn('orderdetail', 'productsale_id')) {
+                $table->unsignedBigInteger('productsale_id')->nullable()->after('dealsale_id')->comment('ID of ProductSale record for Flash Sale tracking');
+                $table->index('productsale_id', 'orderdetail_productsale_id_index');
+            }
         });
     }
 
@@ -23,9 +29,15 @@ return new class extends Migration
      */
     public function down()
     {
+        if (! Schema::hasTable('orderdetail')) {
+            return;
+        }
+
         Schema::table('orderdetail', function (Blueprint $table) {
-            $table->dropIndex('orderdetail_productsale_id_index');
-            $table->dropColumn('productsale_id');
+            if (Schema::hasColumn('orderdetail', 'productsale_id')) {
+                $table->dropIndex('orderdetail_productsale_id_index');
+                $table->dropColumn('productsale_id');
+            }
         });
     }
 };

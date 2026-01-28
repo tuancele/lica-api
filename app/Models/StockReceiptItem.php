@@ -88,12 +88,12 @@ class StockReceiptItem extends Model
 
     public function getUnitPriceFormattedAttribute(): string
     {
-        return number_format($this->unit_price, 0, ',', '.').' đ';
+        return number_format((float) $this->unit_price, 0, ',', '.').' đ';
     }
 
     public function getTotalPriceFormattedAttribute(): string
     {
-        return number_format($this->total_price, 0, ',', '.').' đ';
+        return number_format((float) $this->total_price, 0, ',', '.').' đ';
     }
 
     public function getProductNameAttribute(): ?string

@@ -272,8 +272,8 @@ class OrderProcessingController extends Controller
             throw new \Exception('Suất quà tặng vừa hết');
         }
 
-        // Shopee style: qty là số suất còn lại, buy là thống kê đã dùng
-        $remaining = (int) $saleDeal->qty;
+        // Shopee style: qty = quota, buy = used, remaining = qty - buy
+        $remaining = max(0, (int) $saleDeal->qty - (int) ($saleDeal->buy ?? 0));
         if ($remaining < $quantity) {
             throw new \Exception('Suất quà tặng vừa hết');
         }

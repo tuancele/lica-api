@@ -831,6 +831,154 @@
 
 ---
 
+## Order Admin API
+
+### 1. GET /admin/api/orders
+
+**Mục tiêu:** Lấy danh sách đơn hàng cho Admin với phân trang và bộ lọc cơ bản.
+
+**Tham số đầu vào (Query Params):**
+- `page` (int, optional): trang, mặc định 1
+- `limit` (int, optional): số bản ghi/trang, mặc định 10, tối đa 100
+- `status` (string, optional): trạng thái đơn (`0,1,2,3,4`)
+- `ship` (string, optional): trạng thái giao hàng
+- `code` (string, optional): mã đơn hàng
+- `keyword` (string, optional): tìm theo `code/name/phone`
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "code": "LICA-20260101-0001",
+      "name": "Nguyen Van A",
+      "phone": "0900000000",
+      "status": "1",
+      "payment": "1",
+      "ship": "0",
+      "total": 1500000,
+      "sale": 100000,
+      "created_at": "2026-01-20T10:00:00.000000Z",
+      "province": {"id": 1, "name": "Hà Nội"},
+      "district": {"id": 2, "name": "Cầu Giấy"},
+      "ward": {"id": 3, "name": "Dịch Vọng"},
+      "member": {"id": 10, "name": "Nguyen Van A"}
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "per_page": 10,
+    "total": 120,
+    "last_page": 12
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 2. GET /admin/api/orders/{id}
+
+**Mục tiêu:** Lấy chi tiết một đơn hàng (bao gồm line items).
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "code": "LICA-20260101-0001",
+    "name": "Nguyen Van A",
+    "phone": "0900000000",
+    "status": "1",
+    "payment": "1",
+    "ship": "0",
+    "total": 1500000,
+    "sale": 100000,
+    "address": "Số 1 Đường ABC",
+    "province": {"id": 1, "name": "Hà Nội"},
+    "district": {"id": 2, "name": "Cầu Giấy"},
+    "ward": {"id": 3, "name": "Dịch Vọng"},
+    "member": {"id": 10, "name": "Nguyen Van A"},
+    "items": [
+      {
+        "product_id": 100,
+        "variant_id": 200,
+        "name": "Sữa rửa mặt A",
+        "sku": "SRM-A-100",
+        "qty": 2,
+        "price": 500000,
+        "subtotal": 1000000
+      }
+    ]
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+### 3. PATCH /admin/api/orders/{id}/status
+
+**Mục tiêu:** Cập nhật nhanh trạng thái đơn hàng (status/payment/ship, content).
+
+**Body (JSON):**
+- `status` (string, required, one of: `0,1,2,3,4`)
+- `payment` (string, optional, one of: `0,1,2`)
+- `ship` (string, optional, one of: `0,1,2,3,4`)
+- `content` (string, optional)
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "message": "Cập nhật trạng thái thành công",
+  "data": {
+    "id": 1,
+    "status": "4",
+    "payment": "1",
+    "ship": "3"
+  }
+}
+```
+
+**Trạng thái:** Hoàn thành
+
+---
+
+## Warehouse V2 Admin / API
+
+### 1. GET /api/v2/inventory/warehouses
+
+**Mục tiêu:** Lấy danh sách kho V2 đang active, phục vụ chọn kho trong màn hình tồn kho/phiếu nhập/xuất.
+
+**Phản hồi mẫu (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "code": "MAIN",
+      "name": "Kho trung tâm",
+      "address": "Số 1, Đường ABC, Quận XYZ",
+      "is_active": true,
+      "is_default": true
+    }
+  ]
+}
+```
+
+**Ghi chú:** Từ Phase 2, danh sách kho được lấy qua `WarehouseV2Service` + `WarehouseRepository`, không truy vấn thẳng `WarehouseV2` trong controller.
+
+**Trạng thái:** Hoàn thành
+
+---
+
 ### 3. POST /admin/api/products
 
 **Mục tiêu:** 创建新产品

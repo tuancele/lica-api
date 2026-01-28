@@ -182,22 +182,28 @@ class CategoryController extends Controller
                 }
             }
 
-            // Create category
-            $category = Category::create([
+            // Build DTO and call Action (keep response contract)
+            $dtoData = [
                 'name' => $request->name,
                 'slug' => $slug,
-                'image' => $request->image,
                 'description' => $request->description,
-                'content' => $request->content,
-                'status' => $request->status,
-                'feature' => $request->feature ?? '0',
-                'type' => 'category',
+                'status' => (int) $request->status,
+                'sort' => (int) ($request->sort ?? 0),
                 'cat_id' => $request->cat_id ?? 0,
-                'seo_title' => $request->seo_title,
-                'seo_description' => $request->seo_description,
-                'sort' => $request->sort ?? 0,
-                'user_id' => Auth::id(),
-            ]);
+            ];
+
+            $dto = \App\DTOs\Category\CreateCategoryDTO::fromArray($dtoData);
+            $category = app(\App\Actions\Category\CreateCategoryAction::class)->execute($dto);
+
+            // Persist other mutable columns not in DTO
+            $category->image = $request->image;
+            $category->content = $request->content;
+            $category->feature = $request->feature ?? '0';
+            $category->type = 'category';
+            $category->seo_title = $request->seo_title;
+            $category->seo_description = $request->seo_description;
+            $category->user_id = Auth::id();
+            $category->save();
 
             // Load relations
             $category->load(['user', 'children']);

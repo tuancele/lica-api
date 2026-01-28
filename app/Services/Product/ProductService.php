@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Product;
 
+use App\Actions\Product\CreateProductAction;
+use App\DTOs\Product\CreateProductDTO;
 use App\Enums\ProductStatus;
 use App\Enums\ProductType;
 use App\Exceptions\ProductCreationException;
@@ -33,7 +35,8 @@ class ProductService implements ProductServiceInterface
     public function __construct(
         private ProductRepositoryInterface $repository,
         private ImageServiceInterface $imageService,
-        private WarehouseServiceInterface $warehouseService
+        private WarehouseServiceInterface $warehouseService,
+        private CreateProductAction $createProductAction
     ) {}
 
     /**
@@ -93,8 +96,9 @@ class ProductService implements ProductServiceInterface
                 'height' => $data['height'] ?? 0,
             ];
 
-            // Create product
-            $product = $this->repository->create($productData);
+            // Use Action + DTO pattern as orchestration entry point (Phase 2 architecture)
+            $productDto = CreateProductDTO::fromArray($productData);
+            $product = $this->createProductAction->execute($productDto);
 
             $hasVariants = (int) ($data['has_variants'] ?? 0) === 1;
             $createdVariants = [];

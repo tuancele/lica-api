@@ -7,6 +7,7 @@ namespace App\Repositories\Product;
 use App\Enums\ProductStatus;
 use App\Enums\ProductType;
 use App\Modules\Product\Models\Product;
+use App\Repositories\BaseRepository;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -14,20 +15,21 @@ use Illuminate\Database\Eloquent\Collection;
  * Repository for Product data access.
  *
  * This repository handles all database operations for products,
- * separating data access logic from business logic.
+ * building on the shared BaseRepository to reduce duplication.
  */
-class ProductRepository implements ProductRepositoryInterface
+class ProductRepository extends BaseRepository implements ProductRepositoryInterface
 {
-    public function __construct(
-        private Product $model
-    ) {}
+    public function __construct(Product $model)
+    {
+        parent::__construct($model);
+    }
 
     /**
-     * Find product by ID.
+     * Get the underlying model class.
      */
-    public function find(int $id): ?Product
+    public function model(): string
     {
-        return $this->model->find($id);
+        return Product::class;
     }
 
     /**

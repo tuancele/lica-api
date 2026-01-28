@@ -163,7 +163,7 @@ class StockReceipt extends Model
 
     public function getTotalValueFormattedAttribute(): string
     {
-        return number_format($this->total_value, 0, ',', '.').' đ';
+        return number_format((float) $this->total_value, 0, ',', '.').' đ';
     }
 
     /**
@@ -326,6 +326,6 @@ class StockReceipt extends Model
             $nextNumber = 1;
         }
 
-        return "{$prefix}-{$date}-".str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
+        return "{$prefix}-{$date}-".str_pad((string) $nextNumber, 6, '0', STR_PAD_LEFT);
     }
 }

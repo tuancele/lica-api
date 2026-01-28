@@ -139,4 +139,13 @@ interface WarehouseServiceInterface
      * @throws \Exception
      */
     public function rollbackOrderStock(int $orderId): bool;
+
+    /**
+     * Legacy helper: get total imported/exported quantity for a product
+     * from ProductWarehouse table (used by Deal views).
+     *
+     * @param  int  $productId
+     * @param  string  $type  'import' or 'export'
+     */
+    public function getLegacyProductWarehouseQuantity(int $productId, string $type): int;
 }

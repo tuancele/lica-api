@@ -3,6 +3,7 @@
 declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -11,6 +12,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('ingredient_category')) {
+            return;
+        }
+
         // Add Emollient category if not exists
         $exists = DB::table('ingredient_category')
             ->where('name', 'Emollient')
@@ -33,6 +38,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('ingredient_category')) {
+            return;
+        }
+
         // Remove Emollient category
         DB::table('ingredient_category')
             ->where('name', 'Emollient')

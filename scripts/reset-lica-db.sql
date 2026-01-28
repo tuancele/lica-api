@@ -1,0 +1,4 @@
+DROP DATABASE IF EXISTS lica;
+CREATE DATABASE lica CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+

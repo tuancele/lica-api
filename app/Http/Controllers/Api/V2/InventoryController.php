@@ -238,7 +238,7 @@ class InventoryController extends Controller
     // Warehouse endpoints
     public function warehouses(): JsonResponse
     {
-        $warehouses = WarehouseV2::active()->get();
+        $warehouses = app(\App\Services\Warehouse\WarehouseV2ServiceInterface::class)->getActive();
 
         return response()->json(['success' => true, 'data' => $warehouses]);
     }

@@ -11,6 +11,7 @@ use App\Modules\Order\Models\Order;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use App\Services\Order\OrderServiceInterface;
 
 /**
  * Order API V1 Controller.
@@ -19,6 +20,10 @@ use Illuminate\Support\Facades\Log;
  */
 class OrderController extends Controller
 {
+    public function __construct(
+        private readonly OrderServiceInterface $orders
+    ) {
+    }
     /**
      * Get user orders list.
      *
@@ -36,39 +41,30 @@ class OrderController extends Controller
                 ], 401);
             }
 
-            // Support both member_id and user_id for compatibility
-            $query = Order::with(['province', 'district', 'ward', 'promotion'])
+            // Pagination (service side still uses admin filters; here we only need member scoping)
+            $perPage = min((int) ($request->limit ?? 10), 50);
+            $orders = Order::with(['province', 'district', 'ward', 'promotion'])
                 ->where(function ($q) use ($member) {
                     $q->where('member_id', $member->id)
                         ->orWhere('user_id', $member->id);
-                });
-
-            // Filter by status
-            if ($request->has('status') && $request->status !== '') {
-                $query->where('status', $request->status);
-            }
-
-            // Filter by payment status
-            if ($request->has('payment') && $request->payment !== '') {
-                $query->where('payment', $request->payment);
-            }
-
-            // Filter by ship status
-            if ($request->has('ship') && $request->ship !== '') {
-                $query->where('ship', $request->ship);
-            }
-
-            // Filter by date
-            if ($request->has('date_from') && ! empty($request->date_from)) {
-                $query->whereDate('created_at', '>=', $request->date_from);
-            }
-            if ($request->has('date_to') && ! empty($request->date_to)) {
-                $query->whereDate('created_at', '<=', $request->date_to);
-            }
-
-            // Pagination
-            $perPage = min((int) ($request->limit ?? 10), 50);
-            $orders = $query->orderBy('created_at', 'desc')->paginate($perPage);
+                })
+                ->when($request->has('status') && $request->status !== '', function ($q) use ($request) {
+                    $q->where('status', $request->status);
+                })
+                ->when($request->has('payment') && $request->payment !== '', function ($q) use ($request) {
+                    $q->where('payment', $request->payment);
+                })
+                ->when($request->has('ship') && $request->ship !== '', function ($q) use ($request) {
+                    $q->where('ship', $request->ship);
+                })
+                ->when($request->has('date_from') && ! empty($request->date_from), function ($q) use ($request) {
+                    $q->whereDate('created_at', '>=', $request->date_from);
+                })
+                ->when($request->has('date_to') && ! empty($request->date_to), function ($q) use ($request) {
+                    $q->whereDate('created_at', '<=', $request->date_to);
+                })
+                ->orderBy('created_at', 'desc')
+                ->paginate($perPage);
 
             return response()->json([
                 'success' => true,

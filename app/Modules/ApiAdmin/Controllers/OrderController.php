@@ -16,12 +16,17 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\Order\OrderServiceInterface;
 
 /**
  * Order Management API Controller (Admin).
  */
 class OrderController extends Controller
 {
+    public function __construct(
+        private readonly OrderServiceInterface $orders
+    ) {
+    }
     /**
      * Get orders list.
      *
@@ -30,49 +35,16 @@ class OrderController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $query = Order::with(['province', 'district', 'ward', 'promotion', 'member']);
-
-            // Filter by status
-            if ($request->has('status') && $request->status !== '') {
-                $query->where('status', $request->status);
-            }
-
-            // Search by keyword
-            if ($request->has('keyword') && ! empty($request->keyword)) {
-                $keyword = $request->keyword;
-                $query->where(function ($q) use ($keyword) {
-                    $q->where('code', 'like', "%{$keyword}%")
-                        ->orWhere('name', 'like', "%{$keyword}%")
-                        ->orWhere('phone', 'like', "%{$keyword}%");
-                });
-            }
-
-            // Filter by date
-            if ($request->has('date_from') && ! empty($request->date_from)) {
-                $query->whereDate('created_at', '>=', $request->date_from);
-            }
-            if ($request->has('date_to') && ! empty($request->date_to)) {
-                $query->whereDate('created_at', '<=', $request->date_to);
-            }
-
-            // Filter by payment status
-            if ($request->has('payment') && $request->payment !== '') {
-                $query->where('payment', $request->payment);
-            }
-
-            // Filter by ship status
-            if ($request->has('ship') && $request->ship !== '') {
-                $query->where('ship', $request->ship);
-            }
-
-            // Filter by user_id
-            if ($request->has('user_id') && $request->user_id !== '') {
-                $query->where('user_id', $request->user_id);
-            }
+            $filters = [
+                'status' => $request->get('status', ''),
+                'ship' => $request->get('ship', ''),
+                'code' => $request->get('code', ''),
+                'keyword' => $request->get('keyword', ''),
+            ];
 
             // Pagination
             $perPage = min((int) ($request->limit ?? 10), 100);
-            $orders = $query->orderBy('created_at', 'desc')->paginate($perPage);
+            $orders = $this->orders->paginateWithFilters($filters, $perPage);
 
             return response()->json([
                 'success' => true,

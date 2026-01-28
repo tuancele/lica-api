@@ -176,21 +176,28 @@ class BrandController extends Controller
             // Handle gallery
             $gallery = $this->processGallery($request);
 
-            // Create brand
-            $brand = Brand::create([
+            // Build DTO and call Action (keep response contract)
+            $dtoData = [
                 'name' => $request->name,
                 'slug' => $slug,
-                'content' => $request->content,
-                'image' => $request->image,
-                'banner' => $request->banner,
-                'logo' => $request->logo,
-                'gallery' => json_encode($gallery),
-                'seo_title' => $request->seo_title,
-                'seo_description' => $request->seo_description,
-                'status' => $request->status,
-                'sort' => $request->sort ?? 0,
-                'user_id' => Auth::id(),
-            ]);
+                'description' => $request->content,
+                'status' => (int) $request->status,
+                'sort' => (int) ($request->sort ?? 0),
+            ];
+
+            $dto = \App\DTOs\Brand\CreateBrandDTO::fromArray($dtoData);
+            $brand = app(\App\Actions\Brand\CreateBrandAction::class)->execute($dto);
+
+            // Persist other mutable columns not in DTO
+            $brand->content = $request->content;
+            $brand->image = $request->image;
+            $brand->banner = $request->banner;
+            $brand->logo = $request->logo;
+            $brand->gallery = json_encode($gallery);
+            $brand->seo_title = $request->seo_title;
+            $brand->seo_description = $request->seo_description;
+            $brand->user_id = Auth::id();
+            $brand->save();
 
             // Load relations
             $brand->load(['user', 'product']);

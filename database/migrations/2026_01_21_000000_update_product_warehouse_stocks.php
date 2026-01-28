@@ -9,6 +9,10 @@ class UpdateProductWarehouseStocks extends Migration
 {
     public function up(): void
     {
+        if (! Schema::hasTable('product_warehouse')) {
+            return;
+        }
+
         Schema::table('product_warehouse', function (Blueprint $table) {
             if (! Schema::hasColumn('product_warehouse', 'variant_id')) {
                 $table->unsignedBigInteger('variant_id')->nullable()->after('warehouse_id');
@@ -30,6 +34,10 @@ class UpdateProductWarehouseStocks extends Migration
 
     public function down(): void
     {
+        if (! Schema::hasTable('product_warehouse')) {
+            return;
+        }
+
         Schema::table('product_warehouse', function (Blueprint $table) {
             if (Schema::hasColumn('product_warehouse', 'deal_stock')) {
                 $table->dropColumn('deal_stock');

@@ -5,15 +5,16 @@ declare(strict_types=1);
 namespace App\Repositories\Product;
 
 use App\Modules\Product\Models\Product;
+use App\Repositories\Contracts\RepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 
 /**
  * Interface for Product Repository.
  *
- * Defines the contract for product data access operations
+ * Defines the contract for product data access operations.
  */
-interface ProductRepositoryInterface
+interface ProductRepositoryInterface extends RepositoryInterface
 {
     /**
      * Find product by ID.

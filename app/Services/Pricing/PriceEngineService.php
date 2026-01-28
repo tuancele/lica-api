@@ -91,19 +91,16 @@ class PriceEngineService implements PriceEngineServiceInterface
      */
     protected function getFlashSalePrice(int $productId, ?int $variantId, Carbon $now): ?array
     {
-        // Tìm Flash Sale đang active
-        $activeFlashSale = FlashSale::where('status', '1')
-            ->where('start', '<=', $now->timestamp)
-            ->where('end', '>=', $now->timestamp)
-            ->first();
-
-        if (! $activeFlashSale) {
-            return null;
-        }
-
-        // Tìm ProductSale cho sản phẩm này
-        $productSaleQuery = ProductSale::where('flashsale_id', $activeFlashSale->id)
-            ->where('product_id', $productId);
+        // Select ProductSale that belongs to an active FlashSale AND matches this product/variant.
+        // This avoids picking an unrelated active FlashSale when multiple campaigns overlap.
+        $productSaleQuery = ProductSale::query()
+            ->where('product_id', $productId)
+            ->whereHas('flashsale', function ($q) use ($now) {
+                $q->where('status', '1')
+                    ->where('start', '<=', $now->timestamp)
+                    ->where('end', '>=', $now->timestamp);
+            })
+            ->orderByDesc('id');
 
         if ($variantId) {
             $productSaleQuery->where('variant_id', $variantId);
@@ -114,6 +111,11 @@ class PriceEngineService implements PriceEngineServiceInterface
         $productSale = $productSaleQuery->first();
 
         if (! $productSale) {
+            return null;
+        }
+
+        $activeFlashSale = $productSale->flashsale;
+        if (! $activeFlashSale) {
             return null;
         }
 
@@ -140,6 +142,11 @@ class PriceEngineService implements PriceEngineServiceInterface
      */
     protected function getPromotionPrice(int $productId, Carbon $now): ?array
     {
+        // In minimal/test environments, marketing tables may not exist.
+        if (! \Schema::hasTable('marketing_campaign_products') || ! \Schema::hasTable('marketing_campaigns')) {
+            return null;
+        }
+
         // Tìm sản phẩm trong bất kỳ Marketing Campaign nào đang active
         // (tránh lỗi chọn nhầm campaign không chứa product)
         $campaignProduct = MarketingCampaignProduct::where('product_id', $productId)

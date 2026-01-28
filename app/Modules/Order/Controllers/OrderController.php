@@ -18,38 +18,28 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Validator;
+use App\Services\Order\OrderServiceInterface;
 
 class OrderController extends Controller
 {
     use Location;
 
+    public function __construct(
+        private readonly OrderServiceInterface $orders
+    ) {
+    }
+
     public function index(Request $request)
     {
         active('order', 'list');
-        $query = Order::query();
+        $filters = [
+            'status' => $request->get('status', ''),
+            'ship' => $request->get('ship', ''),
+            'code' => $request->get('code', ''),
+            'keyword' => $request->get('keyword', ''),
+        ];
 
-        if ($request->get('status') != '') {
-            $query->where('status', $request->get('status'));
-        }
-        if ($request->get('ship') != '') {
-            $query->where('ship', $request->get('ship'));
-        }
-        if ($request->get('code') != '') {
-            $query->where('code', $request->get('code'));
-        }
-        if ($request->get('keyword') != '') {
-            $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->get('keyword').'%')
-                    ->orWhere('email', 'like', '%'.$request->get('keyword').'%')
-                    ->orWhere('phone', 'like', '%'.$request->get('keyword').'%');
-            });
-        }
-
-        $data['orders'] = $query->orderBy('id', 'desc')->paginate(20)->appends([
-            'keyword' => $request->get('keyword'),
-            'status' => $request->get('status'),
-            'ship' => $request->get('ship'),
-        ]);
+        $data['orders'] = $this->orders->paginateWithFilters($filters, 20);
 
         return view('Order::index', $data);
     }

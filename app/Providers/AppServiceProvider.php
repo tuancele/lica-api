@@ -20,6 +20,41 @@ class AppServiceProvider extends ServiceProvider
             \App\Repositories\Product\ProductRepository::class
         );
 
+        $this->app->bind(
+            \App\Repositories\Category\CategoryRepositoryInterface::class,
+            \App\Repositories\Category\CategoryRepository::class
+        );
+
+        $this->app->bind(
+            \App\Repositories\Brand\BrandRepositoryInterface::class,
+            \App\Repositories\Brand\BrandRepository::class
+        );
+
+        $this->app->bind(
+            \App\Repositories\Order\OrderRepositoryInterface::class,
+            \App\Repositories\Order\OrderRepository::class
+        );
+
+        $this->app->bind(
+            \App\Repositories\Warehouse\WarehouseRepositoryInterface::class,
+            \App\Repositories\Warehouse\WarehouseRepository::class
+        );
+
+        $this->app->bind(
+            \App\Services\Cart\Contracts\CartPricingServiceInterface::class,
+            \App\Services\Cart\CartPricingService::class
+        );
+
+        $this->app->bind(
+            \App\Services\Order\OrderServiceInterface::class,
+            \App\Services\Order\OrderService::class
+        );
+
+        $this->app->bind(
+            \App\Services\Warehouse\WarehouseV2ServiceInterface::class,
+            \App\Services\Warehouse\WarehouseV2Service::class
+        );
+
         // Bind Service Interfaces
         $this->app->bind(
             \App\Services\Image\ImageServiceInterface::class,

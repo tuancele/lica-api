@@ -88,6 +88,21 @@ class DealRaceConditionTest extends TestCase
             {
                 return [];
             }
+
+            public function allocateStockForPromotion(int $variantId, int $quantity, string $type): array
+            {
+                return ['success' => true, 'message' => 'OK'];
+            }
+
+            public function releaseStockFromPromotion(int $variantId, int $quantity, string $type): array
+            {
+                return ['success' => true, 'message' => 'OK'];
+            }
+
+            public function deductStockForOrder(int $variantId, int $quantity, string $reason = 'order'): array
+            {
+                return ['success' => true, 'message' => 'OK'];
+            }
         });
 
         // Fake PriceEngine to simplify price calculation
@@ -224,6 +239,16 @@ class DealRaceConditionTest extends TestCase
             }
 
             public function deductStock(int $variantId, int $quantity, string $reason = 'order'): bool
+            {
+                return true;
+            }
+
+            public function processOrderStock(int $orderId): bool
+            {
+                return true;
+            }
+
+            public function rollbackOrderStock(int $orderId): bool
             {
                 return true;
             }

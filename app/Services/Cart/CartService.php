@@ -41,6 +41,7 @@ class CartService
     protected FlashSaleStockService $flashSaleStockService;
     protected PriceEngineServiceInterface $priceEngine;
     protected WarehouseServiceInterface $warehouseService;
+    protected \App\Services\Cart\Contracts\CartPricingServiceInterface $cartPricingService;
     private const DEAL_EXHAUSTED_MESSAGE = 'Quà tặng Deal Sốc đã hết, giá được chuyển về giá thường/khuyến mại.';
 
     /**
@@ -64,12 +65,14 @@ class CartService
         PriceCalculationService $priceService,
         FlashSaleStockService $flashSaleStockService,
         PriceEngineServiceInterface $priceEngine,
-        WarehouseServiceInterface $warehouseService
+        WarehouseServiceInterface $warehouseService,
+        \App\Services\Cart\Contracts\CartPricingServiceInterface $cartPricingService
     ) {
         $this->priceService = $priceService;
         $this->flashSaleStockService = $flashSaleStockService;
         $this->priceEngine = $priceEngine;
         $this->warehouseService = $warehouseService;
+        $this->cartPricingService = $cartPricingService;
 
         // Inject WarehouseService vào PriceEngineService
         if (method_exists($this->priceEngine, 'setWarehouseService')) {
@@ -94,238 +97,19 @@ class CartService
         $subtotal = 0;
 
         foreach ($cart->items as $variantId => $item) {
-            $variant = Variant::with(['product', 'color', 'size'])->find($variantId);
-            if (! $variant || ! $variant->product) {
+            $builtItem = $this->buildCartItem((int) $variantId, (array) $item);
+            if ($builtItem === null) {
                 continue;
             }
 
-            $product = $variant->product;
-            $quantity = (int) ($item['qty'] ?? 1);
-
-            // QUAN TRỌNG: Tính lại giá với số lượng thực tế từ PriceEngineService
-            // Không tin tưởng vào giá lưu sẵn trong Session
-            $priceWithQuantity = $this->priceEngine->calculatePriceWithQuantity(
-                $product->id,
-                $variantId,
-                $quantity
-            );
-
-            // Lấy giá cũ từ session để so sánh (logging)
-            $oldPrice = (float) ($item['price'] ?? 0);
-            $oldSubtotal = $oldPrice * $quantity;
-
-            // Sử dụng giá mới từ PriceEngineService
-            $newPrice = $quantity > 0 ? ($priceWithQuantity['total_price'] / $quantity) : 0; // Giá trung bình
-            $newSubtotal = (float) $priceWithQuantity['total_price'];
-
-            // ===== THÊM LOG DEBUG =====
-            Log::info('[DEBUG_CHECKOUT] Item price calculation', [
-                'variant_id' => $variantId,
-                'product_id' => $product->id,
-                'product_name' => $product->name,
-                'quantity' => $quantity,
-                'is_deal' => $item['is_deal'] ?? 0,
-                'old_price_from_session' => $oldPrice,
-                'new_price_from_engine' => $newPrice,
-                'new_subtotal' => $newSubtotal,
-                'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
-                'deal_unavailable' => false, // Will be set below
-            ]);
-            // ===== END LOG =====
-
-            // Deal Sốc pricing & fallback:
-            // - Nếu là quà Deal Sốc và còn quota/kho: áp dụng giá Deal theo thứ tự ưu tiên
-            //   Flash Sale > Promotion > Deal > Base (Deal chỉ override khi đang ở price type = normal)
-            // - Nếu quỹ/kho đã hết: hạ về giá thường/promo (giữ PriceEngine), gắn cảnh báo
-            $dealUnavailable = false;
-            $dealWarning = null;
-            if (! empty($item['is_deal'])) {
-                $dealCheck = $this->validateDealAvailability($product->id, $variantId, $quantity);
-                if (! $dealCheck['available']) {
-                    $dealUnavailable = true;
-                    $dealWarning = $dealCheck['message'];
-                    // Giữ newPrice/newSubtotal từ PriceEngine (đã là giá thường/promo)
-                } else {
-                    // ===== CRITICAL: Logic 2 - Sản phẩm mua kèm (Deal Sốc) LUÔN lấy giá từ Deal Sốc =====
-                    // Nếu là sản phẩm mua kèm (is_deal = 1), LUÔN áp dụng giá Deal Sốc, bất kể có Flash Sale/Promotion
-                    $isDealItem = ! empty($item['is_deal']) && (int) $item['is_deal'] === 1;
-
-                    if ($isDealItem) {
-                        // Sản phẩm mua kèm: LUÔN lấy giá từ Deal Sốc (kể cả 0đ)
-                        try {
-                            $dealPrice = $this->getDealPrice($product->id, $variantId);
-                            $newPrice = $dealPrice;
-                            $newSubtotal = $dealPrice * $quantity;
-
-                            // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
-                            $priceWithQuantity['total_price'] = $newSubtotal;
-
-                            // Ghi đè breakdown để FE hiển thị đúng
-                            $priceWithQuantity['price_breakdown'] = [
-                                [
-                                    'type' => 'deal',
-                                    'quantity' => $quantity,
-                                    'unit_price' => $dealPrice,
-                                    'subtotal' => $newSubtotal,
-                                ],
-                            ];
-
-                            Log::info('[CartService] Deal Sốc price applied (mua kèm - always use Deal price)', [
-                                'product_id' => $product->id,
-                                'variant_id' => $variantId,
-                                'deal_price' => $dealPrice,
-                                'quantity' => $quantity,
-                                'subtotal' => $newSubtotal,
-                            ]);
-                        } catch (\Throwable $e) {
-                            // Nếu lỗi khi lấy Deal price, vẫn giữ giá 0đ cho Deal Sốc
-                            $newPrice = 0.0;
-                            $newSubtotal = 0.0;
-
-                            // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
-                            $priceWithQuantity['total_price'] = 0.0;
-
-                            // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
-                            $priceWithQuantity['total_price'] = 0.0;
-
-                            Log::warning('[CartService] getDealPrice failed for Deal Sốc, keeping 0đ', [
-                                'product_id' => $product->id,
-                                'variant_id' => $variantId,
-                                'error' => $e->getMessage(),
-                            ]);
-                        }
-                    } else {
-                        // Sản phẩm mua thông thường: Áp dụng giá Deal nếu thỏa điều kiện ưu tiên (không có Flash Sale/Promotion)
-                        $dealPricing = $this->applyDealPriceForCartItem($product->id, $variantId, $quantity, $priceWithQuantity, false);
-                        if ($dealPricing !== null) {
-                            $newPrice = $dealPricing['unit_price'];
-                            $newSubtotal = $dealPricing['total_price'];
-
-                            // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
-                            $priceWithQuantity['total_price'] = $newSubtotal;
-
-                            // Ghi đè breakdown để FE hiển thị đúng
-                            if (isset($dealPricing['price_breakdown'])) {
-                                $priceWithQuantity['price_breakdown'] = $dealPricing['price_breakdown'];
-                            }
-                        }
-
-                        // Fallback về giá gốc nếu subtotal <= 0 và không phải Deal
-                        if ($newSubtotal <= 0.0) {
-                            if (! empty($variant->price) && (float) $variant->price > 0) {
-                                $basePrice = (float) $variant->price;
-                                $newPrice = $basePrice;
-                                $newSubtotal = $basePrice * $quantity;
-
-                                // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
-                                $priceWithQuantity['total_price'] = $newSubtotal;
-
-                                Log::warning('[CartService] Fallback to variant price (not a Deal)', [
-                                    'product_id' => $product->id,
-                                    'variant_id' => $variantId,
-                                    'base_price' => $basePrice,
-                                ]);
-                            }
-                        }
-                    }
-                }
-            }
-
-            // CRITICAL: Đảm bảo $newSubtotal và $priceWithQuantity['total_price'] đồng bộ
-            // Sau khi xử lý Deal, $priceWithQuantity['total_price'] đã được cập nhật
-            // Cần đọc lại để đảm bảo $newSubtotal chính xác
-            $newSubtotal = (float) $priceWithQuantity['total_price'];
-            $newPrice = $quantity > 0 ? ($newSubtotal / $quantity) : 0; // Giá trung bình
-
-            // ===== CẬP NHẬT LOG DEBUG với thông tin Deal =====
-            Log::info('[DEBUG_CHECKOUT] Item price calculation (after Deal)', [
-                'variant_id' => $variantId,
-                'product_id' => $product->id,
-                'product_name' => $product->name,
-                'quantity' => $quantity,
-                'is_deal' => $item['is_deal'] ?? 0,
-                'old_price_from_session' => $oldPrice,
-                'new_price_from_engine' => $newPrice,
-                'new_subtotal' => $newSubtotal,
-                'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
-                'deal_unavailable' => $dealUnavailable,
-                'deal_warning' => $dealWarning,
-            ]);
-            // ===== END LOG =====
-
-            // Log nếu giá thay đổi
-            if (abs($oldSubtotal - $newSubtotal) > 0.01) {
-                Log::info('[CartService] Price recalculated for cart item', [
-                    'variant_id' => $variantId,
-                    'product_id' => $product->id,
-                    'quantity' => $quantity,
-                    'old_price' => $oldPrice,
-                    'old_subtotal' => $oldSubtotal,
-                    'new_price' => $newPrice,
-                    'new_subtotal' => $newSubtotal,
-                    'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
-                    'warning' => $priceWithQuantity['warning'] ?? null,
-                ]);
-            }
-
-            // Get stock (fallback cho UI; stock thực đã được PriceEngine/Warehouse check)
-            // Legacy "999" sentinel is removed; fallback to 0 if unknown
-            $stock = isset($variant->stock) && $variant->stock !== null
-                ? (int) $variant->stock
-                : 0;
-
-            // Lấy price info cơ bản để hiển thị
-            $priceInfo = $this->priceService->calculateVariantPrice($variant);
-
-            $items[] = [
-                'variant_id' => (int) $variantId,
-                'product_id' => $product->id,
-                'product_name' => $product->name,
-                'product_slug' => $product->slug,
-                'product_image' => $this->formatImageUrl($product->image),
-                'variant' => [
-                    'id' => $variant->id,
-                    'sku' => $variant->sku,
-                    'option1_value' => $variant->option1_value,
-                    'color' => $variant->color ? [
-                        'id' => $variant->color->id,
-                        'name' => $variant->color->name,
-                    ] : null,
-                    'size' => $variant->size ? [
-                        'id' => $variant->size->id,
-                        'name' => $variant->size->name,
-                        'unit' => $variant->size->unit ?? '',
-                    ] : null,
-                ],
-                'qty' => $quantity,
-                'price' => $newPrice, // Giá trung bình (để hiển thị)
-                'original_price' => (float) $priceInfo->original_price,
-                'subtotal' => max(0, $newSubtotal), // Tổng giá đã tính lại, không âm
-                'is_deal' => isset($item['is_deal']) ? (int) $item['is_deal'] : 0,
-                'deal_unavailable' => $dealUnavailable,
-                'deal_warning' => $dealWarning,
-                'price_info' => [
-                    'price' => (float) $priceInfo->price,
-                    'original_price' => (float) $priceInfo->original_price,
-                    'type' => $priceInfo->type,
-                    'label' => $priceInfo->label,
-                    'discount_percent' => $priceInfo->discount_percent ?? 0,
-                ],
-                // Thêm thông tin Mixed Price từ PriceEngineService
-                'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
-                'flash_sale_remaining' => $priceWithQuantity['flash_sale_remaining'] ?? 0,
-                'warning' => $dealWarning ?: ($priceWithQuantity['warning'] ?? null),
-                'stock' => $stock,
-                'available' => $stock > 0,
-            ];
-
-            $totalQty += $quantity;
-            $subtotal += $newSubtotal; // Sử dụng subtotal mới
+            $items[] = $builtItem['item'];
+            $totalQty += $builtItem['quantity'];
+            $subtotal += $builtItem['subtotal'];
 
             // ===== THÊM LOG RUNNING TOTAL =====
             Log::info('[DEBUG_CHECKOUT] Running subtotal', [
-                'after_variant_id' => $variantId,
-                'item_subtotal' => $newSubtotal,
+                'after_variant_id' => (int) $variantId,
+                'item_subtotal' => $builtItem['subtotal'],
                 'running_subtotal' => $subtotal,
             ]);
             // ===== END LOG =====
@@ -436,6 +220,247 @@ class CartService
             'available_deals' => $availableDeals,
             'products_with_price' => $productsWithPrice, // For cart page display
             'deal_counts' => $deal_counts, // For cart page deal tracking
+        ];
+    }
+
+    /**
+     * Build a normalized cart item with full pricing & deal logic.
+     *
+     * This method is extracted from the original loop in getCart()
+     * and preserves the exact behavior (pricing, Deal Sốc, logs).
+     */
+    private function buildCartItem(int $variantId, array $item): ?array
+    {
+        $variant = Variant::with(['product', 'color', 'size'])->find($variantId);
+        if (! $variant || ! $variant->product) {
+            return null;
+        }
+
+        $product = $variant->product;
+        $quantity = (int) ($item['qty'] ?? 1);
+
+        // QUAN TRỌNG: Tính lại giá với số lượng thực tế từ PriceEngineService
+        // Không tin tưởng vào giá lưu sẵn trong Session
+        // Phase 2: mọi call vào PriceEngineService đều đi qua CartPricingService
+        $priceWithQuantity = $this->cartPricingService->calculateItemPriceWithQuantity(
+            $product->id,
+            $variantId,
+            $quantity
+        );
+
+        // Lấy giá cũ từ session để so sánh (logging)
+        $oldPrice = (float) ($item['price'] ?? 0);
+        $oldSubtotal = $oldPrice * $quantity;
+
+        // Sử dụng giá mới từ PriceEngineService
+        $newPrice = $quantity > 0 ? ($priceWithQuantity['total_price'] / $quantity) : 0; // Giá trung bình
+        $newSubtotal = (float) $priceWithQuantity['total_price'];
+
+        // ===== THÊM LOG DEBUG =====
+        Log::info('[DEBUG_CHECKOUT] Item price calculation', [
+            'variant_id' => $variantId,
+            'product_id' => $product->id,
+            'product_name' => $product->name,
+            'quantity' => $quantity,
+            'is_deal' => $item['is_deal'] ?? 0,
+            'old_price_from_session' => $oldPrice,
+            'new_price_from_engine' => $newPrice,
+            'new_subtotal' => $newSubtotal,
+            'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
+            'deal_unavailable' => false, // Will be set below
+        ]);
+        // ===== END LOG =====
+
+        // Deal Sốc pricing & fallback:
+        // - Nếu là quà Deal Sốc và còn quota/kho: áp dụng giá Deal theo thứ tự ưu tiên
+        //   Flash Sale > Promotion > Deal > Base (Deal chỉ override khi đang ở price type = normal)
+        // - Nếu quỹ/kho đã hết: hạ về giá thường/promo (giữ PriceEngine), gắn cảnh báo
+        $dealUnavailable = false;
+        $dealWarning = null;
+        if (! empty($item['is_deal'])) {
+            $dealCheck = $this->validateDealAvailability($product->id, $variantId, $quantity);
+            if (! $dealCheck['available']) {
+                $dealUnavailable = true;
+                $dealWarning = $dealCheck['message'];
+                // Giữ newPrice/newSubtotal từ PriceEngine (đã là giá thường/promo)
+            } else {
+                // ===== CRITICAL: Logic 2 - Sản phẩm mua kèm (Deal Sốc) LUÔN lấy giá từ Deal Sốc =====
+                // Nếu là sản phẩm mua kèm (is_deal = 1), LUÔN áp dụng giá Deal Sốc, bất kể có Flash Sale/Promotion
+                $isDealItem = ! empty($item['is_deal']) && (int) $item['is_deal'] === 1;
+
+                if ($isDealItem) {
+                    // Sản phẩm mua kèm: LUÔN lấy giá từ Deal Sốc (kể cả 0đ)
+                    try {
+                        $dealPrice = $this->getDealPrice($product->id, $variantId);
+                        $newPrice = $dealPrice;
+                        $newSubtotal = $dealPrice * $quantity;
+
+                        // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
+                        $priceWithQuantity['total_price'] = $newSubtotal;
+
+                        // Ghi đè breakdown để FE hiển thị đúng
+                        $priceWithQuantity['price_breakdown'] = [
+                            [
+                                'type' => 'deal',
+                                'quantity' => $quantity,
+                                'unit_price' => $dealPrice,
+                                'subtotal' => $newSubtotal,
+                            ],
+                        ];
+
+                        Log::info('[CartService] Deal Sốc price applied (mua kèm - always use Deal price)', [
+                            'product_id' => $product->id,
+                            'variant_id' => $variantId,
+                            'deal_price' => $dealPrice,
+                            'quantity' => $quantity,
+                            'subtotal' => $newSubtotal,
+                        ]);
+                    } catch (\Throwable $e) {
+                        // Nếu lỗi khi lấy Deal price, vẫn giữ giá 0đ cho Deal Sốc
+                        $newPrice = 0.0;
+                        $newSubtotal = 0.0;
+
+                        // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
+                        $priceWithQuantity['total_price'] = 0.0;
+
+                        // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
+                        $priceWithQuantity['total_price'] = 0.0;
+
+                        Log::warning('[CartService] getDealPrice failed for Deal Sốc, keeping 0đ', [
+                            'product_id' => $product->id,
+                            'variant_id' => $variantId,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                } else {
+                    // Sản phẩm mua thông thường: Áp dụng giá Deal nếu thỏa điều kiện ưu tiên (không có Flash Sale/Promotion)
+                    $dealPricing = $this->applyDealPriceForCartItem($product->id, $variantId, $quantity, $priceWithQuantity, false);
+                    if ($dealPricing !== null) {
+                        $newPrice = $dealPricing['unit_price'];
+                        $newSubtotal = $dealPricing['total_price'];
+
+                        // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
+                        $priceWithQuantity['total_price'] = $newSubtotal;
+
+                        // Ghi đè breakdown để FE hiển thị đúng
+                        if (isset($dealPricing['price_breakdown'])) {
+                            $priceWithQuantity['price_breakdown'] = $dealPricing['price_breakdown'];
+                        }
+                    }
+
+                    // Fallback về giá gốc nếu subtotal <= 0 và không phải Deal
+                    if ($newSubtotal <= 0.0) {
+                        if (! empty($variant->price) && (float) $variant->price > 0) {
+                            $basePrice = (float) $variant->price;
+                            $newPrice = $basePrice;
+                            $newSubtotal = $basePrice * $quantity;
+
+                            // CRITICAL: Cập nhật priceWithQuantity['total_price'] để đảm bảo tính tổng đúng
+                            $priceWithQuantity['total_price'] = $newSubtotal;
+
+                            Log::warning('[CartService] Fallback to variant price (not a Deal)', [
+                                'product_id' => $product->id,
+                                'variant_id' => $variantId,
+                                'base_price' => $basePrice,
+                            ]);
+                        }
+                    }
+                }
+            }
+        }
+
+        // CRITICAL: Đảm bảo $newSubtotal và $priceWithQuantity['total_price'] đồng bộ
+        // Sau khi xử lý Deal, $priceWithQuantity['total_price'] đã được cập nhật
+        // Cần đọc lại để đảm bảo $newSubtotal chính xác
+        $newSubtotal = (float) $priceWithQuantity['total_price'];
+        $newPrice = $quantity > 0 ? ($newSubtotal / $quantity) : 0; // Giá trung bình
+
+        // ===== CẬP NHẬT LOG DEBUG với thông tin Deal =====
+        Log::info('[DEBUG_CHECKOUT] Item price calculation (after Deal)', [
+            'variant_id' => $variantId,
+            'product_id' => $product->id,
+            'product_name' => $product->name,
+            'quantity' => $quantity,
+            'is_deal' => $item['is_deal'] ?? 0,
+            'old_price_from_session' => $oldPrice,
+            'new_price_from_engine' => $newPrice,
+            'new_subtotal' => $newSubtotal,
+            'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
+            'deal_unavailable' => $dealUnavailable,
+            'deal_warning' => $dealWarning,
+        ]);
+        // ===== END LOG =====
+
+        // Log nếu giá thay đổi
+        if (abs($oldSubtotal - $newSubtotal) > 0.01) {
+            Log::info('[CartService] Price recalculated for cart item', [
+                'variant_id' => $variantId,
+                'product_id' => $product->id,
+                'quantity' => $quantity,
+                'old_price' => $oldPrice,
+                'old_subtotal' => $oldSubtotal,
+                'new_price' => $newPrice,
+                'new_subtotal' => $newSubtotal,
+                'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
+                'warning' => $priceWithQuantity['warning'] ?? null,
+            ]);
+        }
+
+        // Get stock (fallback cho UI; stock thực đã được PriceEngine/Warehouse check)
+        // Legacy "999" sentinel is removed; fallback to 0 if unknown
+        $stock = isset($variant->stock) && $variant->stock !== null
+            ? (int) $variant->stock
+            : 0;
+
+        // Lấy price info cơ bản để hiển thị
+        $priceInfo = $this->priceService->calculateVariantPrice($variant);
+
+        $cartItem = [
+            'variant_id' => $variantId,
+            'product_id' => $product->id,
+            'product_name' => $product->name,
+            'product_slug' => $product->slug,
+            'product_image' => $this->formatImageUrl($product->image),
+            'variant' => [
+                'id' => $variant->id,
+                'sku' => $variant->sku,
+                'option1_value' => $variant->option1_value,
+                'color' => $variant->color ? [
+                    'id' => $variant->color->id,
+                    'name' => $variant->color->name,
+                ] : null,
+                'size' => $variant->size ? [
+                    'id' => $variant->size->id,
+                    'name' => $variant->size->name,
+                    'unit' => $variant->size->unit ?? '',
+                ] : null,
+            ],
+            'qty' => $quantity,
+            'price' => $newPrice, // Giá trung bình (để hiển thị)
+            'original_price' => (float) $priceInfo->original_price,
+            'subtotal' => max(0, $newSubtotal), // Tổng giá đã tính lại, không âm
+            'is_deal' => isset($item['is_deal']) ? (int) $item['is_deal'] : 0,
+            'deal_unavailable' => $dealUnavailable,
+            'deal_warning' => $dealWarning,
+            'price_info' => [
+                'price' => (float) $priceInfo->price,
+                'original_price' => (float) $priceInfo->original_price,
+                'type' => $priceInfo->type,
+                'label' => $priceInfo->label,
+                'discount_percent' => $priceInfo->discount_percent ?? 0,
+            ],
+            // Thêm thông tin Mixed Price từ PriceEngineService
+            'price_breakdown' => $priceWithQuantity['price_breakdown'] ?? null,
+            'flash_sale_remaining' => $priceWithQuantity['flash_sale_remaining'] ?? 0,
+            'warning' => $dealWarning ?: ($priceWithQuantity['warning'] ?? null),
+            'stock' => $stock,
+            'available' => $stock > 0,
+        ];
+
+        return [
+            'item' => $cartItem,
+            'quantity' => $quantity,
+            'subtotal' => $newSubtotal,
         ];
     }
 
