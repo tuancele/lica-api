@@ -47,7 +47,7 @@ class OrderController extends Controller
     public function view($code)
     {
         active('order', 'list');
-        $order = Order::where('code', $code)->first();
+        $order = $this->orders->findByCodeWithDetails($code);
         if (! $order) {
             return redirect('admin/order');
         }
