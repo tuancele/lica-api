@@ -46,3 +46,4 @@ class RateResource extends JsonResource
         ];
     }
 }
+

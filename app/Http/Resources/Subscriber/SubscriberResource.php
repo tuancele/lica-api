@@ -18,3 +18,4 @@ class SubscriberResource extends JsonResource
         ];
     }
 }
+

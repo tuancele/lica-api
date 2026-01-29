@@ -249,3 +249,4 @@ echo "========================================\n";
 echo "Full log: {$logFile}\n";
 echo "Analysis saved: {$analysisFile}\n";
 
+

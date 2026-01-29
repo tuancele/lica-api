@@ -31,3 +31,4 @@ class PickResource extends JsonResource
         ];
     }
 }
+

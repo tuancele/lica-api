@@ -31,3 +31,4 @@ class CompareResource extends JsonResource
         ];
     }
 }
+

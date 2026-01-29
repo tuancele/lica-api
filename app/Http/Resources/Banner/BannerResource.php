@@ -29,3 +29,4 @@ class BannerResource extends JsonResource
         ];
     }
 }
+

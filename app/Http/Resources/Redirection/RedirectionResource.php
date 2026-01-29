@@ -21,3 +21,4 @@ class RedirectionResource extends JsonResource
         ];
     }
 }
+

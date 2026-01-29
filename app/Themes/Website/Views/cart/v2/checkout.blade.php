@@ -2,8 +2,18 @@
 @section('title','Thanh toán')
 @section('description','Thanh toán')
 @section('content')
-<link href="/public/website/select2/select2.min.css" rel="stylesheet" />
-<script src="/public/website/select2/select2.min.js"></script>
+<link href="{{ asset('website/select2/select2.min.css') }}" rel="stylesheet" />
+<script src="{{ asset('website/select2/select2.min.js') }}"></script>
+<script>
+    // Pass routes to checkout handler
+    window.checkoutRoute = '{{ route("checkout.v2.checkout") }}';
+    window.shippingFeeRoute = '{{ route("checkout.v2.shippingFee") }}';
+    window.applyCouponRoute = '{{ route("checkout.v2.applyCoupon") }}';
+    window.removeCouponRoute = '{{ route("checkout.v2.removeCoupon") }}';
+    window.searchLocationRoute = '{{ route("checkout.v2.searchLocation") }}';
+    window.checkoutResultRoute = '{{ route("checkout.v2.result") }}';
+</script>
+<script src="{{ asset('website/js/checkout-handler.js') }}" defer></script>
 <section class="mt-3 mb-5" id="page_checkout">
     <div class="container-lg">
         <div class="breadcrumb">
@@ -16,14 +26,15 @@
         <form id="checkoutForm" method="post" class="checkout mt-2">
         @csrf
         <input type="hidden" name="token" value="{{$token}}">
-        <div class="row mt-3">
-            <div class="col-12 col-md-8" style="background-color: #fff; padding: 20px; border-radius: 8px;">
-                <div class="align-center space-between mb-2 mt-3">
-                    <span class="fs-18 fw-bold">Thông tin người mua hàng</span>
-                    @if(!isset($member) && empty($member))
-                    <button class="link" type="button" data-bs-toggle="modal" data-bs-target="#myLogin">Đăng nhập nhanh</button>
-                    @endif
-                </div>
+        <div class="row mt-3 checkout-layout">
+            <div class="col-12 col-lg-8 checkout-form-section">
+                <div class="checkout-form-card">
+                    <div class="form-section-header">
+                        <h2 class="section-title">Thông tin người mua hàng</h2>
+                        @if(!isset($member) && empty($member))
+                        <button class="btn-link" type="button" data-bs-toggle="modal" data-bs-target="#myLogin">Đăng nhập nhanh</button>
+                        @endif
+                    </div>
                 @php $member = auth()->guard('member')->user(); @endphp
                 @if(isset($member) && !empty($member))
                 <p>Bạn đã đăng nhập với tài khoản <a class="text-underline" href="/account/profile">{{$member['email']}}</a>. <a href="{{route('account.logout')}}">Đăng xuất</a></p>
@@ -48,36 +59,111 @@
                 @else
                 @include('Website::cart.v2.partials.address-form')
                 @endif
-            </div>
-            <div class="col-12 col-md-4">
-                <div class="cart-sidebar">
-                    <div class="cart_totals">
-                        <h3>CỘNG GIỎ HÀNG</h3>
-                        <div class="cart-summary">
-                            <div class="summary-row">
-                                <span>Tạm tính:</span>
-                                <span id="subtotal">{{number_format($cart['summary']['subtotal'] ?? 0)}}đ</span>
+                
+                <!-- Payment Methods Section -->
+                <div class="payment-methods-section">
+                    <h3 class="section-subtitle">Phương thức thanh toán</h3>
+                    <div class="payment-methods-grid">
+                        <label class="payment-method-card">
+                            <input type="radio" name="payment_method" value="cod" checked>
+                            <div class="payment-card-content">
+                                <div class="payment-icon">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                        <path d="M20 4H4C2.89 4 2.01 4.89 2.01 6L2 18C2 19.11 2.89 20 4 20H20C21.11 20 22 19.11 22 18V6C22 4.89 21.11 4 20 4ZM20 18H4V8H20V18Z" fill="currentColor"/>
+                                    </svg>
+                                </div>
+                                <div class="payment-info">
+                                    <span class="payment-name">Thanh toán khi nhận hàng</span>
+                                    <span class="payment-desc">COD</span>
+                                </div>
                             </div>
-                            <div class="summary-row">
-                                <span>Giảm giá:</span>
-                                <span class="text-success" id="discount">-{{number_format($cart['summary']['discount'] ?? 0)}}đ</span>
+                        </label>
+                        
+                        <label class="payment-method-card">
+                            <input type="radio" name="payment_method" value="bank_transfer">
+                            <div class="payment-card-content">
+                                <div class="payment-icon">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                        <path d="M20 4H4C2.89 4 2.01 4.89 2.01 6L2 18C2 19.11 2.89 20 4 20H20C21.11 20 22 19.11 22 18V6C22 4.89 21.11 4 20 4ZM20 18H4V8H20V18Z" fill="currentColor"/>
+                                    </svg>
+                                </div>
+                                <div class="payment-info">
+                                    <span class="payment-name">Chuyển khoản ngân hàng</span>
+                                    <span class="payment-desc">Bank Transfer</span>
+                                </div>
                             </div>
-                            <div class="summary-row">
-                                <span>Phí vận chuyển:</span>
-                                <span id="shipping-fee">{{number_format($cart['summary']['shipping_fee'] ?? 0)}}đ</span>
-                            </div>
-                            <div class="summary-row total-row">
-                                <span><strong>Tổng cộng:</strong></span>
-                                <span><strong id="total">{{number_format($cart['summary']['total'] ?? 0)}}đ</strong></span>
-                            </div>
-                        </div>
-                        <div class="coupon-section mt-3">
-                            <input type="text" id="coupon-code" class="form-control" placeholder="Nhập mã giảm giá">
-                            <button type="button" id="apply-coupon" class="btn btn-sm btn-primary mt-2">Áp dụng</button>
-                            <button type="button" id="remove-coupon" class="btn btn-sm btn-secondary mt-2" style="display:none;">Hủy mã</button>
-                        </div>
-                        <button type="submit" class="btn btn-primary w-100 mt-3">Đặt hàng</button>
+                        </label>
                     </div>
+                </div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-4 checkout-summary-section">
+                <div class="order-summary-card sticky-summary">
+                    <h3 class="summary-title">Tóm tắt đơn hàng</h3>
+                    <div class="order-summary-details">
+                        <div class="summary-row">
+                            <span>Tạm tính:</span>
+                            <span id="subtotal">{{number_format($cart['summary']['subtotal'] ?? 0)}}đ</span>
+                        </div>
+                        <div class="summary-row">
+                            <span>Giảm giá:</span>
+                            <span class="text-success" id="discount">-{{number_format($cart['summary']['discount'] ?? 0)}}đ</span>
+                        </div>
+                        <div class="summary-row">
+                            <span>Phí vận chuyển:</span>
+                            <span id="shipping-fee">{{number_format($cart['summary']['shipping_fee'] ?? 0)}}đ</span>
+                        </div>
+                        <div class="summary-row summary-total">
+                            <span><strong>Tổng cộng:</strong></span>
+                            <span class="total-amount"><strong id="total">{{number_format($cart['summary']['total'] ?? 0)}}đ</strong></span>
+                        </div>
+                    </div>
+                    
+                    <div class="voucher-section">
+                        <label class="voucher-label">Mã giảm giá</label>
+                        <div class="voucher-input-group">
+                            <input type="text" 
+                                   id="coupon-code" 
+                                   class="form-control voucher-input" 
+                                   placeholder="Nhập mã giảm giá">
+                            <button type="button" 
+                                    id="apply-coupon" 
+                                    class="btn btn-primary btn-sm voucher-btn">
+                                Áp dụng
+                            </button>
+                        </div>
+                        <button type="button" 
+                                id="remove-coupon" 
+                                class="btn btn-link btn-sm remove-coupon-btn" 
+                                style="display:none;">
+                            Hủy mã
+                        </button>
+                    </div>
+                    
+                    <div class="trust-signals">
+                        <div class="trust-item">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <path d="M10 0L12.09 6.26L18 7.27L13 11.14L14.18 17.02L10 14.77L5.82 17.02L7 11.14L2 7.27L7.91 6.26L10 0Z" fill="currentColor"/>
+                            </svg>
+                            <span>Chính hãng 100%</span>
+                        </div>
+                        <div class="trust-item">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <path d="M10 0C4.48 0 0 4.48 0 10s4.48 10 10 10 10-4.48 10-10S15.52 0 10 0zm-2 15l-5-5 1.41-1.41L8 12.17l7.59-7.59L17 6l-9 9z" fill="currentColor"/>
+                            </svg>
+                            <span>Bảo mật thanh toán</span>
+                        </div>
+                        <div class="trust-item">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <path d="M10 0C4.48 0 0 4.48 0 10s4.48 10 10 10 10-4.48 10-10S15.52 0 10 0zm1 15H9v-2h2v2zm0-4H9V5h2v6z" fill="currentColor"/>
+                            </svg>
+                            <span>Miễn phí vận chuyển</span>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-checkout-submit w-100">
+                        XÁC NHẬN ĐẶT HÀNG
+                    </button>
                 </div>
             </div>
         </div>

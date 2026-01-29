@@ -32,3 +32,4 @@ class VideoResource extends JsonResource
         ];
     }
 }
+

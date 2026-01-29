@@ -19,3 +19,4 @@ echo Note: This only affects current terminal session.
 echo To make permanent, add to System Environment Variables or run this script each time.
 echo.
 
+

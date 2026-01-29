@@ -2,10 +2,10 @@
     <div class="card-cover">
         <a href="{{getSlug($product->slug)}}">
             <div class="skeleton--img-md js-skeleton">
-                <img src="{{getImage($product->image)}}" alt="{{$product->name}}" width="212" height="212" class="js-skeleton-img" loading="lazy">
+                <img src="{{getImage($product->image)}}" alt="{{$product->name}}" class="js-skeleton-img" loading="lazy">
             </div>
         </a>
-        <div class="group-wishlist-{{$product->id}}">
+        <div class="group-wishlist group-wishlist-{{$product->id}}">
             {!!wishList($product->id)!!}
         </div>
         @php
@@ -48,19 +48,25 @@
         @if($hasDiscount && $discountPercent > 0)
         <div class="tag tag-discount"><span>-{{$discountPercent}}%</span></div>
         @endif
-        @if($product->stock == 0)
+        @if(isProductOutOfStock($product))
         <div class="out-stock">Hết hàng</div>
         @endif
         <div class="status-product">
             @if($product->best)
-            <div class="deal-hot mb-2">Deal<br/>Hot</div>
+            <div class="deal-hot">Deal Hot</div>
             @endif
             @if($product->is_new)
-            <div class="is-new mb-2">Mới</div>
+            <div class="is-new">Mới</div>
             @endif
         </div>
+        <!-- Quick Add to Cart Button -->
+        <div class="quick-add-cart">
+            <button type="button" onclick="window.location.href='{{getSlug($product->slug)}}'" aria-label="Thêm nhanh vào giỏ hàng">
+                Thêm nhanh
+            </button>
+        </div>
     </div>
-    <div class="card-content mt-2">
+    <div class="card-content">
         <div class="price">
             {!!checkSale($product->id)!!}
         </div>

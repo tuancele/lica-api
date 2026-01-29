@@ -11,3 +11,4 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/docs-api', [ApiDocsController::class, 'index'])->name('api.docs');
+

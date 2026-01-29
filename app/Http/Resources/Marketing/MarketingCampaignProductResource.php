@@ -30,3 +30,4 @@ class MarketingCampaignProductResource extends JsonResource
         ];
     }
 }
+

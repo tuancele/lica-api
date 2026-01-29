@@ -36,3 +36,4 @@ class PromotionResource extends JsonResource
         ];
     }
 }
+

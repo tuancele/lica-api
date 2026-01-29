@@ -22,3 +22,4 @@ class FeedbackResource extends JsonResource
         ];
     }
 }
+

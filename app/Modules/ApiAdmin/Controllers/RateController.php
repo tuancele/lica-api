@@ -116,3 +116,4 @@ class RateController extends Controller
         }
     }
 }
+

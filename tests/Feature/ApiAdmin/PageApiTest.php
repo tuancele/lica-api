@@ -76,3 +76,4 @@ class PageApiTest extends TestCase
             ->assertJson(['success' => true]);
     }
 }
+

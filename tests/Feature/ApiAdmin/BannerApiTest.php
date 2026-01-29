@@ -77,3 +77,4 @@ class BannerApiTest extends TestCase
             ->assertJson(['success' => true]);
     }
 }
+

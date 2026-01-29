@@ -2,8 +2,15 @@
 @section('title', ($detail->seo_title)?$detail->seo_title:$detail->name)
 @section('description',$detail->seo_description)
 @section('header')
-<link rel="stylesheet" href="/public/website/owl-carousel/owl.carousel-2.0.0.css">
-<script src="/public/website/owl-carousel/owl.carousel-2.0.0.min.js"></script>
+<link rel="stylesheet" href="{{ asset('website/owl-carousel/owl.carousel-2.0.0.css') }}">
+<script src="{{ asset('website/owl-carousel/owl.carousel-2.0.0.min.js') }}"></script>
+<script>
+    // Pass routes to JS handler
+    window.cartAddRoute = '{{ route("cart.add") }}';
+    window.cartPaymentRoute = '{{ route("cart.payment") }}';
+    window.cartIndexRoute = '{{ route("cart.index") }}';
+</script>
+<script src="{{ asset('website/js/product-handler.js') }}" defer></script>
 @endsection
 @section('content')
 <section class="mt-3" id="detailProduct" data-product-id="{{$detail->id ?? ''}}">
@@ -597,7 +604,7 @@
                     <div class="brand-name fs-14 fw-600 mb-2" style="color: #666;">{{$detail->brand->name ?? ''}}</div>
                     @endif
                     @endif
-                    <h1 class="title-product fs-24 fw-bold mb-3">{{$detail->name ?? ''}}</h1>
+                    <h1 class="title-product">{{$detail->name ?? ''}}</h1>
                 @php
                     // Bảo vệ trong trường hợp $t_rates null hoặc không được truyền
                     $rateCollection = isset($t_rates) && $t_rates ? $t_rates : collect();
@@ -1780,100 +1787,7 @@
         }
     });
     
-    $('body').on('click','.addCartDetail',function(e){
-        // Prevent click if button is disabled
-        if ($(this).prop('disabled') || $(this).hasClass('disabled')) {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-        }
-        
-        // Check stock from active variant in #variant-option1-list
-        // First try to get from active variant
-        let stock = null;
-        const variantList = $('#variant-option1-list');
-        
-        if (variantList.length > 0) {
-            // Product has variants
-            const activeVariant = variantList.find('.item-variant.active');
-            if (activeVariant.length > 0) {
-                stock = parseInt(activeVariant.data('stock') || activeVariant.attr('data-stock') || 0);
-            } else {
-                // Fallback: get from hidden input variant_id and find variant
-                const variantId = $('input[name="variant_id"]').val();
-                if (variantId) {
-                    const variant = variantList.find(`.item-variant[data-variant-id="${variantId}"]`);
-                    if (variant.length > 0) {
-                        stock = parseInt(variant.data('stock') || variant.attr('data-stock') || 0);
-                    }
-                }
-            }
-        } else {
-            // Product has no variants, check product stock from API data or fallback
-            // Try to get from API-loaded data
-            const productDetailInfo = document.getElementById('product-detail-info');
-            if (productDetailInfo && productDetailInfo.dataset.productData) {
-                try {
-                    const productData = JSON.parse(productDetailInfo.dataset.productData);
-                    stock = productData.warehouse_stock !== undefined ? productData.warehouse_stock : productData.stock;
-                } catch(e) {
-                    console.warn('Failed to parse product data:', e);
-                }
-            }
-            // If still null, skip stock check (allow action to proceed)
-        }
-        
-        // Only show alert if stock is explicitly 0 or less (not null/undefined)
-        if (stock !== null && stock !== undefined && (isNaN(stock) || stock <= 0)) {
-            e.preventDefault();
-            e.stopPropagation();
-            alert('Sản phẩm đã hết hàng');
-            return false;
-        }
-        
-        var main_id = $('input[name="variant_id"]').val();
-        var main_qty = $('input.quantity-input').val();
-        var combo = [];
-        
-        combo.push({id: main_id, qty: main_qty, is_deal: 0});
-        $('.deal-checkbox-custom:checked').each(function(){
-            combo.push({id: $(this).val(), qty: 1, is_deal: 1});
-        });
-
-        $.ajax({
-        type: 'post',
-        url: '{{route("cart.add")}}',
-        data: {combo: combo},
-        headers:
-        {
-            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-        },
-        beforeSend: function () {
-            $('.addCartDetail').prop('disabled',true);
-            $('.addCartDetail .icon').html('<span class="spinner-border text-light"></span>')
-        },
-        success: function (res) {
-            $('.addCartDetail').prop('disabled',false);
-            $('.addCartDetail .icon').html('<svg width="22" height="19" viewBox="0 0 22 19" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 6.99953H16.21L11.83 0.439531C11.64 0.159531 11.32 0.0195312 11 0.0195312C10.68 0.0195312 10.36 0.159531 10.17 0.449531L5.79 6.99953H1C0.45 6.99953 0 7.44953 0 7.99953C0 8.08953 0.00999996 8.17953 0.04 8.26953L2.58 17.5395C2.81 18.3795 3.58 18.9995 4.5 18.9995H17.5C18.42 18.9995 19.19 18.3795 19.43 17.5395L21.97 8.26953L22 7.99953C22 7.44953 21.55 6.99953 21 6.99953ZM11 2.79953L13.8 6.99953H8.2L11 2.79953ZM17.5 16.9995L4.51 17.0095L2.31 8.99953H19.7L17.5 16.9995ZM11 10.9995C9.9 10.9995 9 11.8995 9 12.9995C9 14.0995 9.9 14.9995 11 14.9995C12.1 14.9995 13 14.0995 13 12.9995C13 11.8995 12.1 10.9995 11 10.9995Z" fill="white"></path></svg>');
-          if(res.status == 'success'){
-            $('.count-cart').html(res.total);
-            alert("Đã thêm vào giỏ hàng");
-          }else{
-            var errorMsg = res.message || "Có lỗi xảy ra trong quá trình xử lý, xin vui lòng thử lại";
-            alert(errorMsg);
-          }
-        },
-        error: function(xhr, status, error){
-            $('.addCartDetail').prop('disabled',false);
-            $('.addCartDetail .icon').html('<svg width="22" height="19" viewBox="0 0 22 19" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 6.99953H16.21L11.83 0.439531C11.64 0.159531 11.32 0.0195312 11 0.0195312C10.68 0.0195312 10.36 0.159531 10.17 0.449531L5.79 6.99953H1C0.45 6.99953 0 7.44953 0 7.99953C0 8.08953 0.00999996 8.17953 0.04 8.26953L2.58 17.5395C2.81 18.3795 3.58 18.9995 4.5 18.9995H17.5C18.42 18.9995 19.19 18.3795 19.43 17.5395L21.97 8.26953L22 7.99953C22 7.44953 21.55 6.99953 21 6.99953ZM11 2.79953L13.8 6.99953H8.2L11 2.79953ZM17.5 16.9995L4.51 17.0095L2.31 8.99953H19.7L17.5 16.9995ZM11 10.9995C9.9 10.9995 9 11.8995 9 12.9995C9 14.0995 9.9 14.9995 11 14.9995C12.1 14.9995 13 14.0995 13 12.9995C13 11.8995 12.1 10.9995 11 10.9995Z" fill="white"></path></svg>');
-            var errorMsg = 'Có lỗi xảy ra, xin vui lòng thử lại';
-            if(xhr.responseJSON && xhr.responseJSON.message){
-                errorMsg = xhr.responseJSON.message;
-            }
-            alert(errorMsg);
-        }
-      })
-    });
+    // Cart actions moved to product-handler.js
 
     $('body').on('click','.buyNowDetail',function(e){
         // Prevent click if button is disabled
@@ -2105,6 +2019,20 @@
                 $('.addCartDetail span:last-child').text('Thêm Vào Giỏ Hàng');
                 $('.buyNowDetail').not('.btnBuyDealSốc').text('Mua ngay');
                 $('.buyNowDetail.btnBuyDealSốc').text('MUA DEAL SỐC');
+            }
+            
+            // Sync with product-handler.js state for real-time updates
+            if (typeof window.ProductHandler !== 'undefined' && window.ProductHandler.syncVariantState) {
+                setTimeout(function() {
+                    window.ProductHandler.syncVariantState();
+                }, 10);
+            }
+            
+            // Sync with product-handler.js state
+            if (typeof window.ProductHandler !== 'undefined' && window.ProductHandler.syncVariantState) {
+                setTimeout(function() {
+                    window.ProductHandler.syncVariantState();
+                }, 10);
             }
         });
     } else {

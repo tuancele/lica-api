@@ -178,3 +178,4 @@ class BrandApiTest extends TestCase
         }
     }
 }
+

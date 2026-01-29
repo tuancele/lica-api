@@ -26,3 +26,4 @@ return new class extends Migration
         // No automatic rollback – legacy structure intentionally removed.
     }
 };
+

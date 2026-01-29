@@ -267,3 +267,4 @@ class PageController extends Controller
         }
     }
 }
+

@@ -76,3 +76,4 @@ class OriginApiTest extends TestCase
             ->assertJson(['success' => true]);
     }
 }
+

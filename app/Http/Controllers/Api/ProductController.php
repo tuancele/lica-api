@@ -216,6 +216,8 @@ class ProductController extends Controller
                 'label' => $priceInfo->label ?? '',
                 'discount_percent' => $priceInfo->discount_percent ?? 0,
             ],
+            // Note: 'stock' field is deprecated - use 'warehouse_stock' instead
+            // Kept for backward compatibility only
             'stock' => (int) ($product->stock ?? 0),
             'best' => (int) ($product->best ?? 0),
             'is_new' => (int) ($product->is_new ?? 0),
@@ -233,7 +235,7 @@ class ProductController extends Controller
             $result['price_sale'] = $priceInfo->price; // Flash Sale price for backward compatibility
         }
 
-        // Get warehouse stock for variant
+        // Get warehouse stock for variant (Warehouse V2 - source of truth)
         $warehouseStock = 0;
         $variantId = null;
         if (isset($product->size_id) && isset($product->color_id)) {
@@ -250,8 +252,8 @@ class ProductController extends Controller
                     Log::warning('Failed to get warehouse stock for variant: '.$variant->id, [
                         'error' => $e->getMessage(),
                     ]);
-                    // Fallback to variant stock
-                    $warehouseStock = (int) ($variant->stock ?? 0);
+                    // Warehouse V2: if check fails, consider out of stock (0) for safety
+                    $warehouseStock = 0;
                 }
             }
         } else {
@@ -266,20 +268,22 @@ class ProductController extends Controller
                     $stockData = $this->warehouseService->getVariantStock($firstVariant->id);
                     $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
                 } else {
-                    // Fallback to product stock
-                    $warehouseStock = (int) ($product->stock ?? 0);
+                    // No variant found: consider out of stock
+                    $warehouseStock = 0;
                 }
             } catch (\Exception $e) {
                 Log::warning('Failed to get warehouse stock for product: '.$product->id, [
                     'error' => $e->getMessage(),
                 ]);
-                $warehouseStock = (int) ($product->stock ?? 0);
+                // Warehouse V2: if check fails, consider out of stock (0) for safety
+                $warehouseStock = 0;
             }
         }
 
-        // Add warehouse_stock to result
+        // Add warehouse_stock to result (Warehouse V2 - source of truth)
+        // is_out_of_stock is controlled entirely by Warehouse V2
         $result['warehouse_stock'] = $warehouseStock;
-        $result['is_out_of_stock'] = $warehouseStock <= 0;
+        $result['is_out_of_stock'] = $warehouseStock <= 0; // Controlled by Warehouse V2
 
         // Add Deal information if available
         // Frontend will handle excluding Deal voucher in Flash Sale block
@@ -582,7 +586,8 @@ class ProductController extends Controller
                     'posts.best',
                     'posts.is_new'
                 )
-                ->where([['posts.status', '1'], ['posts.type', ProductType::PRODUCT->value], ['posts.stock', '1']])
+                ->where([['posts.status', '1'], ['posts.type', ProductType::PRODUCT->value]])
+                // Note: Removed ['posts.stock', '1'] filter - stock is now managed by inventory_stocks
                 ->where('posts.cat_id', 'like', '%"'.$id.'"%')
                 ->orderBy('posts.created_at', 'desc')
                 ->groupBy(
@@ -673,8 +678,9 @@ class ProductController extends Controller
                 $productIds = $productSales->pluck('product_id')->unique()->toArray();
 
                 // Load products with eager loading
+                // Note: Removed ['stock', '1'] filter - stock is now managed by inventory_stocks
                 $products = Product::with(['brand:id,name,slug'])
-                    ->where([['status', '1'], ['type', ProductType::PRODUCT->value], ['stock', '1']])
+                    ->where([['status', '1'], ['type', ProductType::PRODUCT->value]])
                     ->whereIn('id', $productIds)
                     ->get();
 
@@ -969,8 +975,8 @@ class ProductController extends Controller
                     Log::warning('Failed to get warehouse stock for variant: '.$variant->id, [
                         'error' => $e->getMessage(),
                     ]);
-                    // Fallback to variant stock
-                    $warehouseStock = (int) ($variant->stock ?? 0);
+                    // Warehouse V2: if check fails, consider out of stock (0) for safety
+                    $warehouseStock = 0;
                 }
 
                 $optLabel = $variant->option1_value;
@@ -1191,15 +1197,40 @@ class ProductController extends Controller
                             return (int) ($firstVariant->stock ?? 0);
                         }
                     })() : (int) $product->stock,
+                    // is_out_of_stock is controlled entirely by Warehouse V2
                     'is_out_of_stock' => $firstVariant ? (function () use ($firstVariant) {
                         try {
                             $stockData = $this->warehouseService->getVariantStock($firstVariant->id);
-
+                            // Warehouse V2: current_stock <= 0 means out of stock
                             return (int) ($stockData['current_stock'] ?? 0) <= 0;
                         } catch (\Exception $e) {
-                            return (int) ($firstVariant->stock ?? 0) <= 0;
+                            // Fallback: if warehouse service fails, consider out of stock for safety
+                            Log::warning('Failed to get warehouse stock for is_out_of_stock check', [
+                                'variant_id' => $firstVariant->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                            return true; // Consider out of stock if warehouse check fails
                         }
-                    })() : ((int) $product->stock <= 0),
+                    })() : (function () use ($product) {
+                        // No variant: try to get stock from first variant via warehouse
+                        try {
+                            $firstVariant = Variant::where('product_id', $product->id)
+                                ->orderBy('position', 'asc')
+                                ->orderBy('id', 'asc')
+                                ->first();
+                            if ($firstVariant) {
+                                $stockData = $this->warehouseService->getVariantStock($firstVariant->id);
+                                return (int) ($stockData['current_stock'] ?? 0) <= 0;
+                            }
+                        } catch (\Exception $e) {
+                            Log::warning('Failed to get warehouse stock for product without variant', [
+                                'product_id' => $product->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+                        // Fallback: if no variant or warehouse check fails, consider out of stock
+                        return true;
+                    })(),
                     'best' => (int) $product->best,
                     'is_new' => (int) ($product->is_new ?? 0),
                     'cbmp' => $product->cbmp,
@@ -1226,8 +1257,11 @@ class ProductController extends Controller
                             $stockData = $this->warehouseService->getVariantStock($firstVariant->id);
                             $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
                         } catch (\Exception $e) {
-                            Log::warning('Failed to get warehouse stock for first variant: '.$firstVariant->id);
-                            $warehouseStock = (int) ($firstVariant->stock ?? 0);
+                            Log::warning('Failed to get warehouse stock for first variant: '.$firstVariant->id, [
+                                'error' => $e->getMessage(),
+                            ]);
+                            // Warehouse V2: if check fails, consider out of stock (0) for safety
+                            $warehouseStock = 0;
                         }
 
                         return [

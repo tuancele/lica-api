@@ -114,6 +114,48 @@ if (! function_exists('formatDate')) {
         return date('d-m-Y', strtotime($dateString));
     }
 }
+
+if (! function_exists('isProductOutOfStock')) {
+    /**
+     * Check if product is out of stock based on Warehouse V2.
+     * Warehouse V2 is the source of truth for stock status.
+     *
+     * @param  object|array  $product  Product object or array with stock fields
+     * @return bool True if product is out of stock, false otherwise
+     */
+    function isProductOutOfStock($product): bool
+    {
+        // Priority: stock_display > warehouse_stock > stock (deprecated)
+        if (is_object($product)) {
+            if (isset($product->stock_display)) {
+                return (int) $product->stock_display <= 0;
+            }
+            if (isset($product->warehouse_stock)) {
+                return (int) $product->warehouse_stock <= 0;
+            }
+            if (isset($product->is_out_of_stock)) {
+                return (bool) $product->is_out_of_stock;
+            }
+            // Fallback to legacy stock field (deprecated)
+            return (int) ($product->stock ?? 0) <= 0;
+        } elseif (is_array($product)) {
+            if (isset($product['stock_display'])) {
+                return (int) $product['stock_display'] <= 0;
+            }
+            if (isset($product['warehouse_stock'])) {
+                return (int) $product['warehouse_stock'] <= 0;
+            }
+            if (isset($product['is_out_of_stock'])) {
+                return (bool) $product['is_out_of_stock'];
+            }
+            // Fallback to legacy stock field (deprecated)
+            return (int) ($product['stock'] ?? 0) <= 0;
+        }
+
+        // Default: consider out of stock if product data is invalid
+        return true;
+    }
+}
 if (! function_exists('updateConfig')) {
     function updateConfig($data)
     {

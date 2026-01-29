@@ -396,3 +396,4 @@ class MarketingCampaignController extends Controller
         return $query->exists();
     }
 }
+

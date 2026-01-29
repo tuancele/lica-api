@@ -24,3 +24,4 @@ class ShowroomResource extends JsonResource
         ];
     }
 }
+

@@ -17,3 +17,4 @@ php -v | Select-Object -First 1
 Write-Host "PHP Path: " -NoNewline
 where.exe php | Select-Object -First 1
 
+

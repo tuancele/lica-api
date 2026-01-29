@@ -124,13 +124,34 @@ class HomeController extends Controller
                     $child_tabs = Product::select('id', 'name', 'slug')->where([['status', '1'], ['type', 'taxonomy'], ['cat_id', $taxonomy->id]])->orderBy('sort', 'asc')->get();
 
                     $target_id = ($child_tabs->count() > 0) ? $child_tabs[0]->id : $taxonomy->id;
+                    // Note: Removed ['posts.stock', '1'] filter - stock is now managed by Warehouse V2
                     $initial_products = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
-                        ->where([['status', '1'], ['type', 'product'], ['posts.stock', '1']])
+                        ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id', 'variants.id as variant_id')
+                        ->where([['status', '1'], ['type', 'product']])
                         ->where('cat_id', 'like', '%'.$target_id.'%')
                         ->orderBy('posts.created_at', 'desc')
                         ->groupBy('posts.id')
                         ->limit(20)->get();
+                    
+                    // Attach warehouse stock to products
+                    $warehouseService = app(\App\Services\Warehouse\WarehouseServiceInterface::class);
+                    $initial_products = $initial_products->map(function ($product) use ($warehouseService) {
+                        try {
+                            $variantId = $product->variant_id ?? null;
+                            if ($variantId) {
+                                $stockInfo = $warehouseService->getVariantStock($variantId);
+                                $product->warehouse_stock = (int) ($stockInfo['available_stock'] ?? 0);
+                                $product->stock_display = (int) ($stockInfo['available_stock'] ?? 0);
+                            } else {
+                                $product->warehouse_stock = 0;
+                                $product->stock_display = 0;
+                            }
+                        } catch (\Throwable $e) {
+                            $product->warehouse_stock = 0;
+                            $product->stock_display = 0;
+                        }
+                        return $product;
+                    });
 
                     $result[] = [
                         'info' => $taxonomy,
@@ -143,12 +164,32 @@ class HomeController extends Controller
             });
 
             if (Session::has('product_watched')) {
-                $data['watchs'] = Product::join('variants', 'variants.product_id', '=', 'posts.id')
-                    ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id')
+                $watchs = Product::join('variants', 'variants.product_id', '=', 'posts.id')
+                    ->select('posts.id', 'posts.stock', 'posts.name', 'posts.slug', 'posts.image', 'posts.brand_id', 'variants.price as price', 'variants.size_id as size_id', 'variants.color_id as color_id', 'variants.id as variant_id')
                     ->where([['status', '1'], ['type', 'product']])
                     ->whereIn('posts.id', Session::get('product_watched'))
                     ->groupBy('posts.id')
                     ->orderBy('posts.created_at', 'desc')->get();
+                
+                // Attach warehouse stock to watched products
+                $warehouseService = app(\App\Services\Warehouse\WarehouseServiceInterface::class);
+                $data['watchs'] = $watchs->map(function ($product) use ($warehouseService) {
+                    try {
+                        $variantId = $product->variant_id ?? null;
+                        if ($variantId) {
+                            $stockInfo = $warehouseService->getVariantStock($variantId);
+                            $product->warehouse_stock = (int) ($stockInfo['available_stock'] ?? 0);
+                            $product->stock_display = (int) ($stockInfo['available_stock'] ?? 0);
+                        } else {
+                            $product->warehouse_stock = 0;
+                            $product->stock_display = 0;
+                        }
+                    } catch (\Throwable $e) {
+                        $product->warehouse_stock = 0;
+                        $product->stock_display = 0;
+                    }
+                    return $product;
+                });
             }
 
             $data['deals'] = Cache::remember('home_top_deals_v3', 3600, function () {

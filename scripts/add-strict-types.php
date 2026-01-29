@@ -132,3 +132,4 @@ echo "Summary:\n";
 echo "Files processed: {$filesProcessed}\n";
 echo "Files skipped: {$filesSkipped}\n";
 echo "========================================\n";
+

@@ -32,3 +32,4 @@ class OriginResource extends JsonResource
         ];
     }
 }
+

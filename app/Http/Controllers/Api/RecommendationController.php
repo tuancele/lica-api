@@ -64,7 +64,7 @@ class RecommendationController extends Controller
                 ->where('orders.status', '!=', 2)
                 ->sum('orderdetail.qty') ?? 0;
 
-            // Get warehouse stock for first variant
+            // Get warehouse stock for first variant (Warehouse V2 - source of truth)
             $warehouseStock = 0;
             $isOutOfStock = false;
             try {
@@ -77,13 +77,17 @@ class RecommendationController extends Controller
                     $warehouseStock = (int) ($stockData['current_stock'] ?? 0);
                     $isOutOfStock = $warehouseStock <= 0;
                 } else {
-                    $warehouseStock = (int) ($product->stock ?? 0);
-                    $isOutOfStock = $warehouseStock <= 0;
+                    // No variant found: consider out of stock
+                    $warehouseStock = 0;
+                    $isOutOfStock = true;
                 }
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::warning('Failed to get warehouse stock for product: '.$product->id);
-                $warehouseStock = (int) ($product->stock ?? 1);
-                $isOutOfStock = $warehouseStock <= 0;
+                \Illuminate\Support\Facades\Log::warning('Failed to get warehouse stock for product: '.$product->id, [
+                    'error' => $e->getMessage(),
+                ]);
+                // Warehouse V2: if check fails, consider out of stock for safety
+                $warehouseStock = 0;
+                $isOutOfStock = true;
             }
 
             // 检查产品是否参与 deal sốc

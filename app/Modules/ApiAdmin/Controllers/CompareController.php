@@ -81,3 +81,4 @@ class CompareController extends Controller
         }
     }
 }
+

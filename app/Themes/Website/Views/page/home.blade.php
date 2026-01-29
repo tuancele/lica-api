@@ -822,7 +822,14 @@
         const price = parseFloat(product.price) || 0;
         const sale = parseFloat(product.sale) || 0;
         const priceSale = parseFloat(product.price_sale) || 0; // Flash Sale price
-        const stock = parseInt(product.stock) || 0;
+        // Warehouse V2: Check stock status (controlled entirely by Warehouse V2)
+        // Priority: is_out_of_stock > warehouse_stock > stock (deprecated)
+        const isOutOfStock = (typeof product.is_out_of_stock !== 'undefined')
+            ? product.is_out_of_stock
+            : (typeof product.warehouse_stock !== 'undefined')
+                ? (parseInt(product.warehouse_stock) || 0) <= 0
+                : (parseInt(product.stock) || 0) <= 0;
+        const stock = parseInt(product.stock) || 0; // Keep for backward compatibility
         const best = parseInt(product.best) || 0;
         const isNew = parseInt(product.is_new) || 0;
         const productId = product.id || 0;
@@ -883,7 +890,8 @@
             html += '<div class="tag tag-discount"><span>-' + discountPercent + '%</span></div>';
         }
         
-        if (stock === 0) {
+        // Warehouse V2: Use is_out_of_stock (controlled entirely by Warehouse V2)
+        if (isOutOfStock) {
             html += '<div class="out-stock">Hết hàng</div>';
         }
         

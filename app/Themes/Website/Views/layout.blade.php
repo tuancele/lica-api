@@ -28,27 +28,26 @@
     <meta name="twitter:title" content="@yield('title')" />
     <meta name="twitter:description" content="@yield('description')" />
     <!-- CSS文件加载 -->
-    <link rel="stylesheet" href="/public/website/font-awesome/css/font-awesome.min.css">
-    <link rel="stylesheet" href="/public/website/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ asset('website/font-awesome/css/font-awesome.min.css') }}">
+    <link rel="stylesheet" href="{{ asset('website/css/bootstrap.min.css') }}">
     
     <!-- JavaScript优化：jQuery需要同步加载（其他脚本依赖），Bootstrap使用defer -->
-    <script src="/public/website/js/jquery.min.js"></script>
-    <script src="/public/website/js/bootstrap.bundle.min.js" defer></script>
+    <script src="{{ asset('website/js/jquery.min.js') }}"></script>
+    <script src="{{ asset('website/js/bootstrap.bundle.min.js') }}" defer></script>
     <!-- 异步加载优化脚本 -->
-    <script src="/public/website/js/lazy-load.js" defer></script>
-    <script src="/public/js/product-recommendation.js" defer></script>
-    <script src="/public/js/product-home-optimizer.js" defer></script>
-    <script src="/public/website/js/skeleton-optimizer.js" defer></script>
+    <script src="{{ asset('website/js/lazy-load.js') }}" defer></script>
+    <script src="{{ asset('js/product-recommendation.js') }}" defer></script>
+    <script src="{{ asset('js/product-home-optimizer.js') }}" defer></script>
+    <script src="{{ asset('website/js/skeleton-optimizer.js') }}" defer></script>
     <!-- Flash Sale Mixed Price Handler -->
-    <script src="/public/js/flash-sale-mixed-price.js"></script>
+    <script src="{{ asset('js/flash-sale-mixed-price.js') }}"></script>
 
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @yield('header')
-    <link rel="preload" href="/public/website/css/style.css" as="style">
-    <link rel="stylesheet" href="/public/website/css/style.css">
-    <link rel="stylesheet" href="/public/website/css/product-home-optimized.css">
-    <style>
-        /* Danh mục nổi bật - Horizontal scroll trên mobile */
+    <link rel="preload" href="{{ asset('website/css/style.css') }}" as="style">
+    <link rel="stylesheet" href="{{ asset('website/css/style.css') }}">
+    <link rel="stylesheet" href="{{ asset('website/css/product-home-optimized.css') }}">
+    <!-- Inline CSS đã được di chuyển vào style.css với Design System variables -->
         .list-taxonomy-wrapper {
             position: relative;
         }
@@ -410,7 +409,7 @@
     {!!getConfig('code_header')!!}
 </head>
 <body class="home">
-   <header class="header">
+   <header class="header" id="main-header">
         <div class="header-top">
             <div class="container-lg">
                 <div class="row">
@@ -440,35 +439,35 @@
                                 <input type="search" name="s" id="search-input" value="{{request()->s}}" placeholder="Nhập tên sản phẩm, thương hiệu muốn tìm" autocomplete="off">
                                 <button type="submit"><span role="img" class="icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.29496 18.5899C4.17485 18.5899 0 14.4151 0 9.29496C0 4.17485 4.17485 0 9.29496 0C14.4151 0 18.5899 4.17485 18.5899 9.29496C18.5899 14.4151 14.4151 18.5899 9.29496 18.5899ZM9.29496 1.10279C4.77351 1.10279 1.10279 4.77351 1.10279 9.29496C1.10279 13.8164 4.77351 17.4871 9.29496 17.4871C13.8164 17.4871 17.4871 13.8164 17.4871 9.29496C17.4871 4.77351 13.8164 1.10279 9.29496 1.10279Z" fill="black"></path><path d="M16.3409 15.2585L15.5612 16.0383L21.2202 21.6973L21.9999 20.9175L16.3409 15.2585Z" fill="black"></path></svg></span></button>
                             </div>
-                            <div class="search-suggestions" id="search-suggestions" style="display: none;">
+                            <div class="search-suggestions" id="search-suggestions">
                                 <div class="search-suggestions-content">
                                     <!-- 促销/Deal建议 -->
-                                    <div class="suggestions-section deals-section" id="deals-section" style="display: none;">
+                                    <div class="suggestions-section deals-section" id="deals-section">
                                         <div class="section-title">Khuyến mại</div>
                                         <div class="deals-list" id="deals-list"></div>
                                     </div>
                                     
                                     <!-- 搜索建议产品 -->
-                                    <div class="suggestions-section products-section" id="products-section" style="display: none;">
+                                    <div class="suggestions-section products-section" id="products-section">
                                         <div class="section-title">Sản phẩm gợi ý</div>
                                         <div class="products-list" id="products-list"></div>
                                     </div>
                                     
                                     <!-- 最近搜索 -->
-                                    <div class="suggestions-section recent-section" id="recent-section" style="display: none;">
+                                    <div class="suggestions-section recent-section" id="recent-section">
                                         <div class="section-title">Tìm kiếm gần đây</div>
                                         <div class="recent-searches-list" id="recent-searches-list"></div>
-                                        <a href="javascript:;" class="view-more" id="view-more-recent" style="display: none;">Xem thêm <i class="fa fa-chevron-down"></i></a>
+                                        <a href="javascript:;" class="view-more" id="view-more-recent">Xem thêm <i class="fa fa-chevron-down"></i></a>
                                     </div>
                                     
                                     <!-- 产品类别快速链接 -->
-                                    <div class="suggestions-section categories-section" id="categories-section" style="display: none;">
+                                    <div class="suggestions-section categories-section" id="categories-section">
                                         <div class="section-title">Danh mục nhanh</div>
                                         <div class="categories-grid" id="categories-grid"></div>
                                     </div>
                                     
                                     <!-- 品牌logo -->
-                                    <div class="suggestions-section brands-section" id="brands-section" style="display: none;">
+                                    <div class="suggestions-section brands-section" id="brands-section">
                                         <div class="section-title">Thương hiệu</div>
                                         <div class="brands-grid" id="brands-grid"></div>
                                     </div>
@@ -558,7 +557,7 @@
                         <input type="search" name="s" id="search-input-mobile" value="{{request()->s}}" placeholder="Nhập tên sản phẩm, thương hiệu muốn tìm" autocomplete="off">
                         <button type="submit"><span role="img" class="icon"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.29496 18.5899C4.17485 18.5899 0 14.4151 0 9.29496C0 4.17485 4.17485 0 9.29496 0C14.4151 0 18.5899 4.17485 18.5899 9.29496C18.5899 14.4151 14.4151 18.5899 9.29496 18.5899ZM9.29496 1.10279C4.77351 1.10279 1.10279 4.77351 1.10279 9.29496C1.10279 13.8164 4.77351 17.4871 9.29496 17.4871C13.8164 17.4871 17.4871 13.8164 17.4871 9.29496C17.4871 4.77351 13.8164 1.10279 9.29496 1.10279Z" fill="black"></path><path d="M16.3409 15.2585L15.5612 16.0383L21.2202 21.6973L21.9999 20.9175L16.3409 15.2585Z" fill="black"></path></svg></span></button>
                     </div>
-                    <div class="search-suggestions" id="search-suggestions-mobile" style="display: none;">
+                    <div class="search-suggestions" id="search-suggestions-mobile">
                         <button type="button" class="close-search-mobile" onclick="closeMobileSuggestions()">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -566,32 +565,32 @@
                         </button>
                         <div class="search-suggestions-content">
                             <!-- 促销/Deal建议 -->
-                            <div class="suggestions-section deals-section" id="deals-section-mobile" style="display: none;">
+                            <div class="suggestions-section deals-section" id="deals-section-mobile">
                                 <div class="section-title">Khuyến mại</div>
                                 <div class="deals-list" id="deals-list-mobile"></div>
                             </div>
                             
                             <!-- 搜索建议产品 -->
-                            <div class="suggestions-section products-section" id="products-section-mobile" style="display: none;">
+                            <div class="suggestions-section products-section" id="products-section-mobile">
                                 <div class="section-title">Sản phẩm gợi ý</div>
                                 <div class="products-list" id="products-list-mobile"></div>
                             </div>
                             
                             <!-- 最近搜索 -->
-                            <div class="suggestions-section recent-section" id="recent-section-mobile" style="display: none;">
+                            <div class="suggestions-section recent-section" id="recent-section-mobile">
                                 <div class="section-title">Tìm kiếm gần đây</div>
                                 <div class="recent-searches-list" id="recent-searches-list-mobile"></div>
-                                <a href="javascript:;" class="view-more" id="view-more-recent-mobile" style="display: none;">Xem thêm <i class="fa fa-chevron-down"></i></a>
+                                <a href="javascript:;" class="view-more" id="view-more-recent-mobile">Xem thêm <i class="fa fa-chevron-down"></i></a>
                             </div>
                             
                             <!-- 产品类别快速链接 -->
-                            <div class="suggestions-section categories-section" id="categories-section-mobile" style="display: none;">
+                            <div class="suggestions-section categories-section" id="categories-section-mobile">
                                 <div class="section-title">Danh mục nhanh</div>
                                 <div class="categories-grid" id="categories-grid-mobile"></div>
                             </div>
                             
                             <!-- 品牌logo -->
-                            <div class="suggestions-section brands-section" id="brands-section-mobile" style="display: none;">
+                            <div class="suggestions-section brands-section" id="brands-section-mobile">
                                 <div class="section-title">Thương hiệu</div>
                                 <div class="brands-grid" id="brands-grid-mobile"></div>
                             </div>
@@ -645,12 +644,12 @@
                                 <p class="mb-0">© 2009-{{date('Y')}} - All rights reserved</p>
                             </div>
                             <ul class="list_social">
-                                <a href="{{$block4->facebook ?? '#'}}" target="_blank" rel="nofollow"><img src="/public/image/icon-facebook.webp" alt="Facebook" width="24" height="24"></a>
-                                <a href="{{$block4->instagram ?? '#'}}" target="_blank" rel="nofollow"><img src="/public/image/icon-instagram.webp" alt="Facebook" width="24" height="24"></a>
-                                <a href="{{$block4->tiktok ?? '#'}}" target="_blank" rel="nofollow"><img src="/public/image/icon-tiktok.webp" alt="Facebook" width="24" height="24"></a>
+                                <a href="{{$block4->facebook ?? '#'}}" target="_blank" rel="nofollow"><img src="{{ asset('image/icon-facebook.webp') }}" alt="Facebook" width="24" height="24"></a>
+                                <a href="{{$block4->instagram ?? '#'}}" target="_blank" rel="nofollow"><img src="{{ asset('image/icon-instagram.webp') }}" alt="Instagram" width="24" height="24"></a>
+                                <a href="{{$block4->tiktok ?? '#'}}" target="_blank" rel="nofollow"><img src="{{ asset('image/icon-tiktok.webp') }}" alt="TikTok" width="24" height="24"></a>
                             </ul>
                             <a href="{{$block4->link ?? '#'}}" class="bocongthuong">
-                                <img src="/public/image/verified.png" alt="Bộ công thương" width="122" height="46">
+                                <img src="{{ asset('image/verified.png') }}" alt="Bộ công thương" width="122" height="46">
                             </a>
                             @endif
                         </div>
@@ -843,7 +842,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="backdrop fade"></div>
         <div class="content-right"></div>
     </div>
-    <script src="/public/js/jquery.validate.min.js"></script>
+    <script src="{{ asset('js/jquery.validate.min.js') }}"></script>
     @yield('footer')
 <script>
     $(function () {
@@ -1817,7 +1816,7 @@ document.addEventListener('DOMContentLoaded', function() {
         products.forEach(function(product) {
             var productUrl = product.slug ? '/' + product.slug : '#';
             html += '<div class="product-item"><a href="' + productUrl + '">';
-            html += '<img src="' + (product.image || '/public/image/no-image.jpg') + '" alt="' + product.name + '" width="40" height="40">';
+            html += '<img src="' + (product.image || '{{ asset("image/no-image.jpg") }}') + '" alt="' + product.name + '" width="40" height="40">';
             html += '<span>' + product.name + '</span></a></div>';
         });
         $('#products-list' + suffix).html(html);
@@ -1844,7 +1843,7 @@ document.addEventListener('DOMContentLoaded', function() {
             var catUrl = cat.slug ? '/' + cat.slug : '#';
             html += '<div class="category-item">';
             html += '<a href="' + catUrl + '">';
-            html += '<img src="' + (cat.image || '/public/image/no-image.jpg') + '" alt="' + cat.name + '">';
+            html += '<img src="' + (cat.image || '{{ asset("image/no-image.jpg") }}') + '" alt="' + cat.name + '">';
             html += '<span>' + cat.name + '</span>';
             html += '</a></div>';
         });
@@ -1857,7 +1856,7 @@ document.addEventListener('DOMContentLoaded', function() {
             var brandUrl = brand.slug ? '/thuong-hieu/' + brand.slug : '#';
             html += '<div class="brand-item">';
             html += '<a href="' + brandUrl + '">';
-            html += '<img src="' + (brand.image || '/public/image/no-image.jpg') + '" alt="' + brand.name + '">';
+            html += '<img src="' + (brand.image || '{{ asset("image/no-image.jpg") }}') + '" alt="' + brand.name + '">';
             html += '</a></div>';
         });
         $('#brands-grid' + suffix).html(html);

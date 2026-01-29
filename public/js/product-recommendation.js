@@ -411,11 +411,17 @@
             // 如果容器有 recommendations-grid-3x6 或 recommendations-grid-6x6 类，使用与首页相同的结构
             if (isHomePage || isGrid3x6 || isGrid6x6) {
                 const html = products.map(product => {
-                    const isAvailable = (typeof product.is_available !== 'undefined')
-                        ? !!product.is_available
-                        : (typeof product.available !== 'undefined'
-                            ? !!product.available
-                            : (product.stock === undefined ? true : product.stock > 0));
+                    // Warehouse V2: Use is_out_of_stock from API (controlled entirely by Warehouse V2)
+                    // Priority: is_out_of_stock > is_available > available > warehouse_stock > stock (deprecated)
+                    const isAvailable = (typeof product.is_out_of_stock !== 'undefined')
+                        ? !product.is_out_of_stock  // is_out_of_stock = true means out of stock
+                        : (typeof product.is_available !== 'undefined')
+                            ? !!product.is_available
+                            : (typeof product.available !== 'undefined'
+                                ? !!product.available
+                                : (typeof product.warehouse_stock !== 'undefined'
+                                    ? product.warehouse_stock > 0
+                                    : (product.stock === undefined ? true : product.stock > 0)));
                     const hasDiscount = product.original_price > product.price;
                     const discountPercent = hasDiscount ? Math.round((1 - product.price / product.original_price) * 100) : 0;
                     

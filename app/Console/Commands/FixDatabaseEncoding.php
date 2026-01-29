@@ -155,3 +155,4 @@ class FixDatabaseEncoding extends Command
     }
 }
 
+

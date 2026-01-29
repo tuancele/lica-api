@@ -31,7 +31,7 @@
 				        <div class="group-wishlist-{{$product->id}}">
 				            {!!wishList($product->id)!!}
 				        </div>
-				        @if($product->stock == 0)
+				        @if(isProductOutOfStock($product))
 				        <div class="out-stock">Hết hàng</div>
 				        @endif
 				        <div class="status-product">
