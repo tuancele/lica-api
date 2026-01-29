@@ -55,6 +55,9 @@ class StockReceiptService
                 $data['receipt_code'] = $this->generateReceiptCode($data['type']);
             }
 
+            // Resolve target warehouse: use provided to_warehouse_id or default warehouse from InventoryService
+            $defaultWarehouseId = app(\App\Services\Inventory\InventoryServiceInterface::class)->getDefaultWarehouseId();
+
             // Create receipt
             $receipt = StockReceipt::create([
                 'receipt_code' => $data['receipt_code'],
@@ -73,7 +76,7 @@ class StockReceiptService
                 'customer_tax_id' => $data['customer_tax_id'] ?? null,
                 'supplier_id' => $data['supplier_id'] ?? null,
                 'customer_id' => $data['customer_id'] ?? null,
-                'to_warehouse_id' => $data['to_warehouse_id'] ?? 1,
+                'to_warehouse_id' => $data['to_warehouse_id'] ?? $defaultWarehouseId,
                 'from_warehouse_id' => $data['from_warehouse_id'] ?? null,
                 'reference_type' => $data['reference_type'] ?? null,
                 'reference_id' => $data['reference_id'] ?? null,

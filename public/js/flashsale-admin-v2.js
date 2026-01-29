@@ -120,7 +120,8 @@
             return;
         }
 
-        const originalPrice = Number(variant.price || 0);
+        // Use current_price from API (Marketing Campaign price if active, otherwise variant.price)
+        const originalPrice = Number(item.current_price || item.base_price || variant.price || 0);
         const opt = (variant.option1_value || 'Default');
 
         const $tr = $(`
@@ -218,7 +219,9 @@
         const params = {
             keyword: pickerKeyword || '',
             per_page: 20,
-            page: pickerPage
+            page: pickerPage,
+            // Only show variants with stock > 0 in picker
+            only_positive: 1
         };
 
         $.getJSON(API_BASE + '/stocks', params)

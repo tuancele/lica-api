@@ -12,6 +12,7 @@ use App\Modules\Product\Models\Product;
 use App\Services\Warehouse\WarehouseServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -109,11 +110,15 @@ class BrandController extends Controller
     public function options(Request $request): JsonResponse
     {
         try {
-            $brands = Brand::query()
-                ->select(['id', 'name'])
-                ->where('status', '1')
-                ->orderBy('name', 'asc')
-                ->get();
+            $cacheKey = 'api:v1:brands:options';
+
+            $brands = Cache::remember($cacheKey, 300, static function () {
+                return Brand::query()
+                    ->select(['id', 'name'])
+                    ->where('status', '1')
+                    ->orderBy('name', 'asc')
+                    ->get();
+            });
 
             return response()->json([
                 'success' => true,

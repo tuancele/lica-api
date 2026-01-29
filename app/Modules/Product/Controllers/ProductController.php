@@ -170,11 +170,11 @@ class ProductController extends Controller
                 'alert' => 'Thêm thành công!',
                 'url' => route('product'),
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Lỗi: '.$e->getMessage(),
-            ], 500);
+            ], 200);
         }
     }
 
@@ -201,7 +201,7 @@ class ProductController extends Controller
 
             // Update product using service
             $product = $this->productService->updateProduct(
-                $request->id,
+                (int) $request->id,
                 $validated
             );
 
@@ -210,11 +210,11 @@ class ProductController extends Controller
                 'alert' => 'Sửa thành công!',
                 'url' => '/admin/product/edit/'.$request->id.'?t='.time(),
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Lỗi: '.$e->getMessage(),
-            ], 500);
+            ], 200);
         }
     }
 

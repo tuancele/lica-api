@@ -28,6 +28,11 @@ class MigrateLegacyInventoryData extends Command
         $this->info('Starting migration...');
 
         DB::transaction(function () {
+            $fallbackUserId = (int) (DB::table('users')->min('id') ?? 0);
+            if ($fallbackUserId <= 0) {
+                throw new \Exception('No users found. Cannot set stock_receipts.created_by.');
+            }
+
             // 1. Create default warehouse
             $this->info('Creating default warehouse...');
             $warehouse = WarehouseV2::firstOrCreate(
@@ -96,15 +101,20 @@ class MigrateLegacyInventoryData extends Command
             $oldReceipts = DB::table('warehouse')->orderBy('id')->get();
 
             foreach ($oldReceipts as $old) {
+                $createdBy = (int) ($old->user_id ?? 0);
+                if ($createdBy <= 0 || ! DB::table('users')->where('id', $createdBy)->exists()) {
+                    $createdBy = $fallbackUserId;
+                }
+
                 $receipt = StockReceipt::create([
-                    'receipt_code' => ($old->type === 'import' ? 'IMP' : 'EXP').'-LEGACY-'.str_pad($old->id, 6, '0', STR_PAD_LEFT),
+                    'receipt_code' => ($old->type === 'import' ? 'IMP' : 'EXP').'-LEGACY-'.str_pad((string) $old->id, 6, '0', STR_PAD_LEFT),
                     'type' => $old->type,
                     'status' => 'completed',
                     'to_warehouse_id' => $old->type === 'import' ? $warehouse->id : null,
                     'from_warehouse_id' => $old->type === 'export' ? $warehouse->id : null,
                     'subject' => $old->subject ?? 'Migrated from legacy',
                     'content' => $old->content,
-                    'created_by' => $old->user_id ?? 1,
+                    'created_by' => $createdBy,
                     'created_at' => $old->created_at,
                     'completed_at' => $old->created_at,
                 ]);

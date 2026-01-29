@@ -525,9 +525,10 @@ function initR2UploadPreview(options) {
                             // Serialize form normally first
                             let formData = $form.serialize();
                             
-                            // Remove any existing imageOther[] from serialized data
+                            // Remove any existing imageOther[] from serialized data (encoded or raw)
                             // We'll add them manually to ensure all are included
                             formData = formData.replace(/&?imageOther%5B%5D=[^&]*/g, '');
+                            formData = formData.replace(/&?imageOther\[\]=[^&]*/g, '');
                             
                             // Manually add ALL imageOther[] values
                             imageOtherValues.forEach(url => {
@@ -555,8 +556,10 @@ function initR2UploadPreview(options) {
                                 });
                             }
                             
-                            // Count imageOther[] in serialized data
-                            const imageOtherMatches = (formData.match(/imageOther%5B%5D=/g) || []).length;
+                            // Count imageOther[] in serialized data (encoded or raw)
+                            const imageOtherMatches =
+                                (formData.match(/imageOther%5B%5D=/g) || []).length +
+                                (formData.match(/imageOther\[\]=/g) || []).length;
                             
                             R2Logger.info('Form data serialized', { 
                                 dataLength: formData.length,

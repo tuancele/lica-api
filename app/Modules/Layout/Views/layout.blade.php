@@ -6,22 +6,22 @@
     <!-- Tell the browser to be responsive to screen width -->
     <meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
     <!-- Bootstrap 3.3.4 -->
-    <base href="{{asset('')}}">
-    <link href="/public/admin/bootstrap/css/bootstrap.min.css" rel="stylesheet" type="text/css" />
+    <base href="{{ asset('') }}">
+    <link href="{{ asset('admin/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet" type="text/css" />
     <!-- FontAwesome 4.3.0 -->
-    <link href="/public/font-awesome/css/font-awesome.min.css" rel="stylesheet" type="text/css" />
+    <link href="{{ asset('font-awesome/css/font-awesome.min.css') }}" rel="stylesheet" type="text/css" />
     <!-- Ionicons 2.0.0 -->
     <link href="https://code.ionicframework.com/ionicons/2.0.1/css/ionicons.min.css" rel="stylesheet" type="text/css" />
     <!-- Theme style -->
-    <link href="/public/admin/dist/css/AdminLTE.min.css" rel="stylesheet" type="text/css" />
-    <link href="/public/admin/dist/css/skins/_all-skins.min.css" rel="stylesheet" type="text/css" />
+    <link href="{{ asset('admin/dist/css/AdminLTE.min.css') }}" rel="stylesheet" type="text/css" />
+    <link href="{{ asset('admin/dist/css/skins/_all-skins.min.css') }}" rel="stylesheet" type="text/css" />
     <!-- iCheck -->
-    <link href="/public/admin/plugins/iCheck/flat/blue.css" rel="stylesheet" type="text/css" />
+    <link href="{{ asset('admin/plugins/iCheck/flat/blue.css') }}" rel="stylesheet" type="text/css" />
     
     <!-- Morris chart -->
-    <link href="/public/admin/plugins/bootstrap-wysihtml5/bootstrap3-wysihtml5.min.css" rel="stylesheet" type="text/css" />
-    <link href="/public/admin/plugins/morris/morris.css" rel="stylesheet" type="text/css" />
-    <link href="/public/admin/toastr.css" rel="stylesheet">
+    <link href="{{ asset('admin/plugins/bootstrap-wysihtml5/bootstrap3-wysihtml5.min.css') }}" rel="stylesheet" type="text/css" />
+    <link href="{{ asset('admin/plugins/morris/morris.css') }}" rel="stylesheet" type="text/css" />
+    <link href="{{ asset('admin/toastr.css') }}" rel="stylesheet">
     <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
     <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
     <!--[if lt IE 9]>
@@ -33,7 +33,7 @@
         $apiUser = auth()->user() ?? auth('admin')->user() ?? auth('web')->user();
     @endphp
     <meta name="api-token" content="{{ $apiUser->api_token ?? '' }}">
-    <script src="/public/admin/plugins/jQuery/jQuery-2.1.4.min.js"></script>
+    <script src="{{ asset('admin/plugins/jQuery/jQuery-2.1.4.min.js') }}"></script>
     @stack('styles')
   </head>
   <body class="skin-blue sidebar-mini">
@@ -115,13 +115,13 @@
               </li>
               <li class="dropdown user user-menu">
                 <a href="javascript:void(0)" class="dropdown-toggle" data-toggle="dropdown">
-                  <img src="/public/admin/dist/img/user2-160x160.jpg" class="user-image" alt="{{$user['name']}}" />
+        <img src="{{ asset('admin/dist/img/user2-160x160.jpg') }}" class="user-image" alt="{{$user['name']}}" />
                   <span class="hidden-xs">{{$user['name']}}</span>
                 </a>
                 <ul class="dropdown-menu">
                   <!-- User image -->
                   <li class="user-header">
-                    <img src="/public/admin/dist/img/user2-160x160.jpg" class="img-circle" alt="{{$user['name']}}" />
+                    <img src="{{ asset('admin/dist/img/user2-160x160.jpg') }}" class="img-circle" alt="{{$user['name']}}" />
                     <p>
                         {{$user['name']}}
                       <small>{{date('d/m/Y H:i:s',strtotime($user['created_at']))}}</small>
@@ -146,7 +146,7 @@
           <!-- Sidebar user panel -->
           <div class="user-panel">
             <div class="pull-left image">
-              <img src="/public/admin/dist/img/user2-160x160.jpg" class="img-circle" alt="User Image" />
+              <img src="{{ asset('admin/dist/img/user2-160x160.jpg') }}" class="img-circle" alt="User Image" />
             </div>
             <div class="pull-left info">
               <p>{{$user['name']}}</p>
@@ -377,7 +377,7 @@
     </div>
     <div class="box_img_load_ajax hidden">
       <div class="img_load_ajax">        
-          <img src="/public/image/load.gif">
+          <img src="{{ asset('image/load.gif') }}">
       </div>    
     </div>
     <!-- jQuery UI 1.11.4 -->
@@ -387,13 +387,13 @@
       $.widget.bridge('uibutton', $.ui.button);
     </script>
     <!-- Bootstrap 3.3.2 JS -->
-    <script src="/public/admin/bootstrap/js/bootstrap.min.js" type="text/javascript"></script>
-    <script src="/public/admin/dist/js/app.min.js" type="text/javascript"></script>
-    <script src="/public/admin/dist/js/demo.js" type="text/javascript"></script>
-    <script src="/public/admin/toastr.js"></script>
-    <script src="/public/admin/form.validator.min.js"></script>
-    <script src="/public/admin/ControlPanel.js"></script>
-    <script src="/js/admin-product-edit.js?v=1"></script>
+    <script src="{{ asset('admin/bootstrap/js/bootstrap.min.js') }}" type="text/javascript"></script>
+    <script src="{{ asset('admin/dist/js/app.min.js') }}" type="text/javascript"></script>
+    <script src="{{ asset('admin/dist/js/demo.js') }}" type="text/javascript"></script>
+    <script src="{{ asset('admin/toastr.js') }}"></script>
+    <script src="{{ asset('admin/form.validator.min.js') }}"></script>
+    <script src="{{ asset('admin/ControlPanel.js') }}"></script>
+    <script src="{{ asset('js/admin-product-edit.js?v=1') }}"></script>
     <script type="text/javascript">
       toastr.options = {
           closeButton: true,
@@ -446,7 +446,7 @@
             $('#ImageUrl'+number+'').val('');
             $('.avantar'+number+'').html('<img src="{{asset("public/admin/no-image.png")}}">');
         }
-        $('.avantar'+number+'').html('<img src="/public/admin/no-image.png">');
+            $('.avantar'+number+'').html('<img src="{{ asset('admin/no-image.png') }}">');
       });
       $('body').on('click','.click_noti',function(){
         var id = $(this).attr('data-id');
@@ -469,13 +469,13 @@
         });
         
       </script>
-    <script type="text/javascript"  src="/public/admin/slugify.js"></script>
+    <script type="text/javascript"  src="{{ asset('admin/slugify.js') }}"></script>
     <script>
         jQuery(function ($) {
             $('#slug-target').slugify('#slug-source');
         });
     </script>
-    <script src="/public/admin/plugins/bootstrap-wysihtml5/bootstrap3-wysihtml5.all.min.js" type="text/javascript"></script>
+    <script src="{{ asset('admin/plugins/bootstrap-wysihtml5/bootstrap3-wysihtml5.all.min.js') }}" type="text/javascript"></script>
     <script type="text/javascript">
       $(function () {
         $(".description").wysihtml5();

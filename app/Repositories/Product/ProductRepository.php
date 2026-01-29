@@ -56,7 +56,7 @@ class ProductRepository extends BaseRepository implements ProductRepositoryInter
      */
     public function update(int $id, array $data): bool
     {
-        return $this->model->where('id', $id)->update($data);
+        return (bool) $this->model->where('id', $id)->update($data);
     }
 
     /**
@@ -70,7 +70,7 @@ class ProductRepository extends BaseRepository implements ProductRepositoryInter
     /**
      * Get paginated products with filters.
      */
-    public function paginate(array $filters = [], int $perPage = 10): LengthAwarePaginator
+    public function paginateWithFilters(array $filters = [], int $perPage = 10): LengthAwarePaginator
     {
         $query = $this->model
             ->where('type', ProductType::PRODUCT->value)

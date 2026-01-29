@@ -1,17 +1,17 @@
 
 @font-face {
     font-family: 'SVN-Mont-Bold';
-    src:url('../fonts/SVN-Mont-Bold.ttf')  format('truetype'); /* Safari, Android, iOS */ /* Legacy iOS */
+    src:url('/website/fonts/SVN-Mont-Bold.ttf')  format('truetype'); /* Safari, Android, iOS */ /* Legacy iOS */
     font-display: swap; /* 优化字体加载性能 */
 }
 @font-face {
     font-family: 'SVN-Mont-Regular';
-    src:url('../fonts/SVN-Mont-Regular.ttf')  format('truetype'); /* Safari, Android, iOS */ /* Legacy iOS */
+    src:url('/website/fonts/SVN-Mont-Regular.ttf')  format('truetype'); /* Safari, Android, iOS */ /* Legacy iOS */
     font-display: swap; /* 优化字体加载性能 */
 }
 @font-face {
     font-family: 'SVN-Mont-SemiBold';
-    src:url('../fonts/SVN-Mont-SemiBold.ttf')  format('truetype'); /* Safari, Android, iOS */ /* Legacy iOS */
+    src:url('/website/fonts/SVN-Mont-SemiBold.ttf')  format('truetype'); /* Safari, Android, iOS */ /* Legacy iOS */
     font-display: swap; /* 优化字体加载性能 */
 }
 :root{

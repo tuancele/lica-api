@@ -18,8 +18,8 @@ return new class extends Migration
 
         Schema::table('orderdetail', function (Blueprint $table) {
             if (! Schema::hasColumn('orderdetail', 'productsale_id')) {
-                $table->unsignedBigInteger('productsale_id')->nullable()->after('dealsale_id')->comment('ID of ProductSale record for Flash Sale tracking');
-                $table->index('productsale_id', 'orderdetail_productsale_id_index');
+            $table->unsignedBigInteger('productsale_id')->nullable()->after('dealsale_id')->comment('ID of ProductSale record for Flash Sale tracking');
+            $table->index('productsale_id', 'orderdetail_productsale_id_index');
             }
         });
     }
@@ -35,8 +35,8 @@ return new class extends Migration
 
         Schema::table('orderdetail', function (Blueprint $table) {
             if (Schema::hasColumn('orderdetail', 'productsale_id')) {
-                $table->dropIndex('orderdetail_productsale_id_index');
-                $table->dropColumn('productsale_id');
+            $table->dropIndex('orderdetail_productsale_id_index');
+            $table->dropColumn('productsale_id');
             }
         });
     }

@@ -55,9 +55,10 @@ class WarehouseAccountingController extends Controller
             }
         }
 
-        // Add number to text helper
+        // Add number to text helper (ensure total_value is cast to float)
         if (isset($data['receipt']) && $data['receipt']) {
-            $data['totalInWords'] = NumberToText::convertCurrency($data['receipt']->total_value ?? 0);
+            $totalValue = (float) ($data['receipt']->total_value ?? 0);
+            $data['totalInWords'] = NumberToText::convertCurrency($totalValue);
         } else {
             $data['totalInWords'] = '';
         }
@@ -78,7 +79,11 @@ class WarehouseAccountingController extends Controller
             'date_to' => $request->get('date_to'),
         ];
 
-        $perPage = $request->get('per_page', $request->get('length', 20));
+        // Ensure perPage is always an integer within a safe range for pagination
+        $perPage = (int) $request->get('per_page', $request->get('length', 20));
+        if ($perPage <= 0 || $perPage > 1000) {
+            $perPage = 20;
+        }
         $receipts = $this->stockReceiptService->listReceipts($filters, $perPage);
 
         // Format for DataTable

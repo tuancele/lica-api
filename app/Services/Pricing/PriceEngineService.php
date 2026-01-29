@@ -97,7 +97,7 @@ class PriceEngineService implements PriceEngineServiceInterface
             ->where('product_id', $productId)
             ->whereHas('flashsale', function ($q) use ($now) {
                 $q->where('status', '1')
-                    ->where('start', '<=', $now->timestamp)
+            ->where('start', '<=', $now->timestamp)
                     ->where('end', '>=', $now->timestamp);
             })
             ->orderByDesc('id');

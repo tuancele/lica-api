@@ -39,4 +39,9 @@ interface InventoryServiceInterface
      * Trừ kho khi đặt hàng.
      */
     public function deductStockForOrder(int $variantId, int $quantity, string $reason = 'order'): array;
+
+    /**
+     * Get default warehouse ID for Inventory V2.
+     */
+    public function getDefaultWarehouseId(): int;
 }

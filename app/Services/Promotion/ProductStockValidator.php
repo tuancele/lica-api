@@ -53,17 +53,15 @@ class ProductStockValidator implements ProductStockValidatorInterface
                 return 0;
             }
 
-            // If product has variants, get stock from default variant via warehouse
-            if ($product->has_variants == 1) {
-                $defaultVariant = $product->variant($productId);
-                if ($defaultVariant) {
-                    $stockInfo = $this->warehouseService->getVariantStock($defaultVariant->id);
+            // Always try to get stock via default variant & WarehouseService (Inventory V2)
+            $defaultVariant = $product->variant($productId);
+            if ($defaultVariant) {
+                $stockInfo = $this->warehouseService->getVariantStock($defaultVariant->id);
 
-                    return (int) ($stockInfo['current_stock'] ?? 0);
-                }
+                return (int) ($stockInfo['current_stock'] ?? 0);
             }
 
-            // Otherwise, use product's stock field
+            // Fallback: use legacy product.stock only if no variant can be resolved
             return (int) ($product->stock ?? 0);
         } catch (\Exception $e) {
             Log::error('Error getting product stock', [

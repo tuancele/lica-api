@@ -19,7 +19,7 @@ interface ProductRepositoryInterface extends RepositoryInterface
     /**
      * Find product by ID.
      */
-    public function find(int $id): ?Product;
+    public function find(int $id, array $columns = ['*']);
 
     /**
      * Find product with relations.
@@ -44,7 +44,7 @@ interface ProductRepositoryInterface extends RepositoryInterface
     /**
      * Get paginated products with filters.
      */
-    public function paginate(array $filters = [], int $perPage = 10): LengthAwarePaginator;
+    public function paginateWithFilters(array $filters = [], int $perPage = 10): LengthAwarePaginator;
 
     /**
      * Get all active products.

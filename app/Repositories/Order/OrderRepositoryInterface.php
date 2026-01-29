@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Repositories\Order;
 
 use App\Modules\Order\Models\Order;
-use App\Repositories\Contracts.RepositoryInterface;
+use App\Repositories\Contracts\RepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 /**

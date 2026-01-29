@@ -123,7 +123,17 @@
                             @php $feeship = 0 @endphp
                             @if(getConfig('ghtk_status'))
                             @if(isset($delivery) && !empty($delivery))
-                            @php $feeship = $status->ship_money; @endphp
+                            @php
+                                // Normalize ship_money to numeric
+                                $feeship = 0;
+                                if (isset($status->ship_money)) {
+                                    if (is_object($status->ship_money) && isset($status->ship_money->fee)) {
+                                        $feeship = (float) $status->ship_money->fee;
+                                    } else {
+                                        $feeship = (float) $status->ship_money;
+                                    }
+                                }
+                            @endphp
                             <tr>
                                <td><i class="fa fa-truck" aria-hidden="true"></i></td>
                                 <td colspan="4">
@@ -131,7 +141,7 @@
                                     <p>{{$status->status_text}}</p>
                                 </td>
                                 <td>
-                                    {{number_format($status->ship_money)}}đ
+                                    {{number_format($feeship)}}đ
                                 </td>
                             </tr>
                             @else
@@ -139,7 +149,12 @@
                                 $feeship = 0;
                                 if (isset($fee) && !empty($fee)) {
                                     if (is_object($fee) && isset($fee->fee)) {
-                                        $feeship = $fee->fee;
+                                        // Handle nested fee object structures safely
+                                        $feeshipValue = $fee->fee;
+                                        if (is_object($feeshipValue) && isset($feeshipValue->fee)) {
+                                            $feeshipValue = $feeshipValue->fee;
+                                        }
+                                        $feeship = (float) $feeshipValue;
                                     } elseif (is_numeric($fee)) {
                                         $feeship = (float)$fee;
                                     }

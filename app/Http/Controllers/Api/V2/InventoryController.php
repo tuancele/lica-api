@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\InventoryStock;
 use App\Models\StockReceipt;
 use App\Models\WarehouseV2;
+use App\Modules\Marketing\Models\MarketingCampaignProduct;
 use App\Services\Inventory\Contracts\InventoryServiceInterface;
 use App\Services\Inventory\DTOs\AdjustStockDTO;
 use App\Services\Inventory\DTOs\ExportStockDTO;
@@ -15,6 +16,8 @@ use App\Services\Inventory\DTOs\ImportStockDTO;
 use App\Services\Inventory\DTOs\TransferStockDTO;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
+use Carbon\Carbon;
 
 class InventoryController extends Controller
 {
@@ -41,12 +44,48 @@ class InventoryController extends Controller
         if ($request->out_of_stock_only) {
             $query->outOfStock();
         }
+        if ($request->only_positive) {
+            // Only include rows with available stock > 0
+            $query->where('available_stock', '>', 0);
+        }
 
         $stocks = $query->paginate($request->per_page ?? 20);
 
+        // Transform items to include current_price (from Marketing Campaign if active, otherwise variant.price)
+        $now = Carbon::now();
+        $transformedItems = $stocks->getCollection()->map(function ($stock) use ($now) {
+            $variant = $stock->variant;
+            $product = $variant?->product;
+            $basePrice = (float) ($variant?->price ?? 0);
+            $currentPrice = $basePrice;
+
+            // Check if product has active Marketing Campaign price
+            if ($product && Schema::hasTable('marketing_campaign_products') && Schema::hasTable('marketing_campaigns')) {
+                $campaignProduct = MarketingCampaignProduct::where('product_id', $product->id)
+                    ->whereHas('campaign', function ($q) use ($now) {
+                        $q->where('status', '1')
+                            ->where('start_at', '<=', $now)
+                            ->where('end_at', '>=', $now);
+                    })
+                    ->orderByDesc('id')
+                    ->first();
+
+                if ($campaignProduct && $campaignProduct->price > 0) {
+                    $currentPrice = (float) $campaignProduct->price;
+                }
+            }
+
+            // Add current_price to stock item
+            $stockArray = $stock->toArray();
+            $stockArray['current_price'] = $currentPrice;
+            $stockArray['base_price'] = $basePrice;
+
+            return $stockArray;
+        });
+
         return response()->json([
             'success' => true,
-            'data' => $stocks->items(),
+            'data' => $transformedItems->values()->all(),
             'pagination' => [
                 'current_page' => $stocks->currentPage(),
                 'last_page' => $stocks->lastPage(),

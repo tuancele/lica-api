@@ -33,6 +33,9 @@ Route::prefix('analytics')->group(function () {
     Route::get('/product-ingredients', [App\Http\Controllers\Api\AnalyticsController::class, 'getProductIngredientAnalysis']);
 });
 
+// Simple healthcheck endpoint for monitoring
+Route::get('/health', \App\Http\Controllers\HealthCheckController::class);
+
 // 分类API - RESTful 标准
 Route::prefix('categories')->group(function () {
     Route::get('/', [App\Http\Controllers\Api\CategoryController::class, 'index']); // GET /api/categories

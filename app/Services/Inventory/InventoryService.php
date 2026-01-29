@@ -501,10 +501,36 @@ class InventoryService implements InventoryV2ServiceInterface, LegacyInventorySe
         return StockMovement::getSummary($variantId, $warehouseId ?? $this->getDefaultWarehouseId(), $startDate, $endDate);
     }
 
-    // Helper methods
-    private function getDefaultWarehouseId(): int
+    public function getDefaultWarehouseId(): int
     {
-        return Cache::remember('default_warehouse_id', 3600, fn () => WarehouseV2::where('is_default', true)->value('id') ?? 1);
+        // Always return a valid existing warehouse id, never a hard-coded fallback.
+        // 1) Try cached value but verify it still exists in DB
+        $cachedId = Cache::get('default_warehouse_id');
+        if ($cachedId && WarehouseV2::whereKey($cachedId)->exists()) {
+            return (int) $cachedId;
+        }
+
+        // 2) Recompute and refresh cache
+        $id = Cache::remember('default_warehouse_id', 3600, function () {
+            // 1) Prefer warehouse explicitly marked as default
+            $defaultId = WarehouseV2::where('is_default', true)->value('id');
+            if ($defaultId) {
+                return (int) $defaultId;
+            }
+
+            // 2) Fallback: first active warehouse (is_active), or any warehouse
+            $fallbackId = WarehouseV2::where('is_active', true)->orderBy('id')->value('id')
+                ?? WarehouseV2::orderBy('id')->value('id');
+
+            if ($fallbackId) {
+                return (int) $fallbackId;
+            }
+
+            // 3) If absolutely no warehouse exists, fail loudly instead of causing FK errors
+            throw new \RuntimeException('No warehouse_v2 configured. Please create at least one warehouse in warehouses_v2.');
+        });
+
+        return (int) $id;
     }
 
     private function lockStock(int $variantId, int $warehouseId): InventoryStock

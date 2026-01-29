@@ -430,7 +430,7 @@ class ProductService implements ProductServiceInterface
      */
     public function getProducts(array $filters = [], int $perPage = 10)
     {
-        return $this->repository->paginate($filters, $perPage);
+        return $this->repository->paginateWithFilters($filters, $perPage);
     }
 
     /**

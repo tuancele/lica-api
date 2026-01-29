@@ -99,11 +99,19 @@ if (! function_exists('getImage')) {
 if (! function_exists('formatDate')) {
     function formatDate($date)
     {
-        if ($date != '') {
-            return date('d-m-Y', strtotime($date));
-        } else {
+        if (empty($date)) {
             return '';
         }
+
+        // Support Carbon instances and strings
+        if ($date instanceof \Illuminate\Support\Carbon) {
+            return $date->format('d-m-Y');
+        }
+
+        // Fallback: cast to string and format
+        $dateString = (string) $date;
+
+        return date('d-m-Y', strtotime($dateString));
     }
 }
 if (! function_exists('updateConfig')) {
